@@ -1,8 +1,16 @@
-//  @ts-check
-
 import { tanstackConfig } from '@tanstack/eslint-config'
 
 export default [
+  {
+    ignores: [
+      '**/dist/**',
+      '**/routeTree.gen.ts',
+      '.playwright-mcp/**',
+      'playwright-report/**',
+      'test-results/**',
+      '**/*.config.js',
+    ],
+  },
   ...tanstackConfig,
   {
     rules: {
@@ -13,8 +21,5 @@ export default [
       '@typescript-eslint/require-await': 'off',
       'pnpm/json-enforce-catalog': 'off',
     },
-  },
-  {
-    ignores: ['eslint.config.js', 'prettier.config.js'],
   },
 ]
