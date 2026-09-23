@@ -50,38 +50,66 @@ const CLIENTS: Record<AgentId, ClientConfig> = {
   },
 }
 
+type CopyState = 'idle' | 'copied' | 'failed'
+
 export function useCopy(text: string) {
-  const [copied, setCopied] = useState(false)
+  const [state, setState] = useState<CopyState>('idle')
 
   useEffect(() => {
-    if (!copied) return
-    const timer = setTimeout(() => setCopied(false), 1500)
+    if (state === 'idle') return
+    const timer = setTimeout(() => setState('idle'), 2000)
     return () => clearTimeout(timer)
-  }, [copied])
+  }, [state])
 
   async function copy() {
     try {
       await navigator.clipboard.writeText(text)
-      setCopied(true)
+      setState('copied')
     } catch {
-      setCopied(false)
+      setState('failed')
     }
   }
 
-  return { copied, copy }
+  return { state, copy }
 }
 
-function CopyButton({ text }: { text: string }) {
-  const { copied, copy } = useCopy(text)
+// Visible label for a copy button in each state.
+export function copyLabel(state: CopyState, idle = 'copy') {
+  return state === 'copied'
+    ? 'copied'
+    : state === 'failed'
+      ? 'copy failed'
+      : idle
+}
+
+// Announces the result of a copy to screen readers. Keep it mounted so the
+// live region exists before its text changes.
+export function CopyStatus({ state }: { state: CopyState }) {
   return (
-    <button
-      type="button"
-      onClick={() => void copy()}
-      className="btn btn-sm"
-      aria-label="Copy"
-    >
-      {copied ? 'copied' : 'copy'}
-    </button>
+    <span role="status" className="sr-only">
+      {state === 'copied'
+        ? 'Copied to clipboard'
+        : state === 'failed'
+          ? 'Copy failed. Select the URL and copy it manually.'
+          : ''}
+    </span>
+  )
+}
+
+function CopyButton({ text, label }: { text: string; label: string }) {
+  const { state, copy } = useCopy(text)
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => void copy()}
+        className="btn btn-sm"
+        aria-label={label}
+      >
+        {copyLabel(state)}
+      </button>
+      <CopyStatus state={state} />
+    </>
   )
 }
 
@@ -138,7 +166,10 @@ export function Install() {
             </div>
           ))}
         </pre>
-        <CopyButton text={active.lines.join('\n')} />
+        <CopyButton
+          text={active.lines.join('\n')}
+          label={`Copy the ${active.tab} config`}
+        />
       </div>
     </div>
   )
@@ -151,7 +182,7 @@ export function UrlBox() {
         <span className="text-mute">$ </span>
         {MCP_URL}
       </code>
-      <CopyButton text={MCP_URL} />
+      <CopyButton text={MCP_URL} label="Copy the MCP URL" />
     </div>
   )
 }

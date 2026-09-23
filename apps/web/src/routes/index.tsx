@@ -1,387 +1,324 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { ApiStatus } from '#/components/landing/api-status'
-import { UrlBox } from '#/components/landing/copy-url'
+import {
+  MotionConfig,
+  motion,
+  useMotionValueEvent,
+  useScroll,
+} from 'motion/react'
+import { Fragment, useState } from 'react'
+import type { ReactNode } from 'react'
+import { BeforeAfter } from '#/components/landing/before-after'
+import { Wordmark } from '#/components/landing/brand'
 import { Flow } from '#/components/landing/flow'
+import { Footer } from '#/components/landing/footer'
+import {
+  CopyStatus,
+  MCP_URL,
+  UrlBox,
+  copyLabel,
+  useCopy,
+} from '#/components/landing/copy-url'
 import { Logo } from '#/components/landing/logo'
-import type { AgentId } from '#/components/landing/logos'
+import { Playground } from '#/components/landing/playground'
+import { EASE, Reveal } from '#/components/landing/reveal'
+import { Toolset } from '#/components/landing/toolset'
+import { WalletFan } from '#/components/landing/wallet-fan'
 
 export const Route = createFileRoute('/')({ component: Home })
-
-type Stage = 'available' | 'next' | 'planned'
-
-const TOOLS: Array<{
-  stage: Stage
-  title: string
-  body: string
-  solana?: boolean
-}> = [
-  {
-    stage: 'available',
-    title: 'Pay for services',
-    body: 'Paid endpoints, including ones found through the pay.sh catalog, settle from your wallet within that client’s limit. A failed or unclear payment is checked before anything is charged twice.',
-  },
-  {
-    stage: 'next',
-    title: 'Route payment URLs',
-    body: 'Ask for a paid result and let the router reach the right provider. You should not have to find and configure each URL yourself.',
-  },
-  {
-    stage: 'planned',
-    title: 'Prepare transactions',
-    body: 'Swaps and transfers are built by the service and returned as a review link. You sign from a local wallet, a browser wallet, or the embedded wallet.',
-  },
-  {
-    stage: 'planned',
-    title: 'Read Solana',
-    solana: true,
-    body: 'Accounts, transactions, markets, and analytics from Helius, Jupiter, and Dune. The credits each provider reports show up next to your payments.',
-  },
-]
-
-function stageChip(stage: Stage) {
-  switch (stage) {
-    case 'available':
-      return { text: 'available now', className: 'chip chip-lime' }
-    case 'next':
-      return { text: 'next', className: 'chip chip-blue' }
-    case 'planned':
-      return { text: 'planned', className: 'chip' }
-    default: {
-      const exhaustive: never = stage
-      return exhaustive
-    }
-  }
-}
-
-const usd = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-})
-const whole = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 0,
-})
-
-const LIMITS: Array<{
-  id: AgentId
-  name: string
-  kind: string
-  cap: number
-  spent: number
-  can: Array<string>
-}> = [
-  {
-    id: 'cursor',
-    name: 'Cursor',
-    kind: 'desktop',
-    cap: 25,
-    spent: 6.63,
-    can: ['read', 'pay', 'prepare'],
-  },
-  {
-    id: 'claude',
-    name: 'Claude',
-    kind: 'desktop',
-    cap: 10,
-    spent: 1.2,
-    can: ['read', 'prepare'],
-  },
-  {
-    id: 'codex',
-    name: 'Codex',
-    kind: 'desktop · cloud',
-    cap: 15,
-    spent: 4.5,
-    can: ['read', 'pay'],
-  },
-  {
-    id: 'grok',
-    name: 'Grok',
-    kind: 'cloud',
-    cap: 8,
-    spent: 0.4,
-    can: ['read'],
-  },
-  {
-    id: 'cloud',
-    name: 'Cloud agent',
-    kind: 'server',
-    cap: 5,
-    spent: 5,
-    can: ['read', 'pay'],
-  },
-]
-
-const STEPS = [
-  { text: 'Your agent asks for an allowed paid endpoint.' },
-  {
-    text: 'We compare the price with that client’s remaining limit and permissions.',
-  },
-  {
-    text: 'We pay from the embedded wallet and forward the call.',
-    chip: 'or deny it here',
-  },
-  { text: 'The result comes back through the same connection.' },
-  {
-    text: 'Call, cost, result, and what is left of the limit go on the record.',
-  },
-]
 
 const col = 'mx-auto w-full max-w-[60rem] px-5 sm:px-8'
 const wide = 'mx-auto w-full max-w-[76rem] px-5 sm:px-8'
 
-function Home() {
+// A solid block that sweeps in behind a word when it scrolls into view.
+function Sweep({
+  children,
+  tone = 'lime',
+}: {
+  children: ReactNode
+  tone?: 'lime' | 'blue'
+}) {
   return (
-    <>
-      <header className={col}>
-        <div className="flex h-16 items-center justify-between border-b-[1.5px] border-paper/30">
-          <a href="/" className="text-[17px] font-bold tracking-tight">
-            lanatools
+    <span className="relative inline-block px-[0.22em]">
+      <motion.span
+        aria-hidden="true"
+        className={`absolute inset-0 origin-left rounded-[4px] ${
+          tone === 'lime' ? 'bg-lime' : 'bg-blue'
+        }`}
+        initial={{ scaleX: 0 }}
+        whileInView={{ scaleX: 1 }}
+        viewport={{ once: true, margin: '0px 0px -15% 0px' }}
+        transition={{ duration: 0.55, ease: EASE, delay: 0.15 }}
+      />
+      <span
+        className={`relative ${tone === 'lime' ? 'text-ink' : 'text-paper'}`}
+      >
+        {children}
+      </span>
+    </span>
+  )
+}
+
+function Header() {
+  const { scrollY } = useScroll()
+  const [scrolled, setScrolled] = useState(false)
+  useMotionValueEvent(scrollY, 'change', (y) => setScrolled(y > 12))
+
+  return (
+    <header
+      className={`sticky top-0 z-40 transition-colors duration-300 ${
+        scrolled ? 'bg-blue-deep/95 backdrop-blur-sm' : 'bg-blue'
+      }`}
+    >
+      <div className={wide}>
+        <div
+          className={`flex h-16 items-center justify-between border-b-[1.5px] transition-colors duration-300 ${
+            scrolled ? 'border-transparent' : 'border-paper/30'
+          }`}
+        >
+          <a href="/" aria-label="lanatools home">
+            <Wordmark size={32} animate />
           </a>
           <nav
             aria-label="Primary"
             className="hidden items-center gap-6 text-[13.5px] text-paper-2 md:flex"
           >
-            <a href="#does" className="hover:text-paper">
-              What it does
-            </a>
-            <a href="#limits" className="hover:text-paper">
-              Limits
+            <a href="#why" className="hover:text-paper">
+              Why
             </a>
             <a href="#how" className="hover:text-paper">
-              How a call works
+              How it works
+            </a>
+            <a href="#control" className="hover:text-paper">
+              Control
+            </a>
+            <a href="#tools" className="hover:text-paper">
+              Tools
             </a>
           </nav>
           <a href="#connect" className="btn btn-sm btn-primary">
             Connect an agent
           </a>
         </div>
-      </header>
+      </div>
+    </header>
+  )
+}
 
-      <main>
-        <section className={`${col} pt-14 pb-16 sm:pt-20`}>
-          <h1 className="display text-[clamp(2.25rem,5.4vw,3.75rem)]">
-            One MCP server for <span className="hl">agents</span> on{' '}
-            <span className="inline-flex items-center gap-[0.18em] whitespace-nowrap align-[-0.08em]">
-              <Logo id="solana" className="h-[0.72em] w-[0.72em] text-lime" />
-              Solana.
-            </span>
-          </h1>
-          <p className="mt-6 max-w-[62ch] text-[16.5px] text-paper-2">
-            Cursor, Claude, Codex, Grok, and a cloud agent share one URL and one
-            wallet. Each client gets its own permissions and spending limit.
-            Every call is on the record.
-          </p>
-          <ul className="mt-8 flex flex-wrap gap-2">
-            {LIMITS.map((agent) => (
-              <li key={agent.id}>
-                <span className="chip gap-1.5">
-                  <Logo id={agent.id} size={14} />
-                  {agent.name}
-                </span>
-              </li>
-            ))}
-          </ul>
-          {/* <Install /> is ready for the client setup launch. */}
-          <p className="mt-6 flex flex-wrap items-center gap-3 text-[13.5px] text-paper-2">
-            <span className="chip chip-lime">available now</span>
-            <a href="#does" className="arrow-link text-paper">
-              Paid endpoints through pay.sh. Routing, transactions, and data
-              next
-            </a>
-          </p>
-        </section>
+const HEADLINE = ['Let', 'your', 'agents', 'pay.']
 
-        <section className={`${wide} pb-20 sm:pb-24`}>
-          <Flow />
-        </section>
+const CONNECT_STEPS = [
+  'Create an account and fund the wallet.',
+  'Paste the URL into Cursor, Claude, Codex, or any MCP client.',
+  'Approve that client’s permissions and limit at sign-in.',
+]
 
-        <section id="does" className="on-paper bg-paper text-ink">
-          <div className={`${col} py-16 sm:py-20`}>
-            <p className="eyebrow text-mute">what it does</p>
-            <h2 className="title mt-3 text-[clamp(1.6rem,3vw,2.125rem)]">
-              <span className="hl-blue">Pays</span> for services today. Routes,
-              prepares, and reads next.
-            </h2>
-            <ol className="box box-lg mt-10 overflow-hidden">
-              {TOOLS.map((tool, i) => {
-                const chip = stageChip(tool.stage)
-                const lead = tool.stage === 'available'
-                return (
-                  <li
-                    key={tool.title}
-                    className={`grid gap-3 border-b border-rule px-5 py-5 last:border-b-0 sm:grid-cols-[4.5rem_9rem_minmax(0,1fr)] sm:items-baseline sm:gap-6 ${
-                      lead ? 'bg-lime/40' : 'bg-card'
-                    }`}
-                  >
-                    <span className="font-bold text-mute">
-                      {String(i + 1).padStart(2, '0')}
-                    </span>
-                    <span
-                      className={`${chip.className} self-start sm:self-auto`}
-                    >
-                      {chip.text}
-                    </span>
-                    <div>
-                      <h3 className="flex items-center gap-2 text-[17px] font-bold tracking-tight">
-                        {tool.solana && <Logo id="solana" size={16} />}
-                        {tool.title}
-                      </h3>
-                      <p className="mt-1.5 max-w-[62ch] text-[14.5px] text-mute">
-                        {tool.body}
-                      </p>
-                    </div>
-                  </li>
-                )
-              })}
-            </ol>
-          </div>
-        </section>
-
-        <section id="limits" className={`${col} py-16 sm:py-20`}>
-          <p className="eyebrow text-paper-2">limits</p>
-          <h2 className="title mt-3 text-[clamp(1.6rem,3vw,2.125rem)]">
-            Every client. One wallet. <span className="hl">Its own limit.</span>
-          </h2>
-          <p className="mt-5 max-w-[62ch] text-[15.5px] text-paper-2">
-            Each client has its own permissions and monthly limit. Every paid
-            call is checked against what that client has left. Raise a limit or
-            revoke a client whenever you like; what it already spent stays on
-            the record.
-          </p>
-          <div className="box box-lg mt-10 overflow-hidden">
-            <div className="hidden grid-cols-[minmax(0,1.4fr)_7rem_7rem_minmax(8rem,1fr)] gap-4 border-b border-rule bg-paper px-4 py-2 text-[11px] font-semibold tracking-wide text-mute uppercase sm:grid">
-              <span>Client</span>
-              <span className="text-right">Spent</span>
-              <span className="text-right">Limit</span>
-              <span>Used</span>
-            </div>
-            <ul>
-              {LIMITS.map((c) => {
-                const ratio = Math.min(c.spent / c.cap, 1)
-                const full = ratio >= 1
-                return (
-                  <li
-                    key={c.id}
-                    className="grid gap-3 border-b border-rule px-4 py-4 last:border-b-0 sm:grid-cols-[minmax(0,1.4fr)_7rem_7rem_minmax(8rem,1fr)] sm:items-center sm:gap-4"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="flex size-9 items-center justify-center rounded-[6px] border border-ink bg-card">
-                        <Logo id={c.id} size={18} />
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-[15px] font-bold">{c.name}</p>
-                        <p className="text-[12px] text-mute">
-                          {c.kind} · {c.can.join(' · ')}
-                        </p>
-                      </div>
-                    </div>
-                    <p
-                      className={`font-bold sm:text-right ${full ? 'text-coral' : ''}`}
-                    >
-                      <span className="mr-2 text-[11px] font-semibold tracking-wide text-mute uppercase sm:hidden">
-                        Spent
-                      </span>
-                      {usd.format(c.spent)}
-                    </p>
-                    <p className="text-mute sm:text-right">
-                      <span className="mr-2 text-[11px] font-semibold tracking-wide text-mute uppercase sm:hidden">
-                        Limit
-                      </span>
-                      {whole.format(c.cap)}
-                    </p>
-                    <div>
-                      <div
-                        role="meter"
-                        aria-label={`${c.name} spending`}
-                        aria-valuemin={0}
-                        aria-valuemax={c.cap}
-                        aria-valuenow={c.spent}
-                        className="h-2.5 w-full overflow-hidden rounded-[3px] border border-ink bg-card"
-                      >
-                        <div
-                          className={`h-full ${full ? 'bg-coral' : 'bg-blue'}`}
-                          style={{ width: `${Math.max(ratio * 100, 2)}%` }}
-                        />
-                      </div>
-                      {full && (
-                        <p className="mt-1.5 text-[12px] font-semibold text-coral">
-                          limit reached · paid calls denied
-                        </p>
-                      )}
-                    </div>
-                  </li>
-                )
-              })}
-            </ul>
-          </div>
-          <p className="mt-6 text-[12.5px] text-paper-3">
-            illustrative figures
-          </p>
-        </section>
-
-        <section id="how" className="on-paper bg-paper text-ink">
-          <div className={`${col} py-16 sm:py-20`}>
-            <p className="eyebrow text-mute">how a paid call works</p>
-            <h2 className="title mt-3 text-[clamp(1.6rem,3vw,2.125rem)]">
-              Money moves inside the rules you set.{' '}
-              <span className="hl-blue">Never twice</span> for one unclear
-              payment.
-            </h2>
-            <ol className="box box-lg mt-10 overflow-hidden">
-              {STEPS.map((step, i) => (
-                <li
-                  key={step.text}
-                  className="grid grid-cols-[3.5rem_minmax(0,1fr)] border-b border-rule last:border-b-0"
+function Hero() {
+  const { state, copy } = useCopy(MCP_URL)
+  return (
+    <section className={`${wide} pt-12 pb-14 sm:pt-16 lg:pt-20`}>
+      <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-14">
+        <div>
+          <motion.span
+            className="chip gap-1.5"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: EASE }}
+          >
+            <Logo id="solana" size={12} />
+            one MCP server for agents on Solana
+          </motion.span>
+          {/* Real spaces between the words keep the text readable; the
+              negative word-spacing keeps the gap tight like the design. */}
+          <h1 className="display mt-6 text-[clamp(2.4rem,6vw,4.1rem)] [word-spacing:-0.28em]">
+            {HEADLINE.map((word, i) => (
+              <Fragment key={word}>
+                <motion.span
+                  className="inline-block"
+                  initial={{ opacity: 0, y: '0.5em' }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{
+                    duration: 0.55,
+                    ease: EASE,
+                    delay: 0.08 + i * 0.07,
+                  }}
                 >
-                  <span className="flex items-center justify-center border-r border-rule bg-paper text-[15px] font-bold">
-                    {i + 1}
-                  </span>
-                  <p className="flex flex-wrap items-center gap-3 px-5 py-4 text-[15px]">
-                    {step.text}
-                    {step.chip && (
-                      <span className="chip chip-coral">{step.chip}</span>
-                    )}
-                  </p>
-                </li>
-              ))}
-            </ol>
-          </div>
-        </section>
-
-        <section id="connect" className={`${col} py-16 sm:py-24`}>
-          <p className="eyebrow text-paper-2">connect</p>
-          <h2 className="display mt-3 text-[clamp(2rem,4.5vw,3.25rem)]">
-            Paste <span className="hl">one URL.</span>
-          </h2>
-          <p className="mt-5 max-w-[60ch] text-[15.5px] text-paper-2">
-            Create an account, fund the wallet, paste the URL into a client you
-            already use. Sign-in sets that client’s permissions and limit. Add a
-            second client with a different limit whenever you want.
-          </p>
-          <div className="mt-8">
-            <UrlBox />
-          </div>
-          <div className="mt-8 flex flex-wrap gap-3">
+                  {word}
+                </motion.span>{' '}
+              </Fragment>
+            ))}
+            <br />
+            <motion.span
+              className="relative inline-block px-[0.2em] [word-spacing:normal]"
+              initial={{ opacity: 0, y: '0.5em' }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.55, ease: EASE, delay: 0.4 }}
+            >
+              <motion.span
+                aria-hidden="true"
+                className="absolute inset-0 origin-left rounded-[5px] bg-lime"
+                initial={{ scaleX: 0 }}
+                animate={{ scaleX: 1 }}
+                transition={{ duration: 0.6, ease: EASE, delay: 0.7 }}
+              />
+              <span className="relative text-ink">Within limits.</span>
+            </motion.span>
+          </h1>
+          <motion.p
+            className="mt-7 max-w-[54ch] text-[16px] text-paper-2"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.6, delay: 0.6 }}
+          >
+            One hosted MCP server for Cursor, Claude, Codex, Grok, and your
+            cloud agents. Fund one wallet, then give every client its own
+            permissions and spending limit.
+          </motion.p>
+          <motion.div
+            className="mt-8 flex flex-wrap items-center gap-3"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: EASE, delay: 0.75 }}
+          >
             <a href="#connect" className="btn btn-primary">
               Create account
             </a>
-            <a href="#how" className="btn">
-              How a call works →
-            </a>
+            <button
+              type="button"
+              onClick={() => void copy()}
+              className="btn gap-3 font-normal"
+              aria-label="Copy the MCP URL"
+            >
+              <span className="text-mute">$</span>
+              <span className="font-semibold">mcp.lanatools.sh</span>
+              <span className="chip h-5 px-1.5 text-[10.5px]">
+                {copyLabel(state)}
+              </span>
+            </button>
+            <CopyStatus state={state} />
+          </motion.div>
+        </div>
+        <div className="mx-auto w-full max-w-[560px]">
+          <WalletFan />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function Home() {
+  return (
+    <MotionConfig reducedMotion="user">
+      <Header />
+
+      <main>
+        <Hero />
+
+        <section id="why" className="on-paper bg-paper text-ink">
+          <div className={`${wide} py-16 sm:py-24`}>
+            <Reveal>
+              <p className="eyebrow text-mute">why</p>
+              <h2 className="title mt-3 max-w-[30ch] text-[clamp(1.6rem,3vw,2.25rem)]">
+                Five agents, four services.{' '}
+                <Sweep tone="blue">One connection each.</Sweep>
+              </h2>
+              <p className="mt-5 max-w-[62ch] text-[15.5px] text-mute">
+                Today, letting an agent pay for data means wiring a server and a
+                key for every agent and every service. With LanaTools, each
+                agent connects once and every service sits behind that URL.
+              </p>
+            </Reveal>
+            <div className="mt-12">
+              <BeforeAfter />
+            </div>
+          </div>
+        </section>
+
+        <section id="how" className={`${wide} py-16 sm:py-24`}>
+          <Reveal>
+            <p className="eyebrow text-paper-2">how it works</p>
+            <h2 className="title mt-3 max-w-[32ch] text-[clamp(1.6rem,3vw,2.25rem)]">
+              Money moves only <Sweep>inside the rules you set.</Sweep>
+            </h2>
+          </Reveal>
+          <Reveal className="mt-10" delay={0.1}>
+            <Flow />
+          </Reveal>
+        </section>
+
+        <section id="control" className="on-paper bg-paper text-ink">
+          <div className={`${wide} py-16 sm:py-24`}>
+            <Reveal>
+              <p className="eyebrow text-mute">control</p>
+              <h2 className="title mt-3 text-[clamp(1.6rem,3vw,2.25rem)]">
+                Change the rules <Sweep tone="blue">whenever you like.</Sweep>
+              </h2>
+              <p className="mt-5 max-w-[62ch] text-[15.5px] text-mute">
+                Try it. Pick a client, then raise its limit, revoke it, or send
+                a test call. Your changes land on the record right next to the
+                calls they affect.
+              </p>
+            </Reveal>
+            <Reveal className="mt-10" delay={0.1}>
+              <Playground />
+            </Reveal>
+          </div>
+        </section>
+
+        <section id="tools" className={`${wide} py-16 sm:py-24`}>
+          <Reveal>
+            <p className="eyebrow text-paper-2">tools</p>
+            <h2 className="title mt-3 max-w-[34ch] text-[clamp(1.6rem,3vw,2.25rem)]">
+              Pays for services today. <Sweep>More tools arrive</Sweep> through
+              the same URL.
+            </h2>
+            <p className="mt-5 max-w-[62ch] text-[15.5px] text-paper-2">
+              Your agent keeps the connection it already has. New tools show up
+              in it without reinstalling anything.
+            </p>
+          </Reveal>
+          <div className="mt-12">
+            <Toolset />
+          </div>
+        </section>
+
+        <section id="connect" className="on-paper bg-paper text-ink">
+          <div className={`${col} py-20 sm:py-28`}>
+            <Reveal>
+              <p className="eyebrow text-mute">connect</p>
+              <h2 className="display mt-3 text-[clamp(2.2rem,5vw,3.5rem)]">
+                Paste <Sweep tone="blue">one URL.</Sweep>
+              </h2>
+            </Reveal>
+            <ol className="mt-8 grid gap-3 sm:grid-cols-3">
+              {CONNECT_STEPS.map((text, i) => (
+                <motion.li
+                  key={text}
+                  className="flex gap-3 rounded-[8px] border-[1.5px] border-ink bg-card px-4 py-3.5 text-[14px] shadow-[3px_3px_0_0_var(--color-ink)]"
+                  initial={{ opacity: 0, y: 14 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.45, ease: EASE, delay: 0.08 * i }}
+                >
+                  <span className="flex size-6 shrink-0 items-center justify-center rounded-[5px] border-[1.5px] border-ink bg-lime text-[11px] font-bold">
+                    {i + 1}
+                  </span>
+                  {text}
+                </motion.li>
+              ))}
+            </ol>
+            <Reveal className="mt-8" delay={0.2}>
+              <UrlBox />
+            </Reveal>
+            <Reveal className="mt-8" delay={0.25}>
+              <a href="#connect" className="btn btn-blue">
+                Create account
+              </a>
+            </Reveal>
           </div>
         </section>
       </main>
 
-      <footer className="bg-blue-deep">
-        <div
-          className={`${col} flex flex-wrap items-center justify-between gap-4 py-6`}
-        >
-          <p className="text-[14px] font-bold tracking-tight">lanatools</p>
-          <ApiStatus />
-        </div>
-      </footer>
-    </>
+      <Footer wide={wide} />
+    </MotionConfig>
   )
 }

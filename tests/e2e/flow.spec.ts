@@ -4,7 +4,7 @@ test('wallet checks coincide with every crossing on desktop and mobile', async (
   page,
 }) => {
   await page.goto('/')
-  const diagram = page.locator('figure > div > svg')
+  const diagram = page.getByRole('img', { name: /connect through one URL/ })
   for (const width of [1200, 390]) {
     await page.setViewportSize({ width, height: 900 })
     await expect(diagram).toHaveAttribute(

@@ -19,6 +19,8 @@ type Layout = {
   routes: Array<{ d: string; entry: number; exit: number }>
   still: Array<[number, number]>
   stillDenied: [number, number]
+  // Numbered markers that tie the diagram to the steps below it.
+  marks: Array<[number, number]>
 }
 
 const PERIOD = 9
@@ -87,6 +89,11 @@ const WIDE: Layout = {
     [832, 334],
   ],
   stillDenied: [384, 186],
+  marks: [
+    [441, 253],
+    [404, 142],
+    [822, 186],
+  ],
 }
 
 const TALL: Layout = {
@@ -139,6 +146,11 @@ const TALL: Layout = {
     [280, 480],
   ],
   stillDenied: [197, 239],
+  marks: [
+    [160, 87],
+    [81, 245],
+    [197, 505],
+  ],
 }
 
 function useReducedMotion() {
@@ -232,6 +244,28 @@ function NodeBox({ node, small }: { node: Node; small: boolean }) {
         className={`fill-mute ${small ? 'text-[10px]' : 'text-[12px]'}`}
       >
         {node.note}
+      </text>
+    </g>
+  )
+}
+
+function Mark({ at, n }: { at: [number, number]; n: number }) {
+  return (
+    <g aria-hidden="true">
+      <circle
+        cx={at[0]}
+        cy={at[1]}
+        r={10}
+        className="fill-ink stroke-card"
+        strokeWidth={1.5}
+      />
+      <text
+        x={at[0]}
+        y={at[1] + 4}
+        textAnchor="middle"
+        className="fill-lime text-[11px] font-bold"
+      >
+        {n}
       </text>
     </g>
   )
@@ -349,11 +383,29 @@ function Appear({ begin, from }: { begin: number; from: number }) {
   )
 }
 
+// Pauses the SMIL clock while the diagram is offscreen.
+function usePauseOffscreen() {
+  const ref = useRef<SVGSVGElement>(null)
+  useEffect(() => {
+    const svg = ref.current
+    if (!svg) return
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry?.isIntersecting) svg.unpauseAnimations()
+      else svg.pauseAnimations()
+    })
+    observer.observe(svg)
+    return () => observer.disconnect()
+  }, [])
+  return ref
+}
+
 function Diagram({ layout, still }: { layout: Layout; still: boolean }) {
   const small = layout === TALL
   const g = layout.gate
+  const ref = usePauseOffscreen()
   return (
     <svg
+      ref={ref}
       viewBox={layout.viewBox}
       className="h-auto w-full"
       role="img"
@@ -595,6 +647,9 @@ function Diagram({ layout, still }: { layout: Layout; still: boolean }) {
             </g>
           ))}
       </g>
+      {layout.marks.map((at, i) => (
+        <Mark key={i} at={at} n={i + 1} />
+      ))}
     </svg>
   )
 }
@@ -613,6 +668,21 @@ function useWideLayout() {
   }, [])
   return { ref, wide }
 }
+
+const STEPS = [
+  {
+    title: 'Every agent connects once.',
+    body: 'Cursor, Claude, Codex, Grok, and your cloud agents all use mcp.lanatools.sh. No wallet keys live in their configs.',
+  },
+  {
+    title: 'Your wallet checks the call.',
+    body: 'Is this client allowed to pay? Does the price fit its limit? If either answer is no, the call stops here and nothing is paid.',
+  },
+  {
+    title: 'It pays, forwards, and records.',
+    body: 'The wallet pays the provider and the result comes back through the same connection. The call, its cost, and what is left of the limit go on the record.',
+  },
+]
 
 export function Flow() {
   const reduced = useReducedMotion()
@@ -641,6 +711,26 @@ export function Flow() {
       <div ref={ref} className={wide ? 'px-4 py-6 sm:px-6' : 'px-3 py-5'}>
         <Diagram layout={wide ? WIDE : TALL} still={reduced} />
       </div>
+      <ol className="grid border-t-[1.5px] border-ink bg-paper sm:grid-cols-3">
+        {STEPS.map((step, i) => (
+          <li
+            key={step.title}
+            className="flex gap-3 border-rule px-4 py-4 not-last:border-b sm:px-5 sm:not-last:border-r sm:not-last:border-b-0"
+          >
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-ink text-[11px] font-bold text-lime">
+              {i + 1}
+            </span>
+            <span className="min-w-0">
+              <span className="block text-[14.5px] leading-snug font-bold tracking-tight text-ink">
+                {step.title}
+              </span>
+              <span className="mt-1 block text-[13px] leading-relaxed text-mute">
+                {step.body}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ol>
     </figure>
   )
 }
