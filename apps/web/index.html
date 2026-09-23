@@ -3,10 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LanaTools</title>
+    <title>LanaTools — One MCP server for agents on Solana</title>
+    <meta
+      name="description"
+      content="Connect your agents to Solana once. One hosted MCP URL, one embedded wallet, a separate spending limit for every client, and a record of every call."
+    />
+    <meta name="theme-color" content="#0b2fb2" />
     <link rel="icon" href="data:," />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400..800;1,400..700&display=swap"
+    />
   </head>
   <body>
+    <!--
+      THESIS: one line. Every agent converges into a single URL, passes your wallet's gate, and fans out to providers. The page is a poster around that diagram; it refuses product screenshots and card grids.
+      OWN-WORLD: drenched Klein blue with paper counter-sections; boxes with 1.5px ink borders and hard offset shadows; JetBrains Mono for everything; lime for money in motion and the primary action, coral for a denied call.
+      STORY: a Solana power user sees where their agents' money goes and what stops it, then pastes one URL.
+      FIRST VIEWPORT: headline at poster scale, one paragraph, one action; the animated flow diagram fills the width below.
+    -->
     <div id="app"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

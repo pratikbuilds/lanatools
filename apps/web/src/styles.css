@@ -1,8 +1,213 @@
 @import 'tailwindcss';
 
+@theme {
+  --color-blue: #0b2fb2;
+  --color-blue-deep: #071f7a;
+  --color-ink: #0a1f6e;
+  --color-paper: #f3efe6;
+  --color-card: #fffdf8;
+  --color-paper-2: #b5c1f0;
+  --color-paper-3: #7f92dd;
+  --color-mute: #4a5480;
+  --color-rule: #d6d0c2;
+  --color-lime: #d9ff4a;
+  --color-coral: #ff6b4a;
+
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-sans: var(--font-mono);
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 4rem;
+}
+
 body {
   margin: 0;
   min-width: 320px;
-  background: #f8fafc;
-  font-family: system-ui, sans-serif;
+  background: var(--color-blue);
+  color: var(--color-paper);
+  font-family: var(--font-mono);
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: var(--color-lime);
+  color: var(--color-ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-lime);
+  outline-offset: 3px;
+}
+.on-paper :focus-visible {
+  outline-color: var(--color-blue);
+}
+
+.display {
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+  text-wrap: balance;
+}
+
+.title {
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+/* hunk-style eyebrow */
+.eyebrow {
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+.eyebrow::before {
+  content: '# ';
+}
+
+/* Solid block behind a word. */
+.hl {
+  padding: 0 0.22em;
+  border-radius: 4px;
+  background: var(--color-lime);
+  color: var(--color-ink);
+  box-decoration-break: clone;
+}
+.hl-blue {
+  padding: 0 0.22em;
+  border-radius: 4px;
+  background: var(--color-blue);
+  color: var(--color-paper);
+  box-decoration-break: clone;
+}
+.hl-coral {
+  padding: 0 0.22em;
+  border-radius: 4px;
+  background: var(--color-coral);
+  color: var(--color-ink);
+  box-decoration-break: clone;
+}
+
+/* Boxes: 1.5px ink border, hard offset shadow. */
+.box {
+  border: 1.5px solid var(--color-ink);
+  border-radius: 10px;
+  background: var(--color-card);
+  color: var(--color-ink);
+  box-shadow: 4px 4px 0 0 var(--color-ink);
+}
+.box-lg {
+  box-shadow: 6px 6px 0 0 var(--color-ink);
+}
+.box-flat {
+  box-shadow: none;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+  height: 40px;
+  padding: 0 14px;
+  border: 1.5px solid var(--color-ink);
+  border-radius: 6px;
+  background: var(--color-card);
+  color: var(--color-ink);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: 3px 3px 0 0 var(--color-ink);
+  transition:
+    transform 120ms var(--ease-out),
+    box-shadow 120ms var(--ease-out),
+    background-color 120ms var(--ease-out);
+}
+.btn:hover {
+  background: var(--color-paper);
+}
+.btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 0 var(--color-ink);
+}
+.btn-primary {
+  background: var(--color-lime);
+}
+.btn-primary:hover {
+  background: #e6ff7a;
+}
+.btn-blue {
+  background: var(--color-blue);
+  color: var(--color-paper);
+}
+.btn-blue:hover {
+  background: var(--color-blue-deep);
+}
+.btn-sm {
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+  box-shadow: 2px 2px 0 0 var(--color-ink);
+}
+.btn-sm:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 0 var(--color-ink);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--color-rule);
+  border-radius: 6px;
+  background: var(--color-card);
+  color: var(--color-ink);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+.chip-lime {
+  border-color: var(--color-ink);
+  background: var(--color-lime);
+}
+.chip-coral {
+  border-color: var(--color-ink);
+  background: var(--color-coral);
+}
+.chip-blue {
+  border-color: var(--color-ink);
+  background: var(--color-blue);
+  color: var(--color-paper);
+}
+
+.arrow-link {
+  font-weight: 600;
+  text-decoration: none;
+}
+.arrow-link::after {
+  content: ' →';
+}
+.arrow-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .btn,
+  .btn-sm {
+    transition: none;
+  }
 }
