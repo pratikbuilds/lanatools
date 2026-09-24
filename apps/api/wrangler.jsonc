@@ -6,6 +6,8 @@
   "compatibility_flags": ["nodejs_compat"],
   "account_id": "b5569935f933970ae15fd5b26ba93d7a",
   "workers_dev": true,
+  "preview_urls": true,
+  "previews": {},
   "observability": {
     "enabled": true,
     "logs": { "enabled": true, "head_sampling_rate": 1 },

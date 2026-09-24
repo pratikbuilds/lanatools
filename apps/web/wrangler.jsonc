@@ -6,6 +6,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "account_id": "b5569935f933970ae15fd5b26ba93d7a",
   "workers_dev": true,
+  "preview_urls": true,
   "observability": {
     "enabled": true,
     "logs": { "enabled": true, "head_sampling_rate": 1 },
@@ -21,4 +22,9 @@
   },
   "services": [{ "binding": "API", "service": "lanatools-api" }],
   "routes": [{ "pattern": "lanatools.sh", "custom_domain": true }],
+  // Bindings are not inherited by Previews. This still calls production
+  // lanatools-api; Worker Previews cannot target another Worker's Preview.
+  "previews": {
+    "services": [{ "binding": "API", "service": "lanatools-api" }],
+  },
 }

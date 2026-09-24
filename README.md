@@ -42,8 +42,10 @@ Individual commands: `bun run format`, `bun run lint`, `bun run typecheck`,
 The site and API run as Cloudflare Workers. `lanatools.sh` serves the Vite
 build and forwards `/api/*` to the `lanatools-api` Worker, which is also
 reachable at `api.lanatools.sh`. Pushes to `master` deploy both through
-Workers Builds. `/api/health` is a process-liveness check, not a database or
-external-dependency readiness check.
+Workers Builds. Pushes to any other branch publish a Worker Preview for each
+app and do not change `lanatools.sh`. Preview URLs are public. A site Preview
+still calls the production API. `/api/health` is a process-liveness check, not
+a database or external-dependency readiness check.
 
 ```sh
 bun run deploy
