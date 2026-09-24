@@ -2,6 +2,7 @@ bun.lock
 node_modules/
 **/dist/
 **/routeTree.gen.ts
+**/worker-configuration.d.ts
 .playwright-mcp/
 playwright-report/
 test-results/

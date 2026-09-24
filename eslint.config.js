@@ -5,6 +5,7 @@ export default [
     ignores: [
       '**/dist/**',
       '**/routeTree.gen.ts',
+      '**/worker-configuration.d.ts',
       '.playwright-mcp/**',
       'playwright-report/**',
       'test-results/**',

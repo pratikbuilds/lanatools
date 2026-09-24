@@ -39,14 +39,23 @@ Individual commands: `bun run format`, `bun run lint`, `bun run typecheck`,
 
 ## Production
 
+The site and API run as Cloudflare Workers. `lanatools.sh` serves the Vite
+build and forwards `/api/*` to the `lanatools-api` Worker, which is also
+reachable at `api.lanatools.sh`. Pushes to `master` deploy both through
+Workers Builds. `/api/health` is a process-liveness check, not a database or
+external-dependency readiness check.
+
+```sh
+bun run deploy
+```
+
+`apps/api/src/index.ts` remains the local Bun server. Its default port is 3000.
+Override `PORT` with an integer from 1 to 65535.
+
 ```sh
 bun run build
 bun run --cwd apps/api start
 ```
-
-The backend runs `apps/api/dist/index.js`; its default port is 3000. Override
-`PORT` with an integer from 1 to 65535. `/api/health` is a process-liveness check,
-not a database or external-dependency readiness check.
 
 Build the API container from the repository root:
 
@@ -55,14 +64,7 @@ docker build -f apps/api/Dockerfile -t lanatools-api .
 docker run --rm -p 3000:3000 lanatools-api
 ```
 
-Deploy `apps/web/dist` to a static host. Configure the public origin so:
-
-- `/api/*` forwards to the API **with the `/api` prefix preserved**.
-- Other application paths fall back to `index.html` for client-side routing.
-- HTTPS terminates at the host or reverse proxy.
-
-Vite's development/preview proxy is not a production reverse proxy. The API
-container serves the API only. No hosting account or deployment is configured.
+Vite's development/preview proxy is not a production reverse proxy.
 
 Database, authentication, and product-specific routes are not scaffolded yet.
 
