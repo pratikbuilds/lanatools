@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { HealthResponse } from '@lanatools/contracts'
+import { healthStatusName, healthStatusText } from './health-status'
 
 export function ApiStatus() {
   const health = useQuery({
@@ -29,14 +30,11 @@ export function ApiStatus() {
           aria-hidden="true"
           className={`size-2.5 rounded-[2px] border border-paper/60 ${tone}`}
         />
-        <span role="status">
-          {health.fetchStatus === 'paused'
-            ? 'Waiting for connection'
-            : !settled
-              ? 'Checking the API'
-              : health.isError
-                ? 'API unreachable'
-                : 'API operational'}
+        <span id="api-status-label" className="sr-only">
+          {healthStatusName}
+        </span>
+        <span role="status" aria-labelledby="api-status-label">
+          {healthStatusText(health)}
         </span>
       </span>
       {health.isError && (

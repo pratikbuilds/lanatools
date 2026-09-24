@@ -13,6 +13,7 @@ import { Flow } from '#/components/landing/flow'
 import { Footer } from '#/components/landing/footer'
 import {
   CopyStatus,
+  MCP_HOST,
   MCP_URL,
   UrlBox,
   copyLabel,
@@ -189,7 +190,7 @@ function Hero() {
               aria-label="Copy the MCP URL"
             >
               <span className="text-mute">$</span>
-              <span className="font-semibold">mcp.lanatools.sh</span>
+              <span className="font-semibold">{MCP_HOST}</span>
               <span className="chip h-5 px-1.5 text-[10.5px]">
                 {copyLabel(state)}
               </span>

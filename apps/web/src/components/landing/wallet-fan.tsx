@@ -5,6 +5,7 @@ import {
   useReducedMotion,
 } from 'motion/react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { MCP_HOST } from './copy-url'
 import { CLIENTS, usd, whole } from './data'
 import { Logo } from './logo'
 import type { AgentId } from './logos'
@@ -260,7 +261,7 @@ export function WalletFan() {
               </p>
             </div>
             <span className="rounded-[6px] border-[1.5px] border-ink bg-card px-2 py-1 text-[11.5px] font-bold">
-              mcp.lanatools.sh
+              {MCP_HOST}
             </span>
           </div>
           <div className="mt-4 flex items-center justify-between border-t-[1.5px] border-dashed border-ink/40 pt-3 text-[12px] font-semibold">

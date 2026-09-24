@@ -1,4 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
+import { MCP_HOST } from './copy-url'
+import {
+  CROSSING_MESSAGES,
+  ENTRY,
+  EXIT,
+  PERIOD,
+  PHASE,
+  STAGGER,
+} from './crossing'
 import { LogoGlyph } from './logo'
 import { AGENTS } from './logos'
 import type { AgentId } from './logos'
@@ -23,11 +32,6 @@ type Layout = {
   marks: Array<[number, number]>
 }
 
-const PERIOD = 9
-const STAGGER = PERIOD / 4
-const ENTRY = 0.18
-const PHASE = STAGGER / PERIOD / 3
-const EXIT = ENTRY + PHASE * 3
 const DENIED_BEGIN = 2.2
 
 const PROVIDERS = [
@@ -444,7 +448,7 @@ function Diagram({ layout, still }: { layout: Layout; still: boolean }) {
           textAnchor="middle"
           className="fill-ink text-[11px] font-bold"
         >
-          mcp.lanatools.sh
+          {MCP_HOST}
         </text>
       </g>
 
@@ -561,89 +565,87 @@ function Diagram({ layout, still }: { layout: Layout; still: boolean }) {
                   repeatCount="indefinite"
                 />
               </rect>
-              {['checking limit', 'checking permissions', 'recording call'].map(
-                (message, step) => (
-                  <g key={message} opacity={0}>
-                    <rect
-                      x={g.x + 10}
-                      y={g.y + g.h / 2 + 3}
-                      width={g.w - 20}
-                      height={26}
-                      className="fill-lime"
+              {CROSSING_MESSAGES.map((message, step) => (
+                <g key={message} opacity={0}>
+                  <rect
+                    x={g.x + 10}
+                    y={g.y + g.h / 2 + 3}
+                    width={g.w - 20}
+                    height={26}
+                    className="fill-lime"
+                  />
+                  <g
+                    transform={`translate(${g.x + g.w / 2 - 14 - message.length * 3.3} ${g.y + g.h / 2 + 4})`}
+                    fill="none"
+                    className="stroke-ink"
+                    strokeWidth={1.5}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d={
+                        [
+                          'M3 16a9 9 0 1 1 14 0 M4 10h2 M10 3v2 M16 10h2',
+                          'M10 2 18 5v6c0 5-8 9-8 9S2 16 2 11V5Z',
+                          'M4 2h12v18l-3-2-3 2-3-2-3 2Z',
+                        ][step]
+                      }
                     />
-                    <g
-                      transform={`translate(${g.x + g.w / 2 - 14 - message.length * 3.3} ${g.y + g.h / 2 + 4})`}
-                      fill="none"
-                      className="stroke-ink"
-                      strokeWidth={1.5}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
+                    {step === 0 ? (
+                      <path d="M10 12V6">
+                        <animateTransform
+                          attributeName="transform"
+                          type="rotate"
+                          values="-55 10 12;35 10 12;35 10 12"
+                          keyTimes="0;0.045;1"
+                          dur={`${PERIOD}s`}
+                          begin={`${i * STAGGER + PERIOD * step * PHASE}s`}
+                          repeatCount="indefinite"
+                        />
+                      </path>
+                    ) : (
                       <path
                         d={
-                          [
-                            'M3 16a9 9 0 1 1 14 0 M4 10h2 M10 3v2 M16 10h2',
-                            'M10 2 18 5v6c0 5-8 9-8 9S2 16 2 11V5Z',
-                            'M4 2h12v18l-3-2-3 2-3-2-3 2Z',
-                          ][step]
+                          step === 1
+                            ? 'M6 10l3 3 5-6'
+                            : 'M7 7h6 M7 11h6 M7 15h3'
                         }
-                      />
-                      {step === 0 ? (
-                        <path d="M10 12V6">
-                          <animateTransform
-                            attributeName="transform"
-                            type="rotate"
-                            values="-55 10 12;35 10 12;35 10 12"
-                            keyTimes="0;0.045;1"
-                            dur={`${PERIOD}s`}
-                            begin={`${i * STAGGER + PERIOD * step * PHASE}s`}
-                            repeatCount="indefinite"
-                          />
-                        </path>
-                      ) : (
-                        <path
-                          d={
-                            step === 1
-                              ? 'M6 10l3 3 5-6'
-                              : 'M7 7h6 M7 11h6 M7 15h3'
-                          }
-                          pathLength={1}
-                          strokeDasharray={1}
-                        >
-                          <animate
-                            attributeName="stroke-dashoffset"
-                            values="1;0;0"
-                            keyTimes="0;0.045;1"
-                            dur={`${PERIOD}s`}
-                            begin={`${i * STAGGER + PERIOD * step * PHASE}s`}
-                            repeatCount="indefinite"
-                          />
-                        </path>
-                      )}
-                    </g>
-                    <text
-                      x={g.x + g.w / 2 + 14}
-                      y={g.y + g.h / 2 + 20}
-                      textAnchor="middle"
-                      textLength={message.length * 6.6}
-                      lengthAdjust="spacingAndGlyphs"
-                      className="fill-ink text-[11px] font-bold"
-                    >
-                      {message}
-                    </text>
-                    <animate
-                      attributeName="opacity"
-                      values="1;0;0"
-                      keyTimes={`0;${PHASE};1`}
-                      calcMode="discrete"
-                      dur={`${PERIOD}s`}
-                      begin={`${i * STAGGER + PERIOD * step * PHASE}s`}
-                      repeatCount="indefinite"
-                    />
+                        pathLength={1}
+                        strokeDasharray={1}
+                      >
+                        <animate
+                          attributeName="stroke-dashoffset"
+                          values="1;0;0"
+                          keyTimes="0;0.045;1"
+                          dur={`${PERIOD}s`}
+                          begin={`${i * STAGGER + PERIOD * step * PHASE}s`}
+                          repeatCount="indefinite"
+                        />
+                      </path>
+                    )}
                   </g>
-                ),
-              )}
+                  <text
+                    x={g.x + g.w / 2 + 14}
+                    y={g.y + g.h / 2 + 20}
+                    textAnchor="middle"
+                    textLength={message.length * 6.6}
+                    lengthAdjust="spacingAndGlyphs"
+                    className="fill-ink text-[11px] font-bold"
+                  >
+                    {message}
+                  </text>
+                  <animate
+                    attributeName="opacity"
+                    values="1;0;0"
+                    keyTimes={`0;${PHASE};1`}
+                    calcMode="discrete"
+                    dur={`${PERIOD}s`}
+                    begin={`${i * STAGGER + PERIOD * step * PHASE}s`}
+                    repeatCount="indefinite"
+                  />
+                </g>
+              ))}
             </g>
           ))}
       </g>
@@ -672,7 +674,7 @@ function useWideLayout() {
 const STEPS = [
   {
     title: 'Every agent connects once.',
-    body: 'Cursor, Claude, Codex, Grok, and your cloud agents all use mcp.lanatools.sh. No wallet keys live in their configs.',
+    body: `Cursor, Claude, Codex, Grok, and your cloud agents all use ${MCP_HOST}. No wallet keys live in their configs.`,
   },
   {
     title: 'Your wallet checks the call.',

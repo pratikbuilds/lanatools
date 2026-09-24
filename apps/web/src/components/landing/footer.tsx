@@ -2,7 +2,7 @@ import { useRef } from 'react'
 import type { PointerEvent } from 'react'
 import { ApiStatus } from './api-status'
 import { BrandMark } from './brand'
-import { CopyStatus, MCP_URL, copyLabel, useCopy } from './copy-url'
+import { CopyStatus, MCP_HOST, MCP_URL, copyLabel, useCopy } from './copy-url'
 import { Logo } from './logo'
 
 const LINKS = [
@@ -66,7 +66,7 @@ export function Footer({ wide }: { wide: string }) {
               aria-label="Copy the MCP URL"
             >
               <span className="text-paper-3">$</span>
-              <span className="font-semibold text-paper">mcp.lanatools.sh</span>
+              <span className="font-semibold text-paper">{MCP_HOST}</span>
               <span className="rounded-[4px] border border-paper/30 px-1.5 text-[10.5px] leading-[18px]">
                 {state === 'copied' ? 'copied ✓' : copyLabel(state)}
               </span>

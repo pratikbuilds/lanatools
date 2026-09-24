@@ -3,6 +3,7 @@ import { Logo } from './logo'
 import type { AgentId } from './logos'
 
 export const MCP_URL = 'https://mcp.lanatools.sh'
+export const MCP_HOST = new URL(MCP_URL).host
 
 type ClientConfig = { tab: string; file: string; lines: Array<string> }
 

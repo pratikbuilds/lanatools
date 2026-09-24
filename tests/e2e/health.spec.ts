@@ -1,6 +1,10 @@
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { expect, test } from '@playwright/test'
+import {
+  healthStatus,
+  healthStatusName,
+} from '../../apps/web/src/components/landing/health-status'
 
 test('connects to the real API and recovers after an outage', async ({
   page,
@@ -40,28 +44,32 @@ test('connects to the real API and recovers after an outage', async ({
     await page.route(
       '**/api/health',
       async (route) => {
-        await expect(page.getByRole('status')).toHaveText(
-          'Checking connection…',
-        )
+        await expect(
+          page.getByRole('status', { name: healthStatusName, exact: true }),
+        ).toHaveText(healthStatus.checking)
         await route.continue()
       },
       { times: 1 },
     )
     await page.goto('/')
-    await expect(page.getByRole('status')).toHaveText('Service connected.')
+    await expect(
+      page.getByRole('status', { name: healthStatusName, exact: true }),
+    ).toHaveText(healthStatus.operational)
     expect(errors).toEqual([])
 
     await stopAPI()
     await page.reload()
-    await expect(page.getByRole('status')).toHaveText(
-      'Unable to connect to the service.',
-    )
+    await expect(
+      page.getByRole('status', { name: healthStatusName, exact: true }),
+    ).toHaveText(healthStatus.unreachable)
     await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible()
 
     api = startAPI()
     await ready()
     await page.getByRole('button', { name: 'Try again' }).click()
-    await expect(page.getByRole('status')).toHaveText('Service connected.')
+    await expect(
+      page.getByRole('status', { name: healthStatusName, exact: true }),
+    ).toHaveText(healthStatus.operational)
     await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0)
     expect(errors).toEqual([])
   } finally {
@@ -84,8 +92,10 @@ test('does not report a connection before an offline query can run', async ({
     window.history.pushState(null, '', '/')
     window.dispatchEvent(new PopStateEvent('popstate'))
   })
-  await expect(page.getByRole('status')).toHaveText('Waiting for connection…')
   await expect(
-    page.getByText('Service connected.', { exact: true }),
+    page.getByRole('status', { name: healthStatusName, exact: true }),
+  ).toHaveText(healthStatus.paused)
+  await expect(
+    page.getByText(healthStatus.operational, { exact: true }),
   ).toHaveCount(0)
 })
