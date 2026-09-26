@@ -50,6 +50,9 @@
         "arktype": "catalog:",
       },
     },
+    "packages/testbed": {
+      "name": "@lanatools/testbed",
+    },
   },
   "catalog": {
     "arktype": "^2.1.29",
@@ -260,6 +263,8 @@
     "@lanatools/api": ["@lanatools/api@workspace:apps/api"],
 
     "@lanatools/contracts": ["@lanatools/contracts@workspace:packages/contracts"],
+
+    "@lanatools/testbed": ["@lanatools/testbed@workspace:packages/testbed"],
 
     "@lanatools/web": ["@lanatools/web@workspace:apps/web"],
 

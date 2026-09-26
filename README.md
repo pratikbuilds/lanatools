@@ -37,6 +37,27 @@ Individual commands: `bun run format`, `bun run lint`, `bun run typecheck`,
 `bun run build`, `bun run test`, and `bun run test:e2e`. Build before running
 `test:e2e` directly. Generated routing is refreshed before type checking.
 
+## Payment testbed
+
+Pays a fixed 0.01 USDC charge on the hosted Surfpool sandbox that `pay
+--sandbox` uses, so no real funds move. Needs the [pay CLI](https://pay.sh) on
+`PATH` and port 1402 free.
+
+```sh
+bun run testbed check   # start, pay once, verify on chain, stop
+bun run testbed start   # keep the merchant running
+bun run testbed pay     # pay it while `start` runs
+```
+
+`start` serves `packages/testbed/merchant.yaml` with `pay --sandbox gate api`.
+`check` expects a localnet USDC challenge for 10000 base units, pays it with
+`pay --sandbox curl`, and confirms on `https://402.surfnet.dev:8899` that the
+merchant's USDC balance rose by that amount.
+
+`start` and `check` reset `packages/testbed/.state`, so pay creates new
+auto-funded wallets there; `pay` reuses them. pay gets only `PATH` and a `HOME`
+in that directory, so it never sees your shell credentials or `~/.config/pay`.
+
 ## Production
 
 The site and API run as Cloudflare Workers. `lanatools.sh` serves the Vite

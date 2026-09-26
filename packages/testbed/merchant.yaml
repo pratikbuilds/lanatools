@@ -1,0 +1,25 @@
+# Private merchant served by `pay --sandbox gate api`; never published.
+name: lanatools-testbed
+subdomain: lanatools-testbed
+title: 'LanaTools testbed merchant'
+description: 'Fixed 0.01 USDC charge for LanaTools payment tests.'
+category: ai_ml
+version: v1
+routing:
+  type: respond
+operator:
+  currencies:
+    usd: ['USDC']
+  network: 'localnet'
+  fee_payer: true
+endpoints:
+  - method: GET
+    path: 'api/v1/fixed'
+    description: 'Fixed 0.01 USDC charge.'
+    metering:
+      dimensions:
+        - direction: usage
+          unit: requests
+          scale: 1
+          tiers:
+            - price_usd: 0.01
