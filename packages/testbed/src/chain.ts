@@ -29,14 +29,19 @@ interface ParsedTransaction {
 
 /** USDC the transaction moved into `owner`'s token accounts, in base units. */
 export async function usdcReceived(signature: string, owner: string) {
-  const tx = await rpc<ParsedTransaction | null>('getTransaction', [
-    signature,
-    {
-      encoding: 'jsonParsed',
-      commitment: 'confirmed',
-      maxSupportedTransactionVersion: 0,
-    },
-  ])
+  // The RPC can lag the gateway's confirmation: try 20 times, 500 ms apart.
+  let tx: ParsedTransaction | null = null
+  for (let i = 0; i < 20 && !tx; i++) {
+    if (i > 0) await Bun.sleep(500)
+    tx = await rpc<ParsedTransaction | null>('getTransaction', [
+      signature,
+      {
+        encoding: 'jsonParsed',
+        commitment: 'confirmed',
+        maxSupportedTransactionVersion: 0,
+      },
+    ])
+  }
   if (!tx) {
     throw new Error(`transaction ${signature} not found on ${SANDBOX_RPC_URL}`)
   }
