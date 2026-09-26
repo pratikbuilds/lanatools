@@ -4,8 +4,8 @@ import { logger } from 'hono/logger'
 import { requestId } from 'hono/request-id'
 import { health } from './routes/health'
 
-export function createApp() {
-  const app = new Hono()
+export function createApp<TBindings extends object = object>() {
+  const app = new Hono<{ Bindings: TBindings }>()
   app.use(requestId())
   app.use(logger((message) => console.info(JSON.stringify({ message }))))
   app.route('/api/health', health)

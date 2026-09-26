@@ -20,11 +20,11 @@
     "deploy:api": "wrangler deploy -c apps/api/wrangler.jsonc",
     "deploy:web": "bun run --cwd apps/web build && wrangler deploy -c apps/web/wrangler.jsonc",
     "deploy": "bun run deploy:api && bun run deploy:web",
-    "cf-types": "wrangler types -c apps/web/wrangler.jsonc apps/web/worker-configuration.d.ts --include-runtime false",
+    "cf-types": "wrangler types -c apps/api/wrangler.local.jsonc apps/api/worker-configuration.d.ts --include-runtime false && wrangler types -c apps/web/wrangler.jsonc apps/web/worker-configuration.d.ts --include-runtime false",
     "test": "bun test apps/api/src",
     "test:e2e": "playwright test",
     "testbed": "bun packages/testbed/src/cli.ts",
-    "check": "bun run format:check && bun run lint && bun run typecheck && bun run build && bun run test && bun run test:e2e"
+    "check": "bun run format:check && bun run lint && bun run typecheck && bun run build && bun run test && bun run --cwd apps/api db:smoke:local && bun run test:e2e"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.0",
