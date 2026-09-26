@@ -80,13 +80,6 @@ bun run build
 bun run --cwd apps/api start
 ```
 
-Build the API container from the repository root:
-
-```sh
-docker build -f apps/api/Dockerfile -t lanatools-api .
-docker run --rm -p 3000:3000 lanatools-api
-```
-
 Vite's development/preview proxy is not a production reverse proxy.
 
 Database, authentication, and product-specific routes are not scaffolded yet.
