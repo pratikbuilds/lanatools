@@ -24,6 +24,7 @@
     "test": "bun test apps/api/src",
     "test:e2e": "playwright test",
     "testbed": "bun packages/testbed/src/cli.ts",
+    "testbed:privy": "bun packages/testbed/src/privy-proof.ts",
     "check": "bun run format:check && bun run lint && bun run typecheck && bun run build && bun run test && bun run test:e2e"
   },
   "devDependencies": {

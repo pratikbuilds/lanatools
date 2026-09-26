@@ -58,6 +58,17 @@ merchant's USDC balance rose by that amount.
 auto-funded wallets there; `pay` reuses them. pay gets only `PATH` and a `HOME`
 in that directory, so it never sees your shell credentials or `~/.config/pay`.
 
+### Privy signing proof
+
+With a dedicated Privy development app, put `PRIVY_APP_ID` and
+`PRIVY_APP_SECRET` in an ignored `.env` file. Start a local validator with
+`surfpool start --offline --no-tui --no-studio --no-deploy`, then run
+`bun --env-file=.env run testbed:privy`. This creates a fresh user-owned Privy
+test wallet and server signer on each run, signs a small transfer, submits it
+to Surfpool, verifies its result, and checks a policy denial. See the
+[ADI-175 proof](specs/adi-175-privy-surfpool.md) for the recorded result and
+limits.
+
 ## Production
 
 The site and API run as Cloudflare Workers. `lanatools.sh` serves the Vite
