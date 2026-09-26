@@ -65,7 +65,9 @@ With a dedicated Privy development app, put `PRIVY_APP_ID` and
 `surfpool start --offline --no-tui --no-studio --no-deploy`, then run
 `bun --env-file=.env run testbed:privy`. This creates a fresh user-owned Privy
 test wallet and server signer on each run, signs a small transfer, submits it
-to Surfpool, verifies its result, and checks a policy denial. See the
+to Surfpool, verifies its result, and checks a policy denial. It also rejects
+multi-transfer transactions locally because Privy's limit applies to each
+instruction. See the
 [ADI-175 proof](specs/adi-175-privy-surfpool.md) for the recorded result and
 limits.
 

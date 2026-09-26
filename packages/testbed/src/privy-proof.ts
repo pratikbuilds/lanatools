@@ -1,9 +1,11 @@
+import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { APIError, generateP256KeyPair, PrivyClient } from '@privy-io/node'
 import {
   Connection,
   Keypair,
   PublicKey,
+  SystemInstruction,
   SystemProgram,
   Transaction,
 } from '@solana/web3.js'
@@ -89,17 +91,42 @@ function transaction(
   )
 }
 
+function assertSingleBoundedTransfer(tx: Transaction) {
+  const instruction = tx.instructions[0]
+  if (tx.instructions.length !== 1 || !instruction)
+    throw new Error('Expected exactly one transfer instruction')
+  const transfer = SystemInstruction.decodeTransfer(instruction)
+  if (
+    !transfer.fromPubkey.equals(payer) ||
+    !transfer.toPubkey.equals(recipient) ||
+    transfer.lamports !== BigInt(lamports)
+  )
+    throw new Error('Transaction does not match the bounded transfer')
+}
+
+const doubleTransfer = transaction(
+  lamports,
+  recipient,
+  '11111111111111111111111111111111',
+).add(
+  SystemProgram.transfer({ fromPubkey: payer, toPubkey: recipient, lamports }),
+)
+assert.throws(
+  () => assertSingleBoundedTransfer(doubleTransfer),
+  /Expected exactly one transfer instruction/,
+)
+
 const airdrop = await connection.requestAirdrop(payer, 1_000_000)
 await connection.confirmTransaction(airdrop, 'confirmed')
 const payerBefore = await connection.getBalance(payer)
 const recipientBefore = await connection.getBalance(recipient)
 const lifetime = await connection.getLatestBlockhash()
-const unsigned = transaction(lamports, recipient, lifetime.blockhash).serialize(
-  {
-    requireAllSignatures: false,
-    verifySignatures: false,
-  },
-)
+const intended = transaction(lamports, recipient, lifetime.blockhash)
+assertSingleBoundedTransfer(intended)
+const unsigned = intended.serialize({
+  requireAllSignatures: false,
+  verifySignatures: false,
+})
 const signed = await privy.wallets().solana().signTransaction(wallet.id, {
   transaction: unsigned,
   authorization_context,
@@ -172,6 +199,7 @@ console.log(
       transferredLamports: recipientAfter - recipientBefore,
       feeLamports: tx.meta.fee,
       policyDenied,
+      doubleTransferDeniedLocally: true,
     },
     null,
     2,
