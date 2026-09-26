@@ -21,7 +21,7 @@
     "deploy:web": "bun run --cwd apps/web build && wrangler deploy -c apps/web/wrangler.jsonc",
     "deploy": "bun run deploy:api && bun run deploy:web",
     "cf-types": "wrangler types -c apps/api/wrangler.local.jsonc apps/api/worker-configuration.d.ts --include-runtime false && wrangler types -c apps/web/wrangler.jsonc apps/web/worker-configuration.d.ts --include-runtime false",
-    "test": "bun test apps/api/src",
+    "test": "bun test apps/api/src packages/testbed/src/privy-policy-denial.test.ts",
     "test:e2e": "playwright test",
     "testbed": "bun packages/testbed/src/cli.ts",
     "testbed:privy": "bun packages/testbed/src/privy-proof.ts",

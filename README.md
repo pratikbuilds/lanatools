@@ -70,7 +70,8 @@ source control. Start `surfpool start --offline --no-tui --no-studio --no-deploy
 then run `bun --env-file=.env run testbed:privy` before the token expires.
 The script creates a wallet and policy owned by that authenticated Privy user,
 signs a small transfer, submits it to Surfpool, checks policy denials, and
-tests user-authorized edits. It also rejects multi-transfer transactions
+tests user-authorized edits. It archives or deletes the remote test resources
+on exit where Privy permits. It also rejects multi-transfer transactions
 locally because Privy's limit applies to each instruction. See the
 [ADI-175 proof](specs/adi-175-privy-surfpool.md) for the recorded result and
 limits.
