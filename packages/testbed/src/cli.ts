@@ -172,10 +172,12 @@ async function serve() {
   console.log(`state      ${STATE_DIR}`)
   console.log('pay once   bun run testbed pay')
   console.log('Ctrl-C stops the merchant; the next start makes new wallets.')
-  process.on('SIGINT', () => {
-    stop()
-    process.exit(0)
-  })
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    process.on(signal, () => {
+      stop()
+      process.exit(0)
+    })
+  }
 }
 
 async function pay() {
