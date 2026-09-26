@@ -1,0 +1,14 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "lanatools-api-local",
+  "main": "src/worker.local.ts",
+  "compatibility_date": "2026-09-24",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "lanatools-local",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "drizzle",
+    },
+  ],
+}

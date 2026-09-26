@@ -6,17 +6,17 @@ TanStack Query, and Tailwind. Shared HTTP schemas live in `packages/contracts`.
 ## Development
 
 Install Bun **1.4.2** and Node.js **24 LTS**. Node runs the Vite/ESLint toolchain;
-Bun installs packages and runs the API and unit tests.
+Bun installs packages and runs unit tests. Wrangler runs the local API.
 
 ```sh
 bun install --frozen-lockfile
+bun run --cwd apps/api db:migrate:local
 bun run dev
 ```
 
-Open <http://localhost:5173>. The API listens on port 3000; the frontend proxies
-`/api` requests to it. The home page reports the real API connection status.
-The default configuration works without an environment file. To change the API
-port, copy `apps/api/.env.example` to `apps/api/.env`, edit `PORT`, and set
+Open <http://localhost:5173>. The local Worker listens on port 3000; the
+frontend proxies `/api` requests to it. The home page reports the real API
+connection status. To change the Worker port, pass `--port` to Wrangler and set
 `API_PROXY_TARGET=http://127.0.0.1:<port>` when starting the frontend.
 Only the Vite server reads `API_PROXY_TARGET`; it is never bundled into the browser.
 
@@ -28,10 +28,11 @@ bun run check
 ```
 
 The gate runs formatting, lint, type checks, production builds, Bun unit tests,
-and a Chromium test against the built frontend and backend. The browser test
+a local Worker/D1 write-read smoke check, and a Chromium test against the built
+frontend and backend. The browser test
 stops its own API, checks the failure state, restarts it, and retries. A second
 test verifies that an offline query cannot report a successful connection. Ports
-3101 and 4173 must be free. Existing servers are never intentionally reused.
+3101, 3102, and 4173 must be free. Existing servers are never intentionally reused.
 
 Individual commands: `bun run format`, `bun run lint`, `bun run typecheck`,
 `bun run build`, `bun run test`, and `bun run test:e2e`. Build before running
@@ -85,8 +86,8 @@ a database or external-dependency readiness check.
 bun run deploy
 ```
 
-`apps/api/src/index.ts` remains the local Bun server. Its default port is 3000.
-Override `PORT` with an integer from 1 to 65535.
+`apps/api/src/index.ts` remains a Bun server for the health test and manual startup.
+Its default port is 3000. Override `PORT` with an integer from 1 to 65535.
 
 ```sh
 bun run build
@@ -95,7 +96,8 @@ bun run --cwd apps/api start
 
 Vite's development/preview proxy is not a production reverse proxy.
 
-Database, authentication, and product-specific routes are not scaffolded yet.
+The local Worker has D1 and a smoke table. Authentication and product-specific
+tables and routes are not scaffolded yet.
 
 ## Template provenance
 
