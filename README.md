@@ -55,8 +55,9 @@ route, expects a localnet 402 challenge, pays with `pay --sandbox curl`, and
 confirms on `https://402.surfnet.dev:8899` that the receipt's transaction moved
 the charged amount to the merchant.
 
-Every run deletes `packages/testbed/.state` and pay creates new, auto-funded
-sandbox wallets there. Child processes receive only `PATH` and a `HOME` inside
+`start` and `check` delete `packages/testbed/.state`, and pay creates new,
+auto-funded sandbox wallets there. `pay` reuses the payer wallet of the
+running `start`. Child processes receive only `PATH` and a `HOME` inside
 the state directory, so your shell credentials and `~/.config/pay` accounts are
 never read. The testbed needs network access to the hosted sandbox and pay.sh.
 
