@@ -24,7 +24,7 @@ jobs:
           docker build -f apps/api/Dockerfile -t lanatools-api .
           docker run -d --name lanatools-api -p 127.0.0.1:3200:3000 lanatools-api
           trap 'docker logs lanatools-api; docker rm -f lanatools-api' EXIT
-          curl --fail --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:3200/api/health
+          curl --fail --retry 10 --retry-all-errors --retry-delay 1 http://127.0.0.1:3200/api/health
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
