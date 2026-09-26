@@ -3,5 +3,10 @@
   "compilerOptions": {
     "types": ["bun"]
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "scripts/**/*.ts",
+    "drizzle.config.ts",
+    "worker-configuration.d.ts"
+  ]
 }
