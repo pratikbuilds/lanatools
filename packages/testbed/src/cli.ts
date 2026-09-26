@@ -6,6 +6,8 @@ import { SANDBOX_RPC_URL, USDC_MINT, usdcReceived } from './chain'
 const MERCHANT_PORT = 1402
 const MERCHANT_URL = `http://127.0.0.1:${MERCHANT_PORT}`
 const FIXED_ROUTE = `${MERCHANT_URL}/api/v1/fixed`
+// 0.01 USDC in base units, matching the price in merchant.yaml.
+const FIXED_PRICE = '10000'
 const PACKAGE_DIR = resolve(import.meta.dir, '..')
 const STATE_DIR = join(PACKAGE_DIR, '.state')
 const HOME_DIR = join(STATE_DIR, 'home')
@@ -134,6 +136,8 @@ async function check() {
   const challenge = await readChallenge()
   if (challenge.currency !== USDC_MINT)
     fail(`challenge currency ${challenge.currency} is not USDC`)
+  if (challenge.amount !== FIXED_PRICE)
+    fail(`challenge amount ${challenge.amount} is not ${FIXED_PRICE}`)
   // Sandbox mode forces localnet; anything else means real funds could move.
   if (challenge.methodDetails.network !== 'localnet') {
     fail(`challenge network ${challenge.methodDetails.network} is not localnet`)
