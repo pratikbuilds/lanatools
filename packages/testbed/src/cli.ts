@@ -190,4 +190,9 @@ const commands: Record<string, () => Promise<void>> = {
 }
 const command = commands[process.argv[2] ?? '']
 if (!command) fail('usage: testbed <start|check|pay [url]>')
-await command()
+try {
+  await command()
+} catch (error) {
+  // Anything that throws after start() must still stop the gateway.
+  fail(error instanceof Error ? error.message : String(error))
+}
