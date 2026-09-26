@@ -1,5 +1,10 @@
 {
   "name": "@lanatools/testbed",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "@privy-io/node": "^0.35.0",
+    "@solana-program/system": "^0.10.0",
+    "@solana/kit": "^5.5.1"
+  }
 }
