@@ -62,13 +62,16 @@ in that directory, so it never sees your shell credentials or `~/.config/pay`.
 ### Privy signing proof
 
 With a dedicated Privy development app, put `PRIVY_APP_ID` and
-`PRIVY_APP_SECRET` in an ignored `.env` file. Start a local validator with
-`surfpool start --offline --no-tui --no-studio --no-deploy`, then run
-`bun --env-file=.env run testbed:privy`. This creates a fresh user-owned Privy
-test wallet and server signer on each run, signs a small transfer, submits it
-to Surfpool, verifies its result, and checks a policy denial. It also rejects
-multi-transfer transactions locally because Privy's limit applies to each
-instruction. See the
+`PRIVY_APP_SECRET` in an ignored root `.env` file. Set the public app ID as
+`VITE_PRIVY_APP_ID` in `apps/web/.env.local`. Run `bun run --cwd apps/web dev`,
+open `http://localhost:5173/privy-proof.html`, sign in, and copy the token into
+the root `.env` as `PRIVY_USER_ACCESS_TOKEN`. Keep the token out of chat and
+source control. Start `surfpool start --offline --no-tui --no-studio --no-deploy`,
+then run `bun --env-file=.env run testbed:privy` before the token expires.
+The script creates a wallet and policy owned by that authenticated Privy user,
+signs a small transfer, submits it to Surfpool, checks policy denials, and
+tests user-authorized edits. It also rejects multi-transfer transactions
+locally because Privy's limit applies to each instruction. See the
 [ADI-175 proof](specs/adi-175-privy-surfpool.md) for the recorded result and
 limits.
 
