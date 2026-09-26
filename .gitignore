@@ -10,3 +10,4 @@ dist/
 playwright-report/
 test-results/
 .tanstack/
+packages/testbed/.state/

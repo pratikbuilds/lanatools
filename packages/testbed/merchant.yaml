@@ -1,0 +1,32 @@
+# Private merchant fixture served by `pay --sandbox gate api` (hosted Surfpool).
+# One free route and one fixed USDC charge; nothing here is published.
+name: lanatools-testbed
+subdomain: lanatools-testbed
+title: 'LanaTools testbed merchant'
+description: 'Local fixed-charge fixture for LanaTools payment tests.'
+category: ai_ml
+version: v1
+routing:
+  type: respond
+operator:
+  currencies:
+    usd: ['USDC']
+  network: 'localnet'
+  fee_payer: true
+
+endpoints:
+  - method: GET
+    path: 'health'
+    description: 'Health check.'
+
+  - method: GET
+    path: 'api/v1/fixed'
+    resource: 'fixed'
+    description: 'Fixed 0.01 USDC charge.'
+    metering:
+      dimensions:
+        - direction: usage
+          unit: requests
+          scale: 1
+          tiers:
+            - price_usd: 0.01
