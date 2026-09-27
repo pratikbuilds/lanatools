@@ -145,7 +145,10 @@ function SignIn() {
         setWalletBusy(false)
       }
     },
-    onError: () => setWalletBusy(false),
+    onError: () => {
+      setMessage('Wallet connection failed. Try again.')
+      setWalletBusy(false)
+    },
   })
 
   function chooseWallet(id?: WalletListEntry) {
