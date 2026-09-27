@@ -155,7 +155,41 @@ async function walletFor(userId: string, accessToken: string) {
 
 type Mode = 'mpp' | 'x402' | 'denied' | 'policy-denied'
 
+type PayRequest = { mode: Mode }
 type Check = { name: string; passed: boolean; detail: string }
+type ProofResponse = {
+  passed: boolean
+  checks: Array<Check>
+  progress: Array<string>
+  wallet: Address
+  policyId: string
+  walletLimitRemainingAtomic: string
+  merchant: Address
+  priceAtomic: string
+  durationMs: number
+} & (
+  | { mode: 'denied'; rejections: Array<string> }
+  | { mode: 'policy-denied' }
+  | {
+      mode: 'mpp' | 'x402'
+      status: number
+      body: string
+      receiptHeader: string | undefined
+      signature: string | undefined
+    }
+)
+type PayResponse = ProofResponse | { passed: false; error: string; mode?: Mode }
+
+function isPayRequest(value: unknown): value is PayRequest {
+  if (typeof value !== 'object' || value === null || !('mode' in value))
+    return false
+  return (
+    value.mode === 'mpp' ||
+    value.mode === 'x402' ||
+    value.mode === 'denied' ||
+    value.mode === 'policy-denied'
+  )
+}
 
 async function balances(wallet: Address, merchant: Address) {
   const [walletUsdc, merchantUsdc, walletSol] = await Promise.all([
@@ -191,7 +225,11 @@ async function fixtureRecipient(url: string, expectedAmount: bigint) {
   return address(terms.recipient)
 }
 
-async function prove(mode: Mode, userId: string, accessToken: string) {
+async function prove(
+  mode: Mode,
+  userId: string,
+  accessToken: string,
+): Promise<ProofResponse> {
   const url = mode === 'policy-denied' ? policyDeniedUrl : merchantUrl
   const amount =
     mode === 'policy-denied' ? policyDeniedPriceAtomic : priceAtomic
@@ -241,7 +279,17 @@ async function prove(mode: Mode, userId: string, accessToken: string) {
   const checks: Array<Check> = []
   const check = (name: string, passed: boolean, detail: string) =>
     checks.push({ name, passed, detail })
-  let result: Record<string, unknown> = {}
+  const report = () => ({
+    passed: checks.every((c) => c.passed),
+    checks,
+    progress,
+    wallet: wallet.address,
+    policyId: wallet.policyId,
+    walletLimitRemainingAtomic: String(wallet.limit.remaining),
+    merchant,
+    priceAtomic: String(amount),
+    durationMs: Math.round(performance.now() - started),
+  })
 
   if (mode === 'denied') {
     let rejections: Array<string> = []
@@ -269,8 +317,12 @@ async function prove(mode: Mode, userId: string, accessToken: string) {
       after.merchantUsdc === before.merchantUsdc,
       `${before.merchantUsdc} → ${after.merchantUsdc}`,
     )
-    result = { rejections }
-  } else if (mode === 'policy-denied') {
+    return { ...report(), mode, rejections }
+  }
+
+  if (mode === 'policy-denied') {
+    // Only a Privy policy violation proves signing was refused. An unexpected
+    // response or error may follow a payment, so keep its reservation held.
     const reservation = wallet.limit.reserve(amount)
     let denied = false
     try {
@@ -296,75 +348,63 @@ async function prove(mode: Mode, userId: string, accessToken: string) {
       after.merchantUsdc === before.merchantUsdc,
       `${before.merchantUsdc} → ${after.merchantUsdc}`,
     )
-  } else {
-    // A failed or timed-out fetch may already have signed or settled. Leave
-    // its reservation held until the payment can be reconciled.
-    const reservation = wallet.limit.reserve(amount)
-    const response = await client.fetch(merchantUrl, undefined, mode)
-    const body = await response.text()
-    const receipt = response.headers.get(
-      mode === 'mpp' ? 'payment-receipt' : 'payment-response',
-    )
-    let signature: string | undefined
-    if (receipt && mode === 'mpp')
-      signature = Receipt.deserialize(receipt).reference
-    if (mode === 'x402')
-      // The local pay.sh gateway returns the signature itself in this header.
-      signature = paidSignature ?? receipt ?? undefined
-    if (signature) await confirmed(rpcUrl, signature)
-    const after = await balances(wallet.address, merchant)
-    check(
-      'Merchant returned its result',
-      response.status === 200,
-      `HTTP ${response.status}: ${body.slice(0, 200)}`,
-    )
-    check(
-      'Receipt names a transaction',
-      !!signature,
-      signature
-        ? `${mode} transaction: ${signature}`
-        : 'no transaction receipt',
-    )
-    check(
-      'Wallet paid exactly the price',
-      before.walletUsdc - after.walletUsdc === amount,
-      `${before.walletUsdc} → ${after.walletUsdc}`,
-    )
-    check(
-      'Merchant received exactly the price',
-      after.merchantUsdc - before.merchantUsdc === amount,
-      `${before.merchantUsdc} → ${after.merchantUsdc}`,
-    )
-    check(
-      'Merchant paid the network fee',
-      after.walletSol === before.walletSol,
-      `wallet SOL ${before.walletSol} → ${after.walletSol}`,
-    )
-    if (checks.every((c) => c.passed)) wallet.limit.settle(reservation, amount)
-    result = {
-      status: response.status,
-      body,
-      receiptHeader: receipt
-        ? mode === 'mpp'
-          ? 'payment-receipt'
-          : 'payment-response'
-        : undefined,
-      signature,
-    }
+    return { ...report(), mode }
   }
 
+  // A failed or timed-out fetch may already have signed or settled. Leave
+  // its reservation held until the payment can be reconciled.
+  const reservation = wallet.limit.reserve(amount)
+  const response = await client.fetch(merchantUrl, undefined, mode)
+  const body = await response.text()
+  const receipt = response.headers.get(
+    mode === 'mpp' ? 'payment-receipt' : 'payment-response',
+  )
+  let signature: string | undefined
+  if (receipt && mode === 'mpp')
+    signature = Receipt.deserialize(receipt).reference
+  if (mode === 'x402')
+    // The local pay.sh gateway returns the signature itself in this header.
+    signature = paidSignature ?? receipt ?? undefined
+  if (signature) await confirmed(rpcUrl, signature)
+  const after = await balances(wallet.address, merchant)
+  check(
+    'Merchant returned its result',
+    response.status === 200,
+    `HTTP ${response.status}: ${body.slice(0, 200)}`,
+  )
+  check(
+    'Receipt names a transaction',
+    !!signature,
+    signature ? `${mode} transaction: ${signature}` : 'no transaction receipt',
+  )
+  check(
+    'Wallet paid exactly the price',
+    before.walletUsdc - after.walletUsdc === amount,
+    `${before.walletUsdc} → ${after.walletUsdc}`,
+  )
+  check(
+    'Merchant received exactly the price',
+    after.merchantUsdc - before.merchantUsdc === amount,
+    `${before.merchantUsdc} → ${after.merchantUsdc}`,
+  )
+  check(
+    'Merchant paid the network fee',
+    after.walletSol === before.walletSol,
+    `wallet SOL ${before.walletSol} → ${after.walletSol}`,
+  )
+  if (checks.every((c) => c.passed)) wallet.limit.settle(reservation, amount)
+
   return {
+    ...report(),
     mode,
-    passed: checks.every((c) => c.passed),
-    checks,
-    progress,
-    wallet: wallet.address,
-    policyId: wallet.policyId,
-    walletLimitRemainingAtomic: String(wallet.limit.remaining),
-    merchant,
-    priceAtomic: String(amount),
-    durationMs: Math.round(performance.now() - started),
-    ...result,
+    status: response.status,
+    body,
+    receiptHeader: receipt
+      ? mode === 'mpp'
+        ? 'payment-receipt'
+        : 'payment-response'
+      : undefined,
+    signature,
   }
 }
 
@@ -377,46 +417,44 @@ function serialized<T>(run: () => Promise<T>) {
   return next
 }
 
-async function handlePay(request: Request) {
+function errorResponse(status: number, error: string, mode?: Mode): Response {
+  const body: PayResponse =
+    mode === undefined
+      ? { passed: false, error }
+      : { mode, passed: false, error }
+  return Response.json(body, { status })
+}
+
+async function handlePay(request: Request): Promise<Response> {
   const token = /^Bearer (.+)$/.exec(
     request.headers.get('authorization') ?? '',
   )?.[1]
-  if (!token) return Response.json({ error: 'Sign in first' }, { status: 401 })
+  if (!token) return errorResponse(401, 'Sign in first')
   let userId: string
   try {
     userId = (await privy.utils().auth().verifyAccessToken(token)).user_id
   } catch {
-    return Response.json(
-      { error: 'Privy token is invalid or expired' },
-      { status: 401 },
-    )
+    return errorResponse(401, 'Privy token is invalid or expired')
   }
-  const { mode } = (await request.json().catch(() => ({}))) as {
-    mode?: unknown
-  }
-  if (
-    mode !== 'mpp' &&
-    mode !== 'x402' &&
-    mode !== 'denied' &&
-    mode !== 'policy-denied'
-  )
-    return Response.json(
-      { error: 'mode must be mpp, x402, denied, or policy-denied' },
-      { status: 400 },
+  const body: unknown = await request.json().catch(() => null)
+  if (!isPayRequest(body))
+    return errorResponse(
+      400,
+      'mode must be mpp, x402, denied, or policy-denied',
     )
-  if (shuttingDown)
-    return Response.json({ error: 'Proof server is stopping' }, { status: 503 })
+  const { mode } = body
+  if (shuttingDown) return errorResponse(503, 'Proof server is stopping')
   try {
-    return Response.json(await serialized(() => prove(mode, userId, token)))
+    const proof: PayResponse = await serialized(() =>
+      prove(mode, userId, token),
+    )
+    return Response.json(proof)
   } catch (error) {
     console.error(error)
-    return Response.json(
-      {
-        mode,
-        passed: false,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      { status: 500 },
+    return errorResponse(
+      500,
+      error instanceof Error ? error.message : String(error),
+      mode,
     )
   }
 }
