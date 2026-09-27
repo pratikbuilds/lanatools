@@ -5,7 +5,7 @@ import { PrivyProvider, usePrivy } from '@privy-io/react-auth'
 const appId = import.meta.env.VITE_PRIVY_APP_ID
 if (!appId) throw new Error('Set VITE_PRIVY_APP_ID for the local proof page')
 
-type Mode = 'mpp' | 'denied'
+type Mode = 'mpp' | 'x402' | 'denied' | 'policy-denied'
 type Proof = {
   mode?: Mode
   passed?: boolean
@@ -16,7 +16,9 @@ type Proof = {
 
 const modes: Array<{ mode: Mode; label: string }> = [
   { mode: 'mpp', label: 'Pay with MPP' },
+  { mode: 'x402', label: 'Pay with x402' },
   { mode: 'denied', label: 'Try denied payment' },
+  { mode: 'policy-denied', label: 'Try Privy policy denial' },
 ]
 
 function ProofLogin() {

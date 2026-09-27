@@ -13,4 +13,16 @@ test('only a structured policy violation counts as a signing denial', () => {
   expect(isPolicyDenial(response(429, 'policy_violation'))).toBe(false)
   expect(isPolicyDenial(response(503, 'policy_violation'))).toBe(false)
   expect(isPolicyDenial(new Error('policy denied'))).toBe(false)
+
+  const signerError = (status: number, code: string) =>
+    Object.assign(new Error(`Privy API error: ${status}`), {
+      code: 'SIGNER_REMOTE_API_ERROR',
+      context: {
+        status,
+        response: JSON.stringify({ error: { code } }),
+      },
+    })
+  expect(isPolicyDenial(signerError(403, 'policy_violation'))).toBe(true)
+  expect(isPolicyDenial(signerError(403, 'invalid_data'))).toBe(false)
+  expect(isPolicyDenial(signerError(429, 'policy_violation'))).toBe(false)
 })
