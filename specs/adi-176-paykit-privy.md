@@ -1,6 +1,6 @@
 # ADI-176 Pay Kit payment from a server-authorized Privy wallet
 
-Status, September 27, 2026: the payment path is built and verified with a local keypair payer. The live Privy run is still pending; until it passes, this is not evidence that Pay Kit pays with a Privy wallet.
+Status, September 27, 2026: Pay Kit paid a local merchant from a server-authorized Privy wallet over both MPP and x402, with the user signed in through `apps/proof`. Privy signed transactions whose fee payer was the merchant.
 
 ## What the proof runs
 
@@ -26,9 +26,11 @@ Each paid run checks: HTTP 200 with the merchant body, a receipt naming the tran
 | Keypair payer under Bun, x402 | 200, merchant +10,000, 1 signing call |
 | Keypair payer, cap 0.005 USD | `PermissionDeniedError` (`amount_exceeds_limit` from both rails), 0 signing calls |
 | `paykit-admission.test.ts` | over-cap payment refused before signing for auto, MPP and x402; RPC unreachable by design |
-| Privy payer, MPP / x402 / denied | **not yet run** |
+| Privy payer, MPP | 200 on the page; finalized `2Ar9cbWYsaSTiTNhT1NzaUhjNicKmXmDhxtzcfqd2ybQZZS8tA2zyCLqHpmKrtgaMvXXp9QMq5tAbdHmcFg9aApN` and `VXkf2w1H45R65vZVA1nZCaKC8hSG2jskiZzkmirhZ3FtGqmy7iWrF5Q722NQKaC6UH4nUjzec4qRqk3D8qWqoBx` |
+| Privy payer, x402 | 200 on the page; finalized `4sB4LtyYNnADrEvjiNNSk7YqNEBoxXf7FEmxye4fp8VLg2o2ubu14NDfdGx1HUpdd7tMmMV7gckKcUs8A7qAW1ks` (includes the x402 Memo) |
+| Privy payer, denied | reported passing on the page; no extra transaction or balance change on chain |
 
-The main open question is whether Privy signs a transaction whose fee payer is the merchant and whose fee-payer signature slot is still empty.
+Surfpool readback after the runs: Privy wallet `x8qd2q4qsltqjzd8k2rlj5zb` (`6e39NBnLY87jsimXYZrDdq8fht7mQ7xCnUqhs7dYS1wa`) holds 970,000 USDC base units after a 1,000,000 top-up, exactly three 10,000 payments, and 0 lamports. Each transaction lists merchant `7mnqpd2sjSNnHQabGuBmKNyTDxsgNEeR1ics2YsjSw7k` as fee payer (10,000 lamports fee) and both the merchant and the Privy wallet as signers, with one `TransferChecked` of 10,000. So Privy signs a transaction whose fee-payer signature slot is still empty, with no Privy policy on the wallet. Surfpool state is temporary; this is local settlement, not devnet or mainnet.
 
 ## Feasibility notes
 
