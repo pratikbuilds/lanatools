@@ -180,7 +180,7 @@ function Hero() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, ease: EASE, delay: 0.75 }}
           >
-            <a href="#connect" className="btn btn-primary">
+            <a href="/sign-in" className="btn btn-primary">
               Create account
             </a>
             <button
@@ -311,7 +311,7 @@ function Home() {
               <UrlBox />
             </Reveal>
             <Reveal className="mt-8" delay={0.25}>
-              <a href="#connect" className="btn btn-blue">
+              <a href="/sign-in" className="btn btn-blue">
                 Create account
               </a>
             </Reveal>
