@@ -4,8 +4,6 @@ import type { Address } from '@solana/kit'
 // Surfpool forks mainnet, so the testbed pays with the mainnet USDC mint.
 export const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
 
-const SYSTEM_PROGRAM = '11111111111111111111111111111111'
-
 async function call<T>(rpcUrl: string, method: string, params: Array<unknown>) {
   const response = await fetch(rpcUrl, {
     method: 'POST',
@@ -32,19 +30,6 @@ export async function assertSurfpool(rpcUrl: string) {
   })
   if (!version['surfnet-version'])
     throw new Error(`${rpcUrl} is not a Surfpool RPC; refusing to fund it`)
-}
-
-export function setSol(rpcUrl: string, owner: Address, lamports: bigint) {
-  return call(rpcUrl, 'surfnet_setAccount', [
-    owner,
-    {
-      lamports: Number(lamports),
-      data: '',
-      executable: false,
-      owner: SYSTEM_PROGRAM,
-      rentEpoch: 0,
-    },
-  ])
 }
 
 /** Creates the owner's USDC account if needed and sets its balance. */

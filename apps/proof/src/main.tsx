@@ -5,7 +5,7 @@ import { PrivyProvider, usePrivy } from '@privy-io/react-auth'
 const appId = import.meta.env.VITE_PRIVY_APP_ID
 if (!appId) throw new Error('Set VITE_PRIVY_APP_ID for the local proof page')
 
-type Mode = 'mpp' | 'x402' | 'denied'
+type Mode = 'mpp' | 'denied'
 type Proof = {
   mode?: Mode
   passed?: boolean
@@ -16,7 +16,6 @@ type Proof = {
 
 const modes: Array<{ mode: Mode; label: string }> = [
   { mode: 'mpp', label: 'Pay with MPP' },
-  { mode: 'x402', label: 'Pay with x402' },
   { mode: 'denied', label: 'Try denied payment' },
 ]
 
@@ -83,8 +82,9 @@ function ProofLogin() {
           <p>Signed in as {user?.id}</p>
           <h2>Pay Kit payment (ADI-176)</h2>
           <p>
-            Run <code>bun --env-file=.env run testbed:paykit</code> with
-            Surfpool on port 8899, then pay the local 0.01 USDC merchant.
+            Run <code>bun run testbed start</code>, then{' '}
+            <code>bun --env-file=.env run testbed:paykit</code> to pay the YAML
+            merchant on the hosted Surfpool sandbox.
           </p>
           {modes.map(({ mode, label }) => (
             <button

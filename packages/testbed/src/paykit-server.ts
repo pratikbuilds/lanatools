@@ -1,15 +1,14 @@
 /**
  * ADI-176: Pay Kit paying from a server-authorized Privy wallet.
  *
- * One local process runs a Pay Kit merchant (a fixed 0.01 USDC charge) and the
- * payer side LanaTools will run. The proof page sends the signed-in user's
+ * The payer calls the existing pay.sh YAML merchant on the hosted Surfpool
+ * sandbox. The proof page sends the signed-in user's
  * Privy access token with each request, so the token never leaves the browser
  * except to this server on 127.0.0.1.
  */
 import { generateP256KeyPair, PrivyClient } from '@privy-io/node'
-import { address, generateKeyPairSigner } from '@solana/kit'
+import { address } from '@solana/kit'
 import type { Address, KeyPairSigner } from '@solana/kit'
-import { createPayKit, usd } from '@solana/pay-kit'
 import {
   ClientPermissions,
   createPayKitClient,
@@ -21,16 +20,15 @@ import { createPrivyPayerSigner } from './privy-payer-signer'
 import {
   assertSurfpool,
   confirmed,
-  setSol,
   setUsdc,
   solBalance,
   usdcBalance,
+  USDC_MINT,
 } from './surfnet'
 
-const rpcUrl = 'http://127.0.0.1:8899'
+const rpcUrl = 'https://402.surfnet.dev:8899'
 const port = 1403
-const merchantUrl = `http://127.0.0.1:${port}/merchant/fortune`
-const price = usd('0.01')
+const merchantUrl = 'http://127.0.0.1:1402/api/v1/fixed'
 const priceCap = usdCap('0.01')
 const priceAtomic = 10_000n // 0.01 USDC, 6 decimals
 const walletFunding = 1_000_000n // 1 USDC per top-up
@@ -42,27 +40,6 @@ if (!appId || !appSecret)
 
 await assertSurfpool(rpcUrl)
 const privy = new PrivyClient({ appId, appSecret })
-
-// The merchant operator receives payments and pays network fees.
-const operator = await generateKeyPairSigner()
-await setSol(rpcUrl, operator.address, 5_000_000_000n)
-await setUsdc(rpcUrl, operator.address, 0n) // the payer never creates this ATA
-
-const merchant = await createPayKit({
-  accept: ['mpp', 'x402'],
-  mpp: {
-    challengeBindingSecret: Buffer.from(
-      crypto.getRandomValues(new Uint8Array(32)),
-    ).toString('hex'),
-  },
-  network: 'localnet',
-  operator: { recipient: operator.address, signer: operator },
-  pricing: { fortune: { amount: price, description: 'A fortune cookie' } },
-  rpcUrl,
-})
-const fortune = merchant.fetch('fortune', () =>
-  Response.json({ fortune: 'The settlement you await will confirm.' }),
-)
 
 // The server key exists only in this process. Every wallet it creates lists
 // the key's quorum as an additional signer with no Privy policy: the payer's
@@ -96,39 +73,46 @@ async function walletFor(userId: string) {
   return wallet
 }
 
-type Mode = 'mpp' | 'x402' | 'denied'
+type Mode = 'mpp' | 'denied'
 
 type Check = { name: string; passed: boolean; detail: string }
 
-async function balances(wallet: Address) {
+async function balances(wallet: Address, merchant: Address) {
   const [walletUsdc, merchantUsdc, walletSol] = await Promise.all([
     usdcBalance(rpcUrl, wallet),
-    usdcBalance(rpcUrl, operator.address),
+    usdcBalance(rpcUrl, merchant),
     solBalance(rpcUrl, wallet),
   ])
   return { walletUsdc, merchantUsdc, walletSol }
 }
 
-/** The transaction signature the merchant reports for a settled payment. */
-function settlementSignature(response: Response) {
-  const mpp = response.headers.get('payment-receipt')
-  if (mpp)
-    return {
-      header: 'payment-receipt',
-      signature: Receipt.deserialize(mpp).reference,
-    }
-  const x402 = response.headers.get('x-payment-response')
-  if (x402) {
-    const settled = JSON.parse(Buffer.from(x402, 'base64').toString()) as {
-      transaction?: string
-    }
-    if (settled.transaction)
-      return { header: 'x-payment-response', signature: settled.transaction }
+/** Read the live terms before measuring the gateway's recipient balance. */
+async function fixtureRecipient() {
+  const response = await fetch(merchantUrl)
+  const encoded = /request="([^"]+)"/.exec(
+    response.headers.get('www-authenticate') ?? '',
+  )?.[1]
+  if (response.status !== 402 || !encoded)
+    throw new Error(
+      'YAML merchant is not serving an MPP challenge on port 1402',
+    )
+  const terms = JSON.parse(Buffer.from(encoded, 'base64url').toString()) as {
+    amount: string
+    currency: string
+    recipient: string
+    methodDetails: { network: string }
   }
-  return undefined
+  if (
+    terms.amount !== String(priceAtomic) ||
+    terms.currency !== USDC_MINT ||
+    terms.methodDetails.network !== 'localnet'
+  )
+    throw new Error('YAML merchant returned unexpected payment terms')
+  return address(terms.recipient)
 }
 
 async function prove(mode: Mode, userId: string) {
+  const merchant = await fixtureRecipient()
   const wallet = await walletFor(userId)
   if ((await usdcBalance(rpcUrl, wallet.address)) < priceAtomic)
     await setUsdc(rpcUrl, wallet.address, walletFunding)
@@ -148,9 +132,6 @@ async function prove(mode: Mode, userId: string) {
     signer: signer as unknown as KeyPairSigner,
     rpcUrl,
     network: 'localnet',
-    // x402 on Surfpool advertises the mainnet chain ID (the fork keeps the
-    // mainnet genesis hash), so mainnet stays allowed; the origin allowlist and
-    // local RPC keep payments on the fixture merchant.
     permissions: ClientPermissions.builder()
       .allowNetwork('localnet')
       .allowOrigin(new URL(merchantUrl).origin)
@@ -159,7 +140,7 @@ async function prove(mode: Mode, userId: string) {
     onProgress: (event) => progress.push((event as { type: string }).type),
   })
 
-  const before = await balances(wallet.address)
+  const before = await balances(wallet.address, merchant)
   const started = performance.now()
   const checks: Array<Check> = []
   const check = (name: string, passed: boolean, detail: string) =>
@@ -174,10 +155,12 @@ async function prove(mode: Mode, userId: string) {
       if (!(error instanceof PermissionDeniedError)) throw error
       rejections = error.rejections.map((r) => `${r.code}: ${r.message}`)
     }
-    const after = await balances(wallet.address)
+    const after = await balances(wallet.address, merchant)
     check(
       'Payment refused before signing',
-      rejections.length > 0,
+      rejections.some((rejection) =>
+        rejection.startsWith('amount_exceeds_limit:'),
+      ),
       rejections.join('; ') || 'no rejection',
     )
     check(
@@ -197,11 +180,12 @@ async function prove(mode: Mode, userId: string) {
     )
     result = { rejections }
   } else {
-    const response = await client.fetch(merchantUrl, undefined, mode)
+    const response = await client.fetch(merchantUrl, undefined, 'mpp')
     const body = await response.text()
-    const settlement = settlementSignature(response)
-    if (settlement) await confirmed(rpcUrl, settlement.signature)
-    const after = await balances(wallet.address)
+    const receipt = response.headers.get('payment-receipt')
+    const signature = receipt && Receipt.deserialize(receipt).reference
+    if (signature) await confirmed(rpcUrl, signature)
+    const after = await balances(wallet.address, merchant)
     check(
       'Merchant returned its result',
       response.status === 200,
@@ -209,10 +193,8 @@ async function prove(mode: Mode, userId: string) {
     )
     check(
       'Receipt names a transaction',
-      !!settlement,
-      settlement
-        ? `${settlement.header}: ${settlement.signature}`
-        : 'no receipt header',
+      !!signature,
+      signature ? `payment-receipt: ${signature}` : 'no receipt header',
     )
     check(
       'Privy signed once',
@@ -237,8 +219,8 @@ async function prove(mode: Mode, userId: string) {
     result = {
       status: response.status,
       body,
-      receiptHeader: settlement?.header,
-      signature: settlement?.signature,
+      receiptHeader: receipt ? 'payment-receipt' : undefined,
+      signature,
     }
   }
 
@@ -248,7 +230,7 @@ async function prove(mode: Mode, userId: string) {
     checks,
     progress,
     wallet: wallet.address,
-    merchant: operator.address,
+    merchant,
     priceAtomic: String(priceAtomic),
     durationMs: Math.round(performance.now() - started),
     ...result,
@@ -257,6 +239,7 @@ async function prove(mode: Mode, userId: string) {
 
 // One proof at a time, so balance deltas belong to a single payment.
 let queue: Promise<unknown> = Promise.resolve()
+let shuttingDown = false
 function serialized<T>(run: () => Promise<T>) {
   const next = queue.then(run, run)
   queue = next.catch(() => undefined)
@@ -280,11 +263,13 @@ async function handlePay(request: Request) {
   const { mode } = (await request.json().catch(() => ({}))) as {
     mode?: unknown
   }
-  if (mode !== 'mpp' && mode !== 'x402' && mode !== 'denied')
+  if (mode !== 'mpp' && mode !== 'denied')
     return Response.json(
-      { error: 'mode must be mpp, x402 or denied' },
+      { error: 'mode must be mpp or denied' },
       { status: 400 },
     )
+  if (shuttingDown)
+    return Response.json({ error: 'Proof server is stopping' }, { status: 503 })
   try {
     return Response.json(await serialized(() => prove(mode, userId)))
   } catch (error) {
@@ -306,17 +291,18 @@ const server = Bun.serve({
   idleTimeout: 120,
   fetch(request) {
     const { pathname } = new URL(request.url)
-    if (pathname === '/merchant/fortune') return fortune(request)
     if (pathname === '/testbed/pay' && request.method === 'POST')
       return handlePay(request)
     return new Response('Not found', { status: 404 })
   },
 })
-console.log(`Pay Kit proof server on ${server.url} (Surfpool ${rpcUrl})`)
+console.log(`Pay Kit payer on ${server.url} (YAML merchant ${merchantUrl})`)
 console.log('Open http://localhost:5174 (bun run proof); Ctrl-C cleans up')
 
 async function cleanup() {
+  shuttingDown = true
   await server.stop(true)
+  await queue
   for (const wallet of wallets.values()) {
     await privy
       .wallets()

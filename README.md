@@ -79,15 +79,14 @@ limits.
 ### Pay Kit payment proof
 
 `apps/proof` holds local-only proof pages, kept apart from the product UI in
-`apps/web`. With the same `.env` files, run `surfpool start --no-tui
---no-studio --no-deploy` (a mainnet fork, so real USDC exists),
-`bun --env-file=.env run testbed:paykit`, and `bun run proof`. Sign in at
-`http://localhost:5174` and use **Pay with MPP**, **Pay with x402**, or
-**Try denied payment**. The page sends your Privy access token only to the
-local proof server; you never paste it. The server runs a Pay Kit merchant
-charging 0.01 USDC and pays it from a Privy wallet you own, signed by a
-server key that exists only in that process. Ctrl-C archives the wallet and
-deletes the key quorum.
+`apps/web`. With the same `.env` files, run `bun run testbed start` to serve
+`packages/testbed/merchant.yaml`, then `bun --env-file=.env run testbed:paykit`
+and `bun run proof`. Sign in at `http://localhost:5174` and use **Pay with
+MPP** or **Try denied payment**. The page sends your Privy access token only
+to the local proof server; you never paste it. Pay Kit pays the existing YAML
+merchant on the hosted Surfpool sandbox from a Privy wallet you own, signed
+by a server key that exists only in that process. Ctrl-C on the proof server
+archives the wallet and deletes the key quorum.
 
 ## Production
 
