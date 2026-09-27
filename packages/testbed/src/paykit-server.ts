@@ -6,7 +6,7 @@
  * Privy access token with each request, so the token never leaves the browser
  * except to this server on 127.0.0.1.
  */
-import { generateP256KeyPair, PrivyClient } from '@privy-io/node'
+import { APIError, generateP256KeyPair, PrivyClient } from '@privy-io/node'
 import { address } from '@solana/kit'
 import type { Address, KeyPairSigner } from '@solana/kit'
 import {
@@ -299,29 +299,42 @@ const server = Bun.serve({
 console.log(`Pay Kit payer on ${server.url} (YAML merchant ${merchantUrl})`)
 console.log('Open http://localhost:5174 (bun run proof); Ctrl-C cleans up')
 
+async function cleanupResource(
+  kind: string,
+  id: string,
+  remove: () => Promise<unknown>,
+) {
+  try {
+    await remove()
+    console.log(`Cleaned up ${kind} ${id}`)
+  } catch (error) {
+    const detail =
+      error instanceof APIError
+        ? `HTTP ${error.status} ${JSON.stringify(error.error)}`
+        : String(error)
+    console.error(`Cleanup failed for ${kind} ${id}: ${detail}`)
+    process.exitCode = 1
+  }
+}
+
 async function cleanup() {
   shuttingDown = true
   await server.stop(true)
   await queue
-  for (const wallet of wallets.values()) {
-    await privy
-      .wallets()
-      .archive(wallet.id)
-      .then(() => console.log(`Archived wallet ${wallet.id}`))
-      .catch(() => {
-        console.error(`Could not archive wallet ${wallet.id}`)
-        process.exitCode = 1
-      })
-  }
-  if (quorumId)
-    await privy
-      .keyQuorums()
-      .delete(quorumId, {})
-      .then(() => console.log(`Deleted key quorum ${quorumId}`))
-      .catch(() => {
-        console.error(`Could not delete key quorum ${quorumId}`)
-        process.exitCode = 1
-      })
+  for (const wallet of wallets.values())
+    await cleanupResource('wallet', wallet.id, () =>
+      // The archive endpoint rejects a request without a JSON body (HTTP 415).
+      privy.wallets().archive(wallet.id, { body: {} }),
+    )
+  // A key quorum can only be deleted with its own key, which dies with this
+  // process, so it must be deleted here or never.
+  const quorum = quorumId
+  if (quorum)
+    await cleanupResource('key quorum', quorum, () =>
+      privy
+        .keyQuorums()
+        .delete(quorum, { authorization_context: authorizationContext }),
+    )
   process.exit()
 }
 process.once('SIGINT', () => void cleanup())
