@@ -63,8 +63,8 @@ in that directory, so it never sees your shell credentials or `~/.config/pay`.
 
 With a dedicated Privy development app, put `PRIVY_APP_ID` and
 `PRIVY_APP_SECRET` in an ignored root `.env` file. Set the public app ID as
-`VITE_PRIVY_APP_ID` in `apps/web/.env.local`. Run `bun run --cwd apps/web dev`,
-open `http://localhost:5173/privy-proof.html`, sign in, and copy the token into
+`VITE_PRIVY_APP_ID` in `apps/proof/.env.local`. Run `bun run proof`,
+open `http://localhost:5174`, sign in, and copy the token into
 the root `.env` as `PRIVY_USER_ACCESS_TOKEN`. Keep the token out of chat and
 source control. Start `surfpool start --offline --no-tui --no-studio --no-deploy`,
 then run `bun --env-file=.env run testbed:privy` before the token expires.
@@ -75,6 +75,19 @@ on exit where Privy permits. It also rejects multi-transfer transactions
 locally because Privy's limit applies to each instruction. See the
 [ADI-175 proof](specs/adi-175-privy-surfpool.md) for the recorded result and
 limits.
+
+### Pay Kit payment proof
+
+`apps/proof` holds local-only proof pages, kept apart from the product UI in
+`apps/web`. With the same `.env` files, run `surfpool start --no-tui
+--no-studio --no-deploy` (a mainnet fork, so real USDC exists),
+`bun --env-file=.env run testbed:paykit`, and `bun run proof`. Sign in at
+`http://localhost:5174` and use **Pay with MPP**, **Pay with x402**, or
+**Try denied payment**. The page sends your Privy access token only to the
+local proof server; you never paste it. The server runs a Pay Kit merchant
+charging 0.01 USDC and pays it from a Privy wallet you own, signed by a
+server key that exists only in that process. Ctrl-C archives the wallet and
+deletes the key quorum.
 
 ## Production
 

@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@lanatools/contracts": "workspace:*",
-    "@privy-io/react-auth": "^3.45.0",
     "@tailwindcss/vite": "4.3.3",
     "@tanstack/react-query": "^5.90.0",
     "@tanstack/react-router": "1.170.38",
