@@ -63,8 +63,8 @@ in that directory, so it never sees your shell credentials or `~/.config/pay`.
 
 With a dedicated Privy development app, put `PRIVY_APP_ID` and
 `PRIVY_APP_SECRET` in an ignored root `.env` file. Set the public app ID as
-`VITE_PRIVY_APP_ID` in `apps/web/.env.local`. Run `bun run --cwd apps/web dev`,
-open `http://localhost:5173/privy-proof.html`, sign in, and copy the token into
+`VITE_PRIVY_APP_ID` in `apps/proof/.env.local`. Run `bun run proof`,
+open `http://localhost:5174`, sign in, and copy the token into
 the root `.env` as `PRIVY_USER_ACCESS_TOKEN`. Keep the token out of chat and
 source control. Start `surfpool start --offline --no-tui --no-studio --no-deploy`,
 then run `bun --env-file=.env run testbed:privy` before the token expires.
@@ -75,6 +75,22 @@ on exit where Privy permits. It also rejects multi-transfer transactions
 locally because Privy's limit applies to each instruction. See the
 [ADI-175 proof](specs/adi-175-privy-surfpool.md) for the recorded result and
 limits.
+
+### Pay Kit payment proof
+
+`apps/proof` holds local-only proof pages, kept apart from the product UI in
+`apps/web`. With the same `.env` files, run `bun run testbed start` to serve
+`packages/testbed/merchant.yaml`, then `bun --env-file=.env run testbed:paykit`
+and `bun run proof`. Sign in at `http://localhost:5174` and use the MPP,
+x402, Pay Kit denial, and Privy policy denial buttons. The page sends your
+Privy access token only to the local proof server; you never paste it. Pay Kit
+pays the existing YAML merchant on the hosted Surfpool sandbox from a Privy
+wallet you own, using the official Solana Privy signer. Its user-owned policy
+allows bounded USDC transfers without naming a merchant. The local proof
+reserves each payment against a 0.10 USDC wallet budget before calling Pay
+Kit. Restart the YAML merchant after editing its spec. The page offers fixed
+MPP and x402 payment checks. Ctrl-C on the proof server archives wallets and
+attempts to delete policies and the key quorum.
 
 ## Production
 

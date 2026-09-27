@@ -445,14 +445,18 @@ try {
     await cleanupResource({
       kind: 'wallet',
       id: walletToArchive,
-      remove: () => privy.wallets().archive(walletToArchive),
+      // The archive endpoint rejects a request without a JSON body (HTTP 415).
+      remove: () => privy.wallets().archive(walletToArchive, { body: {} }),
     })
   const quorumToDelete = quorumId
   if (quorumToDelete)
     await cleanupResource({
       kind: 'key quorum',
       id: quorumToDelete,
-      remove: () => privy.keyQuorums().delete(quorumToDelete, {}),
+      remove: () =>
+        privy.keyQuorums().delete(quorumToDelete, {
+          authorization_context: { authorization_private_keys: [privateKey] },
+        }),
     })
   await cleanupResource({
     kind: 'user-owned policy',

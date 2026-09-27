@@ -1,8 +1,9 @@
+# yaml-language-server: $schema=https://pay.sh/docs-assets/provider.schema.json
 # Private merchant served by `pay --sandbox gate api`; never published.
 name: lanatools-testbed
 subdomain: lanatools-testbed
 title: 'LanaTools testbed merchant'
-description: 'Fixed 0.01 USDC charge for LanaTools payment tests.'
+description: 'Local MPP and x402 payment fixtures for LanaTools.'
 category: ai_ml
 version: v1
 routing:
@@ -15,11 +16,23 @@ operator:
 endpoints:
   - method: GET
     path: 'api/v1/fixed'
-    description: 'Fixed 0.01 USDC charge.'
+    description: 'Fixed 0.01 USDC charge over MPP or x402.'
     metering:
+      schemes: [mpp-charge, x402-exact]
       dimensions:
         - direction: usage
           unit: requests
           scale: 1
           tiers:
             - price_usd: 0.01
+  - method: GET
+    path: 'api/v1/policy-denied'
+    description: 'MPP 0.02 USDC charge that the Privy policy must refuse.'
+    metering:
+      schemes: [mpp-charge]
+      dimensions:
+        - direction: usage
+          unit: requests
+          scale: 1
+          tiers:
+            - price_usd: 0.02

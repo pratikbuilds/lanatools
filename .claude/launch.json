@@ -6,6 +6,12 @@
       "runtimeExecutable": "bun",
       "runtimeArgs": ["run", "--cwd", "apps/web", "dev"],
       "port": 5173
+    },
+    {
+      "name": "proof",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "--cwd", "apps/proof", "dev"],
+      "port": 5174
     }
   ]
 }
