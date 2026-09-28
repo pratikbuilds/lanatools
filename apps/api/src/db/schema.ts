@@ -24,7 +24,7 @@ export const mcpGrant = sqliteTable(
     id: text('id').primaryKey(),
     privyUserId: text('privy_user_id').notNull(),
     clientId: text('client_id').notNull(),
-    status: text('status', { enum: ['active', 'revoked'] })
+    status: text('status', { enum: ['pending', 'active', 'revoked'] })
       .notNull()
       .default('active'),
     createdAt: integer('created_at').notNull(),

@@ -68,18 +68,30 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
     return userId
   }
 
-  async grantIdForConsent(handle: string, clientId: string, userId: string) {
+  async prepareGrant(handle: string, clientId: string, userId: string) {
     const consent = await this.pendingConsent(handle)
     if (!consent || consent.clientId !== clientId)
       throw new Error('Authorization request expired')
-    const grant = await drizzle(this.env.DB)
+    const db = drizzle(this.env.DB)
+    await db
+      .insert(mcpGrant)
+      .values({
+        id: crypto.randomUUID(),
+        privyUserId: userId,
+        clientId,
+        status: 'pending',
+        createdAt: Date.now(),
+      })
+      .onConflictDoNothing()
+    const grant = await db
       .select({ id: mcpGrant.id })
       .from(mcpGrant)
       .where(
         and(eq(mcpGrant.privyUserId, userId), eq(mcpGrant.clientId, clientId)),
       )
       .get()
-    return { grantId: grant?.id ?? crypto.randomUUID() }
+    if (!grant) throw new Error('Could not prepare MCP grant')
+    return { grantId: grant.id }
   }
 
   async activateGrant(

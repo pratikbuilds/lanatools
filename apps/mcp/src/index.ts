@@ -145,7 +145,7 @@ const defaultHandler = {
             request,
             handle,
           )
-          const { grantId } = await env.API.grantIdForConsent(
+          const { grantId } = await env.API.prepareGrant(
             handle,
             approved.request.clientId,
             userId,
