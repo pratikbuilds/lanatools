@@ -1,19 +1,25 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { checkNetworkEnv } from './src/lib/networks'
 
 const proxy = {
   '/api': { target: process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:3000' },
 }
 
-export default defineConfig({
-  resolve: { tsconfigPaths: true },
-  plugins: [
-    tailwindcss(),
-    tanstackRouter({ target: 'react', autoCodeSplitting: true }),
-    viteReact(),
-  ],
-  server: { proxy },
-  preview: { proxy },
+export default defineConfig(({ command, mode }) => {
+  if (command === 'build') {
+    checkNetworkEnv(loadEnv(mode, import.meta.dirname, 'VITE_'))
+  }
+  return {
+    resolve: { tsconfigPaths: true },
+    plugins: [
+      tailwindcss(),
+      tanstackRouter({ target: 'react', autoCodeSplitting: true }),
+      viteReact(),
+    ],
+    server: { proxy },
+    preview: { proxy },
+  }
 })

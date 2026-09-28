@@ -107,7 +107,7 @@ export function PaymentWallet({ walletAddress }: { walletAddress: string }) {
         >
           {state === 'copied' ? <CheckIcon /> : <CopyIcon />}
         </button>
-        <CopyStatus state={state} />
+        <CopyStatus state={state} subject="address" />
       </div>
       <p className="mt-3 text-[12.5px] leading-5 text-mute">
         Send USDC on Solana to this address. Keep a little SOL here for network

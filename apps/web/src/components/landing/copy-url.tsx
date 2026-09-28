@@ -85,13 +85,19 @@ export function copyLabel(state: CopyState, idle = 'copy') {
 
 // Announces the result of a copy to screen readers. Keep it mounted so the
 // live region exists before its text changes.
-export function CopyStatus({ state }: { state: CopyState }) {
+export function CopyStatus({
+  state,
+  subject = 'URL',
+}: {
+  state: CopyState
+  subject?: string
+}) {
   return (
     <span role="status" className="sr-only">
       {state === 'copied'
         ? 'Copied to clipboard'
         : state === 'failed'
-          ? 'Copy failed. Select the URL and copy it manually.'
+          ? `Copy failed. Select the ${subject} and copy it manually.`
           : ''}
     </span>
   )

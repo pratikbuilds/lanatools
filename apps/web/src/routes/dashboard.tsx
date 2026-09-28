@@ -1,5 +1,5 @@
 import { usePrivy } from '@privy-io/react-auth'
-import { Navigate, createFileRoute, useNavigate } from '@tanstack/react-router'
+import { Navigate, createFileRoute } from '@tanstack/react-router'
 import { MotionConfig } from 'motion/react'
 import { useState } from 'react'
 import { DashboardView } from '#/components/dashboard/dashboard-view'
@@ -23,18 +23,22 @@ function DashboardRoute() {
 
 function Dashboard() {
   const { ready, authenticated, user, logout } = usePrivy()
-  const navigate = useNavigate()
+  const [signingOut, setSigningOut] = useState(false)
   const [signOutFailed, setSignOutFailed] = useState(false)
 
   if (!ready) return <Loading />
-  if (!authenticated || !user) return <Navigate to="/sign-in" replace />
+  // Signing out ends at home; any other signed-out visit goes to sign-in.
+  if (!authenticated || !user) {
+    return <Navigate to={signingOut ? '/' : '/sign-in'} replace />
+  }
 
   async function signOut() {
     setSignOutFailed(false)
+    setSigningOut(true)
     try {
       await logout()
-      await navigate({ to: '/' })
     } catch {
+      setSigningOut(false)
       setSignOutFailed(true)
     }
   }

@@ -8,7 +8,7 @@ export function DashboardView({
   onSignOut,
   signOutFailed,
 }: {
-  user: User
+  user: Pick<User, 'linkedAccounts'>
   onSignOut: () => void
   signOutFailed: boolean
 }) {
