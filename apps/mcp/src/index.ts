@@ -1,7 +1,7 @@
 import OAuthProvider from '@cloudflare/workers-oauth-provider'
 import type { OAuthHelpers } from '@cloudflare/workers-oauth-provider'
 import { McpServer } from '@modelcontextprotocol/server'
-import { createMcpHandler, getMcpAuthContext } from 'agents/mcp/server'
+import { createMcpHandler } from 'agents/mcp/server'
 import { z } from 'zod'
 import { env as bindings } from 'cloudflare:workers'
 import type { McpAccessService } from '../../api/src/mcp-service'
@@ -16,8 +16,11 @@ const Identity = z.object({
   userId: z.string().min(1),
   clientId: z.string().min(1),
 })
+const OAuthContext = z.object({
+  auth: z.object({ scope: z.array(z.string()) }),
+})
 
-function createServer(env: McpEnv) {
+function createServer(env: McpEnv, props: unknown, scopes: string[]) {
   const server = new McpServer({ name: 'LanaTools', version: '0.1.0' })
   server.registerTool(
     'whoami',
@@ -30,13 +33,13 @@ function createServer(env: McpEnv) {
         openWorldHint: false,
       },
     },
-    async (context) => {
-      if (!context.http?.authInfo?.scopes.includes('account:read'))
+    async () => {
+      if (!scopes.includes('account:read'))
         return {
           isError: true,
           content: [{ type: 'text', text: 'Missing account:read scope' }],
         }
-      const identity = Identity.safeParse(getMcpAuthContext()?.props)
+      const identity = Identity.safeParse(props)
       if (!identity.success)
         return {
           isError: true,
@@ -164,7 +167,8 @@ const defaultHandler = {
           const { redirectTo } = await env.OAUTH_PROVIDER.completeAuthorization(
             {
               request: approved.request,
-              userId,
+              // OAuthProvider separates the subject from its code with colons.
+              userId: encodeURIComponent(userId),
               scope: approved.request.scope,
               props: { grantId, userId, clientId: approved.request.clientId },
               metadata: { label: 'LanaTools connection' },
@@ -196,11 +200,16 @@ export default new OAuthProvider<McpEnv>({
   apiRoute: '/mcp',
   apiHandler: {
     fetch(request, env, ctx) {
-      return createMcpHandler(() => createServer(env), { route: '/mcp' })(
-        request,
-        env,
-        ctx,
-      )
+      const auth = OAuthContext.safeParse(ctx)
+      return createMcpHandler(
+        () =>
+          createServer(
+            env,
+            ctx.props,
+            auth.success ? auth.data.auth.scope : [],
+          ),
+        { route: '/mcp' },
+      )(request, env, ctx)
     },
   },
   defaultHandler,

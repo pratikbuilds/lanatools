@@ -19,6 +19,12 @@ grant. It returns the Privy user ID and OAuth client ID. It cannot make payments
 4. Run `bun run --cwd apps/mcp smoke:local`. The smoke test checks OAuth
    discovery, client registration, consent, denial, and replay protection.
 
+For a full signed-in check, run `bun run --cwd apps/mcp verify:local` and open
+the printed authorization URL in a browser. Sign in and approve the local
+verification client. The script exchanges the authorization code, initializes
+MCP, lists the tools, and calls `whoami` without printing credentials or IDs.
+Set `LANATOOLS_MCP_CLIENT_ID` to reuse a previously registered local client.
+
 Use `http://localhost:8788/mcp` as the MCP server URL. An MCP client redirects
 the user to the web consent page, which uses their normal Privy sign-in. The
 browser returns to the client's registered callback after approval or denial.

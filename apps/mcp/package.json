@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "smoke:local": "bun scripts/smoke-local.ts"
+    "smoke:local": "bun scripts/smoke-local.ts",
+    "verify:local": "bun scripts/verify-local.ts"
   },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "1.1.0",
