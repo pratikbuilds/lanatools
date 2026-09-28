@@ -34,7 +34,6 @@ the printed authorization URL in a browser. Sign in and approve the local
 verification client. The script exchanges the authorization code, initializes
 MCP, lists the tools, and calls `whoami` without printing credentials or IDs.
 Set `LANATOOLS_MCP_CLIENT_ID` to reuse a previously registered local client.
-For browser and Codex acceptance cases, follow [MANUAL_TESTING.md](./MANUAL_TESTING.md).
 
 Use `http://localhost:8788/mcp` as the MCP server URL. An MCP client redirects
 the user to `http://localhost:8788/connect`. Privy sign-in happens on that
