@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { Navigate, createFileRoute } from '@tanstack/react-router'
 import {
   useConnectWallet,
   useLoginWithOAuth,
@@ -108,7 +108,7 @@ function SignInRoute() {
 }
 
 function SignIn() {
-  const { ready, authenticated, user, logout } = usePrivy()
+  const { ready, authenticated } = usePrivy()
   const [message, setMessage] = useState('')
   const [walletBusy, setWalletBusy] = useState(false)
   const { initOAuth, loading: googleBusy } = useLoginWithOAuth({
@@ -170,43 +170,8 @@ function SignIn() {
     }
   }
 
-  async function signOut() {
-    setMessage('')
-    try {
-      await logout()
-    } catch {
-      setMessage('Sign-out failed. Try again.')
-    }
-  }
-
-  if (authenticated) {
-    return (
-      <Page>
-        <div className="mb-5 flex size-10 items-center justify-center rounded-full bg-lime text-xl text-ink">
-          ✓
-        </div>
-        <h2 className="text-2xl font-semibold tracking-tight">
-          You’re signed in.
-        </h2>
-        <p className="mt-3 text-sm leading-6 text-mute">
-          You can return to the home page or sign out.
-        </p>
-        <p className="mt-6 break-all rounded-lg bg-paper px-4 py-3 font-mono text-xs text-mute">
-          Account ID: {user?.id}
-        </p>
-        <button
-          type="button"
-          onClick={() => void signOut()}
-          className="mt-6 text-sm font-semibold text-blue underline underline-offset-4 hover:text-blue-deep"
-        >
-          Sign out
-        </button>
-        <p role="alert" className="mt-4 text-xs text-coral-ink empty:hidden">
-          {message}
-        </p>
-      </Page>
-    )
-  }
+  // Signed-in users belong on the dashboard, including right after sign-in.
+  if (authenticated) return <Navigate to="/dashboard" replace />
 
   const disabled = !ready || googleBusy || walletBusy
 

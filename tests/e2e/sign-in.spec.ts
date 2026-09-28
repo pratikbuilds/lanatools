@@ -33,3 +33,9 @@ test('wallet choices stay in view on mobile', async ({ page }) => {
     page.getByRole('button', { name: 'More Solana wallets' }),
   ).toBeInViewport()
 })
+
+test('the dashboard sends signed-out visitors to sign-in', async ({ page }) => {
+  await page.goto('/dashboard')
+
+  await expect(page).toHaveURL(/\/sign-in$/)
+})
