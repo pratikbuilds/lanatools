@@ -4,6 +4,7 @@ export default [
   {
     ignores: [
       '**/dist/**',
+      '**/.wrangler/**',
       '**/routeTree.gen.ts',
       '**/worker-configuration.d.ts',
       '.playwright-mcp/**',

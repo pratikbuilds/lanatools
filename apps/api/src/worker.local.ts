@@ -4,6 +4,8 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { createApp } from './app'
 import { dbSmoke } from './db/schema'
 
+export { McpAccessService } from './mcp-service'
+
 const app = createApp<{ DB: D1Database }>()
 
 app.post('/api/db-smoke', async (c) => {

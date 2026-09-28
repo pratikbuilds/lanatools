@@ -34,7 +34,14 @@ try {
   if (typeof id !== 'string') throw new Error('D1 write returned no ID')
 
   const read = await fetch(`${url}/api/db-smoke/${id}`)
-  if (!read.ok || (await read.json()).id !== id)
+  const readBody: unknown = await read.json()
+  if (
+    !read.ok ||
+    typeof readBody !== 'object' ||
+    readBody === null ||
+    !('id' in readBody) ||
+    readBody.id !== id
+  )
     throw new Error('D1 read did not match the write')
   if (worker.exitCode !== null) throw new Error('Local Worker exited')
   console.info('Local Worker D1 write/read passed')

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@lanatools/contracts": "workspace:*",
+    "@privy-io/node": "^0.35.0",
     "arktype": "catalog:",
     "hono": "4.13.8",
     "drizzle-orm": "0.45.2"

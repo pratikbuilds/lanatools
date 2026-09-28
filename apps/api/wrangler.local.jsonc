@@ -3,6 +3,7 @@
   "name": "lanatools-api-local",
   "main": "src/worker.local.ts",
   "compatibility_date": "2026-09-24",
+  "compatibility_flags": ["nodejs_compat"],
   "d1_databases": [
     {
       "binding": "DB",

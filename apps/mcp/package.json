@@ -1,0 +1,17 @@
+{
+  "name": "@lanatools/mcp",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "smoke:local": "bun scripts/smoke-local.ts"
+  },
+  "dependencies": {
+    "@cloudflare/workers-oauth-provider": "1.1.0",
+    "@modelcontextprotocol/server": "2.0.0",
+    "agents": "0.24.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260901.1"
+  }
+}

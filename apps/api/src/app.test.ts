@@ -26,7 +26,8 @@ test('missing routes and exceptions return consistent, sanitized errors', async 
   ] as const) {
     const response = await app.request(path)
     expect(response.status).toBe(status)
-    expect(await response.json()).toEqual({
+    const body: unknown = await response.json()
+    expect(body).toEqual({
       error,
       requestId: response.headers.get('x-request-id'),
     })
