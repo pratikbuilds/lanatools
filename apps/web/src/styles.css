@@ -256,7 +256,26 @@ body {
     transform: translateX(560%);
   }
 }
+/* The same packet, running along the bottom of the early access field. */
+.field-packet {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 30%;
+  background: linear-gradient(90deg, transparent, var(--color-blue));
+  animation: field-packet 2.2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+@keyframes field-packet {
+  from {
+    left: -30%;
+  }
+  to {
+    left: 100%;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
+  .field-packet {
+    display: none;
+  }
   .footer-rail::after {
     animation: none;
     display: none;

@@ -10,6 +10,7 @@ import type { ReactNode } from 'react'
 import { BeforeAfter } from '#/components/landing/before-after'
 import { Wordmark } from '#/components/landing/brand'
 import { Flow } from '#/components/landing/flow'
+import { EarlyAccess } from '#/components/landing/early-access'
 import { Footer } from '#/components/landing/footer'
 import {
   CopyStatus,
@@ -96,8 +97,8 @@ function Header() {
               Tools
             </a>
           </nav>
-          <a href="#connect" className="btn btn-sm btn-primary">
-            Connect an agent
+          <a href="#early-access" className="btn btn-sm btn-primary">
+            Get early access
           </a>
         </div>
       </div>
@@ -175,27 +176,28 @@ function Hero() {
             permissions and spending limit.
           </motion.p>
           <motion.div
-            className="mt-8 flex flex-wrap items-center gap-3"
+            className="mt-8"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, ease: EASE, delay: 0.75 }}
           >
-            <a href="/sign-in" className="btn btn-primary">
-              Create account
-            </a>
-            <button
-              type="button"
-              onClick={() => void copy()}
-              className="btn gap-3 font-normal"
-              aria-label="Copy the MCP URL"
-            >
-              <span className="text-mute">$</span>
-              <span className="font-semibold">{MCP_HOST}</span>
-              <span className="chip h-5 px-1.5 text-[10.5px]">
-                {copyLabel(state)}
-              </span>
-            </button>
-            <CopyStatus state={state} />
+            <EarlyAccess
+              tone="blue"
+              note={
+                <>
+                  Invites go out in small batches. Already in?{' '}
+                  <button
+                    type="button"
+                    onClick={() => void copy()}
+                    className="text-paper underline underline-offset-3 hover:text-lime"
+                    aria-label="Copy the MCP URL"
+                  >
+                    {state === 'idle' ? `copy ${MCP_HOST}` : copyLabel(state)}
+                  </button>
+                  <CopyStatus state={state} />
+                </>
+              }
+            />
           </motion.div>
         </div>
         <div className="mx-auto w-full max-w-[560px]">
@@ -310,10 +312,16 @@ function Home() {
             <Reveal className="mt-8" delay={0.2}>
               <UrlBox />
             </Reveal>
-            <Reveal className="mt-8" delay={0.25}>
-              <a href="/sign-in" className="btn btn-blue">
-                Create account
-              </a>
+            <Reveal className="mt-14" delay={0.25}>
+              <div id="early-access" className="scroll-mt-24">
+                <p className="eyebrow text-mute">early access</p>
+                <h3 className="title mt-3 text-[clamp(1.3rem,2.4vw,1.7rem)]">
+                  Be one of the first agents to pay.
+                </h3>
+                <div className="mt-6">
+                  <EarlyAccess tone="paper" />
+                </div>
+              </div>
             </Reveal>
           </div>
         </section>

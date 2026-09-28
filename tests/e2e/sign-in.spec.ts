@@ -1,12 +1,8 @@
 import { expect, test } from '@playwright/test'
 
-test('account links open the sign-in page with named wallet options', async ({
-  page,
-}) => {
-  await page.goto('/')
-  await page.getByRole('link', { name: 'Create account' }).first().click()
+test('the sign-in page shows named wallet options', async ({ page }) => {
+  await page.goto('/sign-in')
 
-  await expect(page).toHaveURL(/\/sign-in$/)
   await expect(
     page.getByRole('heading', { name: 'Sign in to your workspace.' }),
   ).toBeVisible()
