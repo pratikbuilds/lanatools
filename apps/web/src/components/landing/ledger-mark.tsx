@@ -73,6 +73,8 @@ export function LedgerMark() {
       m.textBaseline = 'alphabetic'
       m.fillText(WORD, width / 2, height)
       const px = m.getImageData(0, 0, width, height).data
+      const alpha = (x: number, y: number) =>
+        (px[(Math.floor(y) * width + Math.floor(x)) * 4 + 3] ?? 0) / 255
 
       ink = new Float32Array(cols * rows)
       heat = new Float32Array(cols * rows)
@@ -80,9 +82,16 @@ export function LedgerMark() {
       const ox = (width - cols * cw) / 2
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
-          const x = Math.floor(ox + c * cw + cw / 2)
-          const y = Math.floor(r * rh + rh / 2)
-          ink[r * cols + c] = (px[(y * width + x) * 4 + 3] ?? 0) / 255
+          // Light a cell by how much of it the letter covers, not by its
+          // centre alone, so the thin tops of curves leave no stray glyphs.
+          let cover = 0
+          for (let sy = 0; sy < 3; sy++)
+            for (let sx = 0; sx < 3; sx++)
+              cover += alpha(
+                ox + (c + 0.2 + sx * 0.3) * cw,
+                (r + 0.2 + sy * 0.3) * rh,
+              )
+          ink[r * cols + c] = cover / 9
         }
       }
       packets = []
