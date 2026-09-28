@@ -9,7 +9,7 @@ export const Route = createFileRoute('/connect')({ component: ConnectRoute })
 type Consent = { clientName: string; redirectUri: string }
 
 function ConnectRoute() {
-  const { ready, authenticated } = usePrivy()
+  const { ready, authenticated, user, logout } = usePrivy()
   const [consent, setConsent] = useState<Consent | null>(null)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
@@ -91,7 +91,24 @@ function ConnectRoute() {
     }
   }
 
+  async function signOut() {
+    setBusy(true)
+    setMessage('')
+    try {
+      await logout()
+    } catch {
+      setMessage('Sign-out failed. Try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const signInReturn = `/connect?handle=${encodeURIComponent(handle || '')}`
+  const account =
+    user?.google?.email ||
+    user?.email?.address ||
+    user?.wallet?.address ||
+    user?.id
 
   return (
     <main className="on-paper flex min-h-screen flex-col bg-paper px-5 py-6 text-ink sm:px-8">
@@ -105,6 +122,22 @@ function ConnectRoute() {
         <h1 className="mt-4 text-3xl font-semibold tracking-tight">
           Connect an MCP client
         </h1>
+        {ready && authenticated && (
+          <div className="mt-6 rounded-xl border border-ink/10 bg-paper px-4 py-3">
+            <p className="text-xs text-mute">Signed in as</p>
+            <p className="mt-1 break-all font-mono text-xs text-ink">
+              {account}
+            </p>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void signOut()}
+              className="mt-2 text-sm font-semibold text-blue underline underline-offset-4 disabled:opacity-50"
+            >
+              Sign out to use another account
+            </button>
+          </div>
+        )}
         {consent && (
           <>
             <p className="mt-4 text-sm leading-6">
