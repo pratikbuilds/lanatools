@@ -12,14 +12,7 @@ import { Wordmark } from '#/components/landing/brand'
 import { Flow } from '#/components/landing/flow'
 import { EarlyAccess } from '#/components/landing/early-access'
 import { Footer } from '#/components/landing/footer'
-import {
-  CopyStatus,
-  MCP_HOST,
-  MCP_URL,
-  UrlBox,
-  copyLabel,
-  useCopy,
-} from '#/components/landing/copy-url'
+import { UrlBox } from '#/components/landing/copy-url'
 import { Logo } from '#/components/landing/logo'
 import { Playground } from '#/components/landing/playground'
 import { EASE, Reveal } from '#/components/landing/reveal'
@@ -115,7 +108,6 @@ const CONNECT_STEPS = [
 ]
 
 function Hero() {
-  const { state, copy } = useCopy(MCP_URL)
   return (
     <section className={`${wide} pt-12 pb-14 sm:pt-16 lg:pt-20`}>
       <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-14">
@@ -127,7 +119,7 @@ function Hero() {
             transition={{ duration: 0.4, ease: EASE }}
           >
             <Logo id="solana" size={12} />
-            one MCP server for agents on Solana
+            the wallet for your agents · on Solana
           </motion.span>
           {/* Real spaces between the words keep the text readable; the
               negative word-spacing keeps the gap tight like the design. */}
@@ -171,9 +163,9 @@ function Hero() {
             animate={{ opacity: 1 }}
             transition={{ duration: 0.6, delay: 0.6 }}
           >
-            One hosted MCP server for Cursor, Claude, Codex, Grok, and your
-            cloud agents. Fund one wallet, then give every client its own
-            permissions and spending limit.
+            Give Cursor, Claude, Codex, Grok, and your cloud agents one wallet
+            you own. They buy the APIs and data they need. You set what each one
+            can spend, and no keys ever sit in their configs.
           </motion.p>
           <motion.div
             className="mt-8"
@@ -181,23 +173,7 @@ function Hero() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, ease: EASE, delay: 0.75 }}
           >
-            <EarlyAccess
-              tone="blue"
-              note={
-                <>
-                  Invites go out in small batches. Already in?{' '}
-                  <button
-                    type="button"
-                    onClick={() => void copy()}
-                    className="text-paper underline underline-offset-3 hover:text-lime"
-                    aria-label="Copy the MCP URL"
-                  >
-                    {state === 'idle' ? `copy ${MCP_HOST}` : copyLabel(state)}
-                  </button>
-                  <CopyStatus state={state} />
-                </>
-              }
-            />
+            <EarlyAccess tone="blue" />
           </motion.div>
         </div>
         <div className="mx-auto w-full max-w-[560px]">
@@ -221,13 +197,13 @@ function Home() {
             <Reveal>
               <p className="eyebrow text-mute">why</p>
               <h2 className="title mt-3 max-w-[30ch] text-[clamp(1.6rem,3vw,2.25rem)]">
-                Five agents, four services.{' '}
-                <Sweep tone="blue">One connection each.</Sweep>
+                Stop pasting keys into <Sweep tone="blue">every agent.</Sweep>
               </h2>
               <p className="mt-5 max-w-[62ch] text-[15.5px] text-mute">
-                Today, letting an agent pay for data means wiring a server and a
-                key for every agent and every service. With LanaTools, each
-                agent connects once and every service sits behind that URL.
+                Today, each agent needs its own key and its own setup for every
+                paid service, and every copy is a key that can leak. With
+                LanaTools, each agent connects once and your keys stay in your
+                wallet.
               </p>
             </Reveal>
             <div className="mt-12">
@@ -253,12 +229,12 @@ function Home() {
             <Reveal>
               <p className="eyebrow text-mute">control</p>
               <h2 className="title mt-3 text-[clamp(1.6rem,3vw,2.25rem)]">
-                Change the rules <Sweep tone="blue">whenever you like.</Sweep>
+                Cut off any agent <Sweep tone="blue">in one click.</Sweep>
               </h2>
               <p className="mt-5 max-w-[62ch] text-[15.5px] text-mute">
-                Try it. Pick a client, then raise its limit, revoke it, or send
-                a test call. Your changes land on the record right next to the
-                calls they affect.
+                Try it. Pick an agent, then raise its limit, revoke it, or send
+                a test call. Every change shows up in the activity log next to
+                the calls it affects. The numbers here are samples.
               </p>
             </Reveal>
             <Reveal className="mt-10" delay={0.1}>
@@ -271,12 +247,12 @@ function Home() {
           <Reveal>
             <p className="eyebrow text-paper-2">tools</p>
             <h2 className="title mt-3 max-w-[34ch] text-[clamp(1.6rem,3vw,2.25rem)]">
-              Pays for services today. <Sweep>More tools arrive</Sweep> through
-              the same URL.
+              Connect once. It keeps getting <Sweep>more useful.</Sweep>
             </h2>
             <p className="mt-5 max-w-[62ch] text-[15.5px] text-paper-2">
-              Your agent keeps the connection it already has. New tools show up
-              in it without reinstalling anything.
+              Paid APIs come first. Routing, swaps you sign yourself, and Solana
+              data from Helius, Jupiter, and Dune follow, all through the URL
+              you already added.
             </p>
           </Reveal>
           <div className="mt-12">
@@ -316,7 +292,7 @@ function Home() {
               <div id="early-access" className="scroll-mt-24">
                 <p className="eyebrow text-mute">early access</p>
                 <h3 className="title mt-3 text-[clamp(1.3rem,2.4vw,1.7rem)]">
-                  Be one of the first agents to pay.
+                  Be first to give your agents a wallet.
                 </h3>
                 <div className="mt-6">
                   <EarlyAccess tone="paper" />

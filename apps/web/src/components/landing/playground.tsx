@@ -26,7 +26,7 @@ function initial(): State {
   ) as State
 }
 
-// Illustrative history so the record is never empty.
+// Illustrative history so the activity log is never empty.
 const SEED: Array<Entry> = [
   {
     id: -1,
@@ -240,7 +240,7 @@ export function Playground() {
     >
       <div className="box box-lg overflow-hidden">
         <div className="hidden grid-cols-[minmax(0,1.9fr)_5.5rem_4rem_minmax(7rem,1fr)] gap-4 border-b border-rule bg-paper px-4 py-2 text-[11px] font-semibold tracking-wide text-mute uppercase sm:grid">
-          <span>Client</span>
+          <span>Agent</span>
           <span className="text-right">Spent</span>
           <span className="text-right">Limit</span>
           <span>Used</span>
@@ -338,7 +338,7 @@ export function Playground() {
 
       <div className="box box-lg flex flex-col overflow-hidden">
         <div className="flex items-center justify-between border-b-[1.5px] border-ink bg-paper px-4 py-2.5 text-[12px]">
-          <span className="font-semibold">the record</span>
+          <span className="font-semibold">activity log</span>
           <span className="text-mute">calls and your changes</span>
         </div>
         <ul
@@ -376,7 +376,7 @@ export function Playground() {
           </AnimatePresence>
         </ul>
         <p className="border-t border-rule px-4 py-2.5 text-[11.5px] text-mute">
-          Illustrative figures. Changes take effect on the next call.
+          Changes take effect on the next call.
         </p>
       </div>
     </div>

@@ -141,7 +141,7 @@ export function WalletFan() {
         className="absolute top-0 left-0 origin-top-left"
         style={{ width: fan.w, height: H, transform: `scale(${scale})` }}
         role="img"
-        aria-label="One wallet holds a card for each agent: Cursor, Claude, Codex, Grok, and a cloud agent. Each card has its own spending limit. Calls that fit are paid; calls over the limit, or from a client that may not pay, are denied."
+        aria-label="One wallet holds a card for each agent: Cursor, Claude, Codex, Grok, and a cloud agent. Each card has its own spending limit. Calls that fit are paid; calls over the limit, or from an agent that may not pay, are denied."
       >
         {CLIENTS.map((c, i) => {
           const pos = fan.cards[i] ?? fan.cards[2]!
@@ -265,8 +265,7 @@ export function WalletFan() {
             </span>
           </div>
           <div className="mt-4 flex items-center justify-between border-t-[1.5px] border-dashed border-ink/40 pt-3 text-[12px] font-semibold">
-            <span>5 clients · 5 limits · 1 record</span>
-            <span className="text-ink/60">illustrative</span>
+            <span>5 agents · 5 limits · 1 activity log</span>
           </div>
         </motion.div>
       </div>
