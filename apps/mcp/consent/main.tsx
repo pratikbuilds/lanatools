@@ -3,6 +3,7 @@ import { toSolanaWalletConnectors } from '@privy-io/react-auth/solana'
 import ReactDOM from 'react-dom/client'
 import { useEffect, useState } from 'react'
 import { z } from 'zod'
+import logoUrl from '../../web/public/favicon.svg?url'
 import './styles.css'
 
 const appId = import.meta.env.VITE_PRIVY_APP_ID
@@ -12,15 +13,6 @@ const PendingConsent = z.object({
   redirectUri: z.url(),
   scopes: z.tuple([z.literal('account:read')]),
 })
-
-function clientHost(clientId: string) {
-  try {
-    const url = new URL(clientId)
-    return url.protocol === 'https:' ? url.hostname : null
-  } catch {
-    return null
-  }
-}
 
 function Connect() {
   const { ready, authenticated, user, login, logout, getAccessToken } =
@@ -86,92 +78,112 @@ function Connect() {
     user?.wallet?.address ||
     user?.id
   const redirect = pending && new URL(pending.redirectUri)
-  const publishedClient = pending && clientHost(pending.clientId)
 
   return (
-    <main>
-      <div className="brand">LANATOOLS / CONNECTION</div>
-      <section aria-labelledby="title">
-        <h1 id="title">Connect an MCP client</h1>
-        {!handle && (
-          <p role="alert">Open this page from your MCP client to connect.</p>
-        )}
-        {pending && (
-          <>
-            <p>
-              <strong>{pending.clientName}</strong> is asking to connect to your
-              LanaTools account.
+    <main className="page">
+      <div className="shell">
+        <header className="brand">
+          <span className="wordmark">
+            <img src={logoUrl} alt="" width="30" height="30" />
+            <span>
+              lanatools<span className="wordmark-suffix">.sh</span>
+            </span>
+          </span>
+          <span className="brand-context">MCP connection</span>
+        </header>
+
+        <section className="panel" aria-labelledby="title">
+          <p className="eyebrow">Client access</p>
+          <h1 id="title">
+            {pending ? `Connect ${pending.clientName}?` : 'Connect a client'}
+          </h1>
+
+          {!handle && (
+            <p className="lede" role="alert">
+              Open this page from your MCP client to connect.
             </p>
-            <dl>
-              <dt>Access requested</dt>
-              <dd>Read the identity of your LanaTools account</dd>
-              <dt>Authorization goes to</dt>
-              <dd>{redirect?.host}</dd>
-              <dt>Client identity</dt>
-              <dd>
-                {publishedClient
-                  ? `Published from ${publishedClient}`
-                  : 'Self-registered; the name is not verified'}
-              </dd>
-            </dl>
-            <p className="detail">Callback: {pending.redirectUri}</p>
-            {redirect &&
-              ['localhost', '127.0.0.1', '[::1]'].includes(
-                redirect.hostname,
-              ) && (
-                <p className="warning">
-                  This sends access to an app on your computer. Continue only if
-                  you just started this connection.
-                </p>
+          )}
+
+          {pending && (
+            <>
+              <p className="client-note">Client name supplied by the app</p>
+
+              <div className="permission">
+                <span className="permission-label">Permission requested</span>
+                <strong>Read account identity</strong>
+                <span>No wallet or payment access.</span>
+              </div>
+
+              {ready && authenticated && (
+                <div className="account">
+                  <span className="account-label">Signed in as</span>
+                  <strong>{account}</strong>
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={busy}
+                    onClick={() => void logout()}
+                  >
+                    Sign out to use another account
+                  </button>
+                </div>
               )}
-            <p className="detail">
-              This request does not authorize wallet signing or payments. Those
-              need a wallet-specific grant and a spending limit.
-            </p>
-            {ready && authenticated && (
-              <div className="account">
-                Signed in as <strong>{account}</strong>
+
+              <div className="destination">
+                <span className="destination-label">Returns to</span>
+                <strong>{redirect?.host}</strong>
+                {redirect &&
+                  ['localhost', '127.0.0.1', '[::1]'].includes(
+                    redirect.hostname,
+                  ) && (
+                    <p>
+                      Only continue if you started this in an app on your
+                      computer.
+                    </p>
+                  )}
+              </div>
+
+              <details className="details">
+                <summary>Connection details</summary>
+                <span>Callback URL</span>
+                <code>{pending.redirectUri}</code>
+                <span>Client ID</span>
+                <code>{pending.clientId}</code>
+              </details>
+
+              <div className="actions">
+                {ready && !authenticated ? (
+                  <button type="button" onClick={() => login()}>
+                    Sign in
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={!ready || !authenticated || busy}
+                    onClick={() => void decide('approve')}
+                  >
+                    Allow access
+                  </button>
+                )}
                 <button
                   type="button"
-                  className="link"
+                  className="secondary"
                   disabled={busy}
-                  onClick={() => void logout()}
+                  onClick={() => void decide('deny')}
                 >
-                  Sign out to use another account
+                  Deny
                 </button>
               </div>
-            )}
-            <div className="actions">
-              {ready && !authenticated ? (
-                <button type="button" onClick={() => login()}>
-                  Sign in to continue
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  disabled={!ready || !authenticated || busy}
-                  onClick={() => void decide('approve')}
-                >
-                  Connect
-                </button>
-              )}
-              <button
-                type="button"
-                className="secondary"
-                disabled={busy}
-                onClick={() => void decide('deny')}
-              >
-                Deny
-              </button>
-            </div>
-          </>
-        )}
-        {message && (
-          <p role="alert" className="warning">
-            {message}
-          </p>
-        )}
-      </section>
+            </>
+          )}
+
+          {message && (
+            <p role="alert" className="error">
+              {message}
+            </p>
+          )}
+        </section>
+      </div>
     </main>
   )
 }
