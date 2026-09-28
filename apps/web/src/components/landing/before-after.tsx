@@ -182,12 +182,10 @@ function Providers() {
 function Panel({
   after,
   label,
-  stat,
   body,
 }: {
   after: boolean
   label: string
-  stat: string
   body: string
 }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -212,11 +210,8 @@ function Panel({
 
   return (
     <div ref={ref} className="box box-lg flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between gap-3 border-b-[1.5px] border-ink bg-paper px-4 py-2.5 text-[12px]">
+      <div className="border-b-[1.5px] border-ink bg-paper px-4 py-2.5 text-[12px]">
         <span className="font-semibold">{label}</span>
-        <span className={after ? 'chip chip-lime' : 'chip chip-coral'}>
-          {stat}
-        </span>
       </div>
       <div className="px-3 py-4 sm:px-5">
         <svg viewBox="0 0 430 300" className="h-auto w-full" aria-hidden="true">
@@ -326,13 +321,11 @@ export function BeforeAfter() {
       <Panel
         after={false}
         label="today"
-        stat="20 setups · 5 keys"
         body="Each agent and service pair needs its own server, key, and config. Add a service and you repeat it five times."
       />
       <Panel
         after
         label="with lanatools"
-        stat="5 connections · 0 keys"
         body="Each agent connects once, with one URL and no keys in its config. Add a service and every agent can reach it."
       />
     </div>

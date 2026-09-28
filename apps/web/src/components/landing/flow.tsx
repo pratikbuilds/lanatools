@@ -413,7 +413,7 @@ function Diagram({ layout, still }: { layout: Layout; still: boolean }) {
       viewBox={layout.viewBox}
       className="h-auto w-full"
       role="img"
-      aria-label="Cursor, Claude, Codex, Grok, and a cloud agent connect through one URL to your wallet, which checks each call against that client's limit and permissions, then forwards it to pay.sh, Helius, Jupiter, or Dune. A call over its limit is denied at the wallet."
+      aria-label="Cursor, Claude, Codex, Grok, and a cloud agent connect through one URL to your wallet, which checks each call against that agent's limit and permissions, then forwards it to pay.sh, Helius, Jupiter, or Dune. A call over its limit is denied at the wallet."
     >
       <path
         d={layout.stem}
@@ -678,11 +678,11 @@ const STEPS = [
   },
   {
     title: 'Your wallet checks the call.',
-    body: 'Is this client allowed to pay? Does the price fit its limit? If either answer is no, the call stops here and nothing is paid.',
+    body: 'Is this agent allowed to pay? Does the price fit its limit? If either answer is no, the call stops here and nothing is paid.',
   },
   {
-    title: 'It pays, forwards, and records.',
-    body: 'The wallet pays the provider and the result comes back through the same connection. The call, its cost, and what is left of the limit go on the record.',
+    title: 'It pays, forwards, and logs.',
+    body: 'The wallet pays the provider and the result comes back through the same connection. The call, its cost, and what is left of the limit go in the activity log.',
   },
 ]
 

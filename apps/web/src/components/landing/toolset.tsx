@@ -15,17 +15,17 @@ const TOOLS: Array<{
     stage: 'available',
     title: 'Pay for services',
     icon: '/lanatools-icon-pay.png',
-    body: 'Paid endpoints, including ones found through the pay.sh catalog, settle from your wallet within that client’s limit.',
+    body: 'Paid endpoints, including ones found through the pay.sh catalog, settle from your wallet within that agent’s spending limit.',
   },
   {
     stage: 'next',
-    title: 'Route payment URLs',
+    title: 'Ask for a result, skip the setup',
     icon: '/lanatools-icon-route.png',
     body: 'Ask for a paid result and let the router reach the right provider, without finding and configuring each URL yourself.',
   },
   {
     stage: 'planned',
-    title: 'Prepare transactions',
+    title: 'Swaps you sign yourself',
     icon: '/lanatools-icon-prepare.png',
     body: 'Swaps and transfers come back as a review link. You sign from a local wallet, a browser wallet, or the embedded wallet.',
   },
@@ -39,7 +39,7 @@ const TOOLS: Array<{
 ]
 
 const CHIP: Record<Stage, { text: string; className: string }> = {
-  available: { text: 'available now', className: 'chip chip-lime' },
+  available: { text: 'first at launch', className: 'chip chip-lime' },
   next: { text: 'next', className: 'chip chip-blue' },
   planned: { text: 'planned', className: 'chip' },
 }
