@@ -40,7 +40,12 @@ the user to `http://localhost:8788/connect`. Privy sign-in happens on that
 origin, and the browser returns to the client's registered callback after
 approval or denial. The regular web app may use a separate browser session.
 
-Hosted deployment needs a KV namespace for OAuth, the hosted API D1 binding,
-Privy credentials on the API Worker, the public Privy app ID at consent build
-time, and the `mcp.lanatools.sh` route allowed by the Privy app. Local
-verification does not provision or deploy these resources.
+## Hosted run
+
+The hosted endpoint is `https://mcp.lanatools.sh/mcp`. The MCP Worker uses its
+own OAuth KV namespace and calls the production API Worker, which stores grants
+in `lanatools-production` D1. Set `PRIVY_APP_ID` and `PRIVY_APP_SECRET` as API
+Worker secrets, supply `VITE_PRIVY_APP_ID` when building consent assets, and
+allow `https://mcp.lanatools.sh` in the Privy app's domains. After applying any
+new D1 migrations, run `bun run deploy:api` followed by `bun run deploy:mcp`.
+Do not point a preview Worker at production KV or D1 for authorization tests.

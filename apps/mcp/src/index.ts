@@ -5,6 +5,7 @@ import { createMcpHandler } from 'agents/mcp/server'
 import { z } from 'zod'
 import { env as bindings } from 'cloudflare:workers'
 import type { McpAccessService } from '../../api/src/mcp-service'
+import { completeApproval } from './complete-approval'
 
 type McpEnv = Env & {
   OAUTH_PROVIDER: OAuthHelpers
@@ -144,20 +145,28 @@ const defaultHandler = {
             request,
             handle,
           )
-          const { grantId } = await env.API.activateGrant(
+          const { grantId } = await env.API.grantIdForConsent(
             handle,
             approved.request.clientId,
             userId,
           )
-          const { redirectTo } = await env.OAUTH_PROVIDER.completeAuthorization(
-            {
-              request: approved.request,
-              // OAuthProvider separates the subject from its code with colons.
-              userId: encodeURIComponent(userId),
-              scope: approved.request.scope,
-              props: { grantId, userId, clientId: approved.request.clientId },
-              metadata: { label: 'LanaTools connection' },
-            },
+          const { redirectTo } = await completeApproval(
+            () =>
+              env.OAUTH_PROVIDER.completeAuthorization({
+                request: approved.request,
+                // OAuthProvider separates the subject from its code with colons.
+                userId: encodeURIComponent(userId),
+                scope: approved.request.scope,
+                props: { grantId, userId, clientId: approved.request.clientId },
+                metadata: { label: 'LanaTools connection' },
+              }),
+            () =>
+              env.API.activateGrant(
+                handle,
+                approved.request.clientId,
+                userId,
+                grantId,
+              ),
           )
           return json({ redirectTo }, 200, approved.headers)
         } catch {

@@ -1,0 +1,37 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "lanatools-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-28",
+  "compatibility_flags": ["nodejs_compat"],
+  "account_id": "b5569935f933970ae15fd5b26ba93d7a",
+  "workers_dev": true,
+  "preview_urls": true,
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 1 },
+  },
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+  },
+  "kv_namespaces": [
+    {
+      "binding": "OAUTH_KV",
+      "id": "8947c88087ed4f8691ba8d0c0719d562",
+    },
+  ],
+  "services": [
+    {
+      "binding": "API",
+      "service": "lanatools-api",
+      "entrypoint": "McpAccessService",
+    },
+  ],
+  "vars": {
+    "MCP_ORIGIN": "https://mcp.lanatools.sh",
+  },
+  "routes": [{ "pattern": "mcp.lanatools.sh", "custom_domain": true }],
+}

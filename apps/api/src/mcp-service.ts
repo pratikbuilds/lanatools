@@ -68,7 +68,26 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
     return userId
   }
 
-  async activateGrant(handle: string, clientId: string, userId: string) {
+  async grantIdForConsent(handle: string, clientId: string, userId: string) {
+    const consent = await this.pendingConsent(handle)
+    if (!consent || consent.clientId !== clientId)
+      throw new Error('Authorization request expired')
+    const grant = await drizzle(this.env.DB)
+      .select({ id: mcpGrant.id })
+      .from(mcpGrant)
+      .where(
+        and(eq(mcpGrant.privyUserId, userId), eq(mcpGrant.clientId, clientId)),
+      )
+      .get()
+    return { grantId: grant?.id ?? crypto.randomUUID() }
+  }
+
+  async activateGrant(
+    handle: string,
+    clientId: string,
+    userId: string,
+    grantId: string,
+  ) {
     const consent = await drizzle(this.env.DB)
       .select()
       .from(mcpConsent)
@@ -84,22 +103,24 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
       throw new Error('Authorization request expired')
 
     const db = drizzle(this.env.DB)
-    const [grant] = await db
-      .insert(mcpGrant)
-      .values({
-        id: crypto.randomUUID(),
-        privyUserId: userId,
-        clientId,
-        createdAt: Date.now(),
-      })
-      .onConflictDoUpdate({
-        target: [mcpGrant.privyUserId, mcpGrant.clientId],
-        set: { status: 'active' },
-      })
-      .returning({ id: mcpGrant.id })
-    await db.delete(mcpConsent).where(eq(mcpConsent.handle, handle))
-    if (!grant) throw new Error('Could not create MCP grant')
-    return { grantId: grant.id, userId }
+    const [[grant]] = await db.batch([
+      db
+        .insert(mcpGrant)
+        .values({
+          id: grantId,
+          privyUserId: userId,
+          clientId,
+          createdAt: Date.now(),
+        })
+        .onConflictDoUpdate({
+          target: [mcpGrant.privyUserId, mcpGrant.clientId],
+          set: { status: 'active' },
+          setWhere: eq(mcpGrant.id, grantId),
+        })
+        .returning({ id: mcpGrant.id }),
+      db.delete(mcpConsent).where(eq(mcpConsent.handle, handle)),
+    ])
+    if (!grant) throw new Error('MCP grant changed during authorization')
   }
 
   async whoami(grantId: string, userId: string, clientId: string) {
