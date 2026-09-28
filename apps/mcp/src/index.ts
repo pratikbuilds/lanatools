@@ -58,31 +58,10 @@ function createServer(env: McpEnv, props: unknown, scopes: string[]) {
   return server
 }
 
-function cors(request: Request, env: McpEnv) {
-  if (request.headers.get('origin') !== env.WEB_ORIGIN) return null
-  return {
-    'Access-Control-Allow-Origin': env.WEB_ORIGIN,
-    'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    Vary: 'Origin',
-  }
-}
-
-function json(
-  request: Request,
-  env: McpEnv,
-  value: unknown,
-  status = 200,
-  extra?: Headers,
-) {
+function json(value: unknown, status = 200, extra?: Headers) {
   const headers = new Headers(extra)
   headers.set('Content-Type', 'application/json')
   headers.set('Cache-Control', 'no-store')
-  const allowed = cors(request, env)
-  if (allowed)
-    for (const [key, headerValue] of Object.entries(allowed))
-      headers.set(key, headerValue)
   return new Response(JSON.stringify(value), { status, headers })
 }
 
@@ -92,8 +71,8 @@ const defaultHandler = {
     if (url.pathname === '/authorize' && request.method === 'GET') {
       try {
         const auth = await env.OAUTH_PROVIDER.parseAuthRequest(request)
-        if (!auth.scope.includes('account:read'))
-          return new Response('Missing account:read scope', { status: 400 })
+        if (auth.scope.length !== 1 || auth.scope[0] !== 'account:read')
+          return new Response('Unsupported access request', { status: 400 })
         const client = await env.OAUTH_PROVIDER.lookupClient(auth.clientId)
         if (!client) return new Response('Unknown MCP client', { status: 400 })
         const consent = await env.OAUTH_PROVIDER.beginConsent(auth)
@@ -102,8 +81,9 @@ const defaultHandler = {
           clientId: auth.clientId,
           clientName: client.clientName || 'Unnamed MCP client',
           redirectUri: auth.redirectUri,
+          scopes: auth.scope,
         })
-        const destination = new URL('/connect', env.WEB_ORIGIN)
+        const destination = new URL('/connect', env.MCP_ORIGIN)
         destination.searchParams.set('handle', consent.handle)
         const headers = new Headers(consent.headers)
         headers.set('Location', destination.href)
@@ -114,46 +94,51 @@ const defaultHandler = {
       }
     }
 
-    if (url.pathname === '/consent' && request.method === 'OPTIONS') {
-      const allowed = cors(request, env)
-      return allowed
-        ? new Response(null, { status: 204, headers: allowed })
-        : new Response(null, { status: 403 })
+    if (url.pathname === '/connect' && request.method === 'GET') {
+      const asset = await env.ASSETS.fetch(
+        new Request(new URL('/', url), request),
+      )
+      const headers = new Headers(asset.headers)
+      headers.set('Cache-Control', 'no-store')
+      headers.set('Referrer-Policy', 'no-referrer')
+      headers.set(
+        'Content-Security-Policy',
+        "script-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'",
+      )
+      headers.set('X-Frame-Options', 'DENY')
+      headers.set('X-Content-Type-Options', 'nosniff')
+      return new Response(asset.body, { status: asset.status, headers })
     }
 
+    if (url.pathname.startsWith('/assets/') && request.method === 'GET')
+      return env.ASSETS.fetch(request)
+
     if (url.pathname === '/consent') {
-      if (!cors(request, env)) return new Response('Forbidden', { status: 403 })
       const handle = url.searchParams.get('handle')
-      if (!handle)
-        return json(request, env, { error: 'Missing consent handle' }, 400)
+      if (!handle) return json({ error: 'Missing consent handle' }, 400)
       if (request.method === 'GET') {
         const pending = await env.API.pendingConsent(handle)
         return pending
-          ? json(request, env, pending)
-          : json(request, env, { error: 'Authorization request expired' }, 404)
+          ? json(pending)
+          : json({ error: 'Authorization request expired' }, 404)
       }
       if (request.method === 'POST') {
+        if (request.headers.get('origin') !== env.MCP_ORIGIN)
+          return new Response('Forbidden', { status: 403 })
         const body = z
           .object({ decision: z.enum(['approve', 'deny']) })
           .safeParse(await request.json().catch(() => null))
-        if (!body.success)
-          return json(request, env, { error: 'Invalid decision' }, 400)
+        if (!body.success) return json({ error: 'Invalid decision' }, 400)
         try {
           if (body.data.decision === 'deny') {
             const denied = await env.OAUTH_PROVIDER.denyConsent(request, handle)
             await env.API.discardConsent(handle)
-            return json(
-              request,
-              env,
-              { redirectTo: denied.redirectTo },
-              200,
-              denied.headers,
-            )
+            return json({ redirectTo: denied.redirectTo }, 200, denied.headers)
           }
           const token = /^Bearer (.+)$/.exec(
             request.headers.get('authorization') || '',
           )?.[1]
-          if (!token) return json(request, env, { error: 'Sign in first' }, 401)
+          if (!token) return json({ error: 'Sign in first' }, 401)
           const userId = await env.API.verifyPrivyToken(token)
           const approved = await env.OAUTH_PROVIDER.approveConsent(
             request,
@@ -174,14 +159,9 @@ const defaultHandler = {
               metadata: { label: 'LanaTools connection' },
             },
           )
-          return json(request, env, { redirectTo }, 200, approved.headers)
+          return json({ redirectTo }, 200, approved.headers)
         } catch {
-          return json(
-            request,
-            env,
-            { error: 'Authorization failed. Please reconnect.' },
-            400,
-          )
+          return json({ error: 'Authorization failed. Please reconnect.' }, 400)
         }
       }
     }

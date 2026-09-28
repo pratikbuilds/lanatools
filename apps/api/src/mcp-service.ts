@@ -10,6 +10,7 @@ type ConsentInput = {
   clientId: string
   clientName: string
   redirectUri: string
+  scopes: string[]
 }
 
 type McpEnv = {
@@ -20,10 +21,16 @@ type McpEnv = {
 
 export class McpAccessService extends WorkerEntrypoint<McpEnv> {
   async recordConsent(input: ConsentInput) {
+    if (input.scopes.length !== 1 || input.scopes[0] !== 'account:read')
+      throw new Error('Unsupported access request')
     const db = drizzle(this.env.DB)
     await db.delete(mcpConsent).where(lt(mcpConsent.expiresAt, Date.now()))
     await db.insert(mcpConsent).values({
-      ...input,
+      handle: input.handle,
+      clientId: input.clientId,
+      clientName: input.clientName,
+      redirectUri: input.redirectUri,
+      scope: input.scopes[0],
       expiresAt: Date.now() + 10 * 60_000,
     })
   }
@@ -43,7 +50,9 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
     if (!consent || consent.expiresAt < Date.now()) return null
     return {
       clientName: consent.clientName,
+      clientId: consent.clientId,
       redirectUri: consent.redirectUri,
+      scopes: [consent.scope],
     }
   }
 
@@ -67,7 +76,11 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
         and(eq(mcpConsent.handle, handle), eq(mcpConsent.clientId, clientId)),
       )
       .get()
-    if (!consent || consent.expiresAt < Date.now())
+    if (
+      !consent ||
+      consent.expiresAt < Date.now() ||
+      consent.scope !== 'account:read'
+    )
       throw new Error('Authorization request expired')
 
     const db = drizzle(this.env.DB)

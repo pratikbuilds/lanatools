@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
+import { z } from 'zod'
 
 const origin = 'http://localhost:8788'
-const webOrigin = 'http://localhost:5173'
 const callback = 'http://127.0.0.1:8932/callback'
 const resource = new URL('/mcp', origin).href
 
@@ -44,22 +44,53 @@ authorize.search = new URLSearchParams({
 const started = await fetch(authorize, { redirect: 'manual' })
 assert.equal(started.status, 302)
 const location = new URL(started.headers.get('location') || '')
-assert.equal(location.origin, webOrigin)
+assert.equal(location.origin, origin)
+assert.equal(location.pathname, '/connect')
 const handle = location.searchParams.get('handle')
 assert.ok(handle)
 const cookie = (started.headers.get('set-cookie') || '').split(';')[0]
 assert.ok(cookie)
 
+const page = await fetch(location, { headers: { Cookie: cookie } })
+assert.equal(page.status, 200)
+assert.match(page.headers.get('content-type') || '', /text\/html/)
+assert.match(
+  page.headers.get('content-security-policy') || '',
+  /script-src 'self'/,
+)
+assert.match(
+  page.headers.get('content-security-policy') || '',
+  /frame-ancestors 'none'/,
+)
+assert.match(await page.text(), /Connect an MCP client/)
+
 const consent = new URL('/consent', origin)
 consent.searchParams.set('handle', handle)
-const headers = { Origin: webOrigin, Cookie: cookie }
-const pending = await fetch(consent, { headers })
+const pending = await fetch(consent, { headers: { Cookie: cookie } })
 assert.equal(pending.status, 200)
-const pendingBody: unknown = await pending.json()
-assert.ok(
-  pendingBody && typeof pendingBody === 'object' && 'clientName' in pendingBody,
-)
+const pendingBody = z
+  .object({
+    clientName: z.string(),
+    clientId: z.string(),
+    scopes: z.tuple([z.literal('account:read')]),
+  })
+  .parse(await pending.json())
 assert.equal(pendingBody.clientName, 'LanaTools smoke test')
+assert.deepEqual(pendingBody.scopes, ['account:read'])
+assert.equal(pendingBody.clientId, client.client_id)
+
+const wrongOrigin = await fetch(consent, {
+  method: 'POST',
+  headers: {
+    Origin: 'https://lanatools.sh',
+    Cookie: cookie,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({ decision: 'deny' }),
+})
+assert.equal(wrongOrigin.status, 403)
+
+const headers = { Origin: origin, Cookie: cookie }
 
 const unsigned = await fetch(consent, {
   method: 'POST',

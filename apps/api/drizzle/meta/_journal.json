@@ -15,6 +15,13 @@
       "when": 1790579061030,
       "tag": "0001_quiet_siren",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790594770476,
+      "tag": "0002_tearful_gauntlet",
+      "breakpoints": true
     }
   ]
 }

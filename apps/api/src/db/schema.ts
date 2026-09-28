@@ -14,6 +14,7 @@ export const mcpConsent = sqliteTable('mcp_consent', {
   clientId: text('client_id').notNull(),
   clientName: text('client_name').notNull(),
   redirectUri: text('redirect_uri').notNull(),
+  scope: text('scope').notNull().default('account:read'),
   expiresAt: integer('expires_at').notNull(),
 })
 
