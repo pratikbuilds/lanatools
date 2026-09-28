@@ -218,50 +218,10 @@ body {
   }
 }
 
-/* Footer wordmark: outline letters, filled lime under the pointer. */
-@property --r {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-.spotlight {
-  --x: 50%;
-  --y: 50%;
-  transition: --r 450ms var(--ease-out);
-}
-.spotlight:hover {
-  --r: 14cqw;
-}
-/* Touch screens: keep a spotlight showing; dragging a finger moves it. */
-@media (hover: none) {
-  .spotlight {
-    --r: 20cqw;
-  }
-}
-.spotlight-outline {
-  color: transparent;
-  -webkit-text-stroke: 1.5px rgb(181 193 240 / 0.35);
-}
-.spotlight-fill {
-  -webkit-mask-image: radial-gradient(
-    circle var(--r) at var(--x) var(--y),
-    #000 55%,
-    transparent 100%
-  );
-  mask-image: radial-gradient(
-    circle var(--r) at var(--x) var(--y),
-    #000 55%,
-    transparent 100%
-  );
-}
-
 @media (prefers-reduced-motion: reduce) {
   .caret,
   .caret-late {
     animation: none;
-  }
-  .spotlight {
-    transition: none;
   }
   html {
     scroll-behavior: auto;
@@ -269,5 +229,36 @@ body {
   .btn,
   .btn-sm {
     transition: none;
+  }
+}
+
+/* Footer rail: a hairline with a payment packet running along it. */
+.footer-rail {
+  position: relative;
+  flex: 1;
+  height: 1px;
+  overflow: hidden;
+  background: rgb(181 193 240 / 0.18);
+}
+.footer-rail::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 18%;
+  background: linear-gradient(90deg, transparent, var(--color-lime));
+  animation: rail 3.2s var(--ease-out) infinite;
+}
+@keyframes rail {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(560%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .footer-rail::after {
+    animation: none;
+    display: none;
   }
 }
