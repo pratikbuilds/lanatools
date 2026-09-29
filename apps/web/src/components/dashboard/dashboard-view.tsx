@@ -11,7 +11,7 @@ export function DashboardView({
   signOutFailed,
   getAccessToken,
 }: {
-  user: Pick<User, 'linkedAccounts'>
+  user: Pick<User, 'id' | 'linkedAccounts'>
   onSignOut: () => void
   signOutFailed: boolean
   getAccessToken: GetAccessToken
@@ -44,7 +44,7 @@ export function DashboardView({
         ) : (
           <CreateWallet />
         )}
-        <ConnectedApps getAccessToken={getAccessToken} />
+        <ConnectedApps userId={user.id} getAccessToken={getAccessToken} />
       </main>
     </div>
   )

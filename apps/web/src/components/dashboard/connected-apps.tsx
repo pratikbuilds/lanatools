@@ -14,19 +14,22 @@ const SCOPE_LABELS: Record<string, string> = {
 }
 
 export function ConnectedApps({
+  userId,
   getAccessToken,
 }: {
+  userId: string
   getAccessToken: GetAccessToken
 }) {
   const queryClient = useQueryClient()
+  // Keyed by user so another account signing in never sees these rows.
+  const queryKey = ['mcp-clients', userId]
   const clients = useQuery({
-    queryKey: ['mcp-clients'],
+    queryKey,
     queryFn: () => listMcpClients(getAccessToken),
   })
   const revoke = useMutation({
     mutationFn: (grantId: string) => revokeMcpClient(getAccessToken, grantId),
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: ['mcp-clients'] }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey }),
   })
 
   return (

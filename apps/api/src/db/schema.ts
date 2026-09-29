@@ -18,16 +18,6 @@ export const mcpConsent = sqliteTable('mcp_consent', {
   expiresAt: integer('expires_at').notNull(),
 })
 
-// Dynamic client registration lets a client pick any name, so the dashboard
-// shows it next to the redirect host the user approved on the consent page.
-export const mcpClient = sqliteTable('mcp_client', {
-  clientId: text('client_id').primaryKey(),
-  clientName: text('client_name').notNull(),
-  redirectUri: text('redirect_uri').notNull(),
-  createdAt: integer('created_at').notNull(),
-  updatedAt: integer('updated_at').notNull(),
-})
-
 export const mcpGrant = sqliteTable(
   'mcp_grant',
   {
@@ -38,6 +28,10 @@ export const mcpGrant = sqliteTable(
       .notNull()
       .default('active'),
     scope: text('scope').notNull().default('account:read'),
+    // Copied from the consent the user approved. Clients choose their own
+    // names, so the dashboard shows the approved redirect host beside it.
+    clientName: text('client_name'),
+    redirectUri: text('redirect_uri'),
     createdAt: integer('created_at').notNull(),
     activatedAt: integer('activated_at'),
     revokedAt: integer('revoked_at'),

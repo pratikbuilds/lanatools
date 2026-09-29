@@ -1,8 +1,8 @@
-import { and, desc, eq, lt } from 'drizzle-orm'
+import { and, desc, eq, lt, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
 import type { McpClient } from '@lanatools/contracts'
-import { mcpClient, mcpConsent, mcpGrant } from './db/schema'
+import { mcpConsent, mcpGrant } from './db/schema'
 
 export type ConsentInput = {
   handle: string
@@ -30,33 +30,14 @@ export async function recordConsent(
     throw new Error('Unsupported access request')
   const db = drizzle(database)
   await db.delete(mcpConsent).where(lt(mcpConsent.expiresAt, now))
-  await db.batch([
-    db.insert(mcpConsent).values({
-      handle: input.handle,
-      clientId: input.clientId,
-      clientName: input.clientName,
-      redirectUri: input.redirectUri,
-      scope: input.scopes[0],
-      expiresAt: now + 10 * 60_000,
-    }),
-    db
-      .insert(mcpClient)
-      .values({
-        clientId: input.clientId,
-        clientName: input.clientName,
-        redirectUri: input.redirectUri,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: mcpClient.clientId,
-        set: {
-          clientName: input.clientName,
-          redirectUri: input.redirectUri,
-          updatedAt: now,
-        },
-      }),
-  ])
+  await db.insert(mcpConsent).values({
+    handle: input.handle,
+    clientId: input.clientId,
+    clientName: input.clientName,
+    redirectUri: input.redirectUri,
+    scope: input.scopes[0],
+    expiresAt: now + 10 * 60_000,
+  })
 }
 
 export async function discardConsent(database: D1Database, handle: string) {
@@ -154,13 +135,22 @@ export async function activateGrant(
         privyUserId: userId,
         clientId,
         scope: consent.scope,
+        clientName: consent.clientName,
+        redirectUri: consent.redirectUri,
         createdAt: now,
         activatedAt: now,
       })
       .onConflictDoUpdate({
         target: [mcpGrant.privyUserId, mcpGrant.clientId],
-        set: { status: 'active', scope: consent.scope, activatedAt: now },
-        setWhere: eq(mcpGrant.id, grantId),
+        set: {
+          status: 'active',
+          scope: consent.scope,
+          clientName: consent.clientName,
+          redirectUri: consent.redirectUri,
+          activatedAt: now,
+        },
+        // A disconnect during this approval keeps the grant revoked.
+        setWhere: sql`${mcpGrant.id} = ${grantId} and ${mcpGrant.status} != 'revoked'`,
       })
       .returning({ id: mcpGrant.id }),
     db.delete(mcpConsent).where(eq(mcpConsent.handle, handle)),
@@ -188,11 +178,23 @@ export async function useActiveGrant(
     )
     .get()
   if (!grant) return false
-  if (!grant.lastUsedAt || now - grant.lastUsedAt > LAST_USED_INTERVAL)
-    await db
-      .update(mcpGrant)
-      .set({ lastUsedAt: now })
-      .where(eq(mcpGrant.id, grantId))
+  if (!grant.lastUsedAt || now - grant.lastUsedAt > LAST_USED_INTERVAL) {
+    // Last use is bookkeeping; failing to record it must not deny access.
+    try {
+      await db
+        .update(mcpGrant)
+        .set({ lastUsedAt: now })
+        .where(eq(mcpGrant.id, grantId))
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          message: 'Could not record MCP grant use',
+          grantId,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      )
+    }
+  }
   return true
 }
 
@@ -204,15 +206,14 @@ export async function listClients(
     .select({
       grantId: mcpGrant.id,
       clientId: mcpGrant.clientId,
-      clientName: mcpClient.clientName,
-      redirectUri: mcpClient.redirectUri,
+      clientName: mcpGrant.clientName,
+      redirectUri: mcpGrant.redirectUri,
       scope: mcpGrant.scope,
       createdAt: mcpGrant.createdAt,
       activatedAt: mcpGrant.activatedAt,
       lastUsedAt: mcpGrant.lastUsedAt,
     })
     .from(mcpGrant)
-    .leftJoin(mcpClient, eq(mcpClient.clientId, mcpGrant.clientId))
     .where(and(eq(mcpGrant.privyUserId, userId), eq(mcpGrant.status, 'active')))
     .orderBy(desc(mcpGrant.createdAt))
   return rows.map((row) => ({

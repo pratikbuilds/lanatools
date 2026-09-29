@@ -20,8 +20,9 @@ Object is part of this OAuth slice.
 
 ## Connected apps and revocation
 
-Consent records the client's self-reported name and redirect URI in the
-`mcp_client` D1 table. The web dashboard lists a user's active grants at
+Approving a client copies its self-reported name and the approved redirect URI
+onto the user's grant, so a later unapproved request cannot change how an
+existing connection is shown. The web dashboard lists a user's active grants at
 `GET /api/mcp/clients` and disconnects one with
 `POST /api/mcp/clients/:grantId/revoke`, both authenticated with a Privy access
 token.

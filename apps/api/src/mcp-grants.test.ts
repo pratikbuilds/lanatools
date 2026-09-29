@@ -32,15 +32,23 @@ beforeAll(async () => {
 
 afterAll(() => proxy.dispose())
 
-async function connect(userId: string, clientId: string) {
+async function startConsent(
+  clientId: string,
+  redirectUri = 'https://claude.ai/api/mcp/auth_callback',
+) {
   const handle = crypto.randomUUID()
   await recordConsent(db, {
     handle,
     clientId,
     clientName: 'Claude',
-    redirectUri: 'https://claude.ai/api/mcp/auth_callback',
+    redirectUri,
     scopes: ['account:read'],
   })
+  return handle
+}
+
+async function connect(userId: string, clientId: string) {
+  const handle = await startConsent(clientId)
   const { grantId } = await prepareGrant(db, handle, clientId, userId)
   await activateGrant(db, handle, { grantId, userId, clientId })
   return { grantId, userId, clientId }
@@ -95,4 +103,26 @@ test('reconnecting after a revoke never revives the old grant', async () => {
   expect((await listClients(db, 'user-again')).map((c) => c.grantId)).toEqual([
     renewed.grantId,
   ])
+})
+
+test('an unapproved request cannot change how a connected app is shown', async () => {
+  await connect('user-shown', 'client-shown')
+  await startConsent('client-shown', 'https://attacker.example/callback')
+  expect((await listClients(db, 'user-shown'))[0]?.redirectHost).toBe(
+    'claude.ai',
+  )
+})
+
+test('a disconnect during another approval stays disconnected', async () => {
+  const grant = await connect('user-race', 'client-race')
+  const handle = await startConsent('client-race')
+  const pending = await prepareGrant(db, handle, 'client-race', 'user-race')
+  expect(pending.grantId).toBe(grant.grantId)
+
+  await revokeGrant(db, 'user-race', grant.grantId)
+  await expect(
+    activateGrant(db, handle, { ...grant, grantId: pending.grantId }),
+  ).rejects.toThrow('MCP grant changed during authorization')
+  expect(await useActiveGrant(db, grant)).toBe(false)
+  expect(await listClients(db, 'user-race')).toEqual([])
 })

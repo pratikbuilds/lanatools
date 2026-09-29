@@ -29,7 +29,7 @@ function render(linkedAccounts: User['linkedAccounts']) {
   return renderToString(
     <QueryClientProvider client={new QueryClient()}>
       <DashboardView
-        user={{ linkedAccounts }}
+        user={{ id: 'did:privy:test', linkedAccounts }}
         onSignOut={() => {}}
         signOutFailed={false}
         getAccessToken={() => Promise.resolve(null)}
