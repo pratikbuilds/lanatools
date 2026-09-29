@@ -50,7 +50,8 @@ a fixed 0.01 USDC over MPP and x402. Needs the [pay CLI](https://pay.sh) on
   keypair (`solana address`) needs devnet SOL and USDC. It receives merchant
   payments, funds test wallets, and gives the gateway's fee payer 0.1 SOL the
   first time it starts. Set `DEVNET_RPC_URL` to use an RPC other than
-  `https://api.devnet.solana.com`.
+  `https://api.devnet.solana.com`; the testbed refuses to fund or pay unless
+  its genesis hash is devnet's.
 
 ```sh
 bun run testbed check           # sandbox: start, pay over MPP and x402, verify, stop

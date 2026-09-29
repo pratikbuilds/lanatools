@@ -100,9 +100,11 @@ async function launch(argv: Array<string>) {
   })
   for (let i = 0; !(await fetch(ROUTE).catch(() => null)); i++) {
     if (gateway.exitCode !== null) {
+      // pay prints this error as JSON, so the address follows an escaped
+      // newline; accept a real line break too.
       const output = await Bun.file(log).text()
       const unfunded =
-        /operator signer wallet has 0 SOL\\n([1-9A-HJ-NP-Za-km-z]{32,44})/.exec(
+        /operator signer wallet has 0 SOL(?:\\n|\s)+([1-9A-HJ-NP-Za-km-z]{32,44})/.exec(
           output,
         )?.[1]
       if (unfunded) return unfunded

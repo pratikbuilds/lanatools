@@ -4,7 +4,7 @@
  */
 import { join } from 'node:path'
 import type { Address } from '@solana/kit'
-import { assertSurfpool, setTokenBalance } from './rpc'
+import { assertGenesis, assertSurfpool, setTokenBalance } from './rpc'
 
 export const MERCHANT_ORIGIN = 'http://127.0.0.1:1402'
 const STATE = join(import.meta.dir, '..', '.state')
@@ -53,6 +53,7 @@ const sandbox: Profile = {
 // Solana CLI keypair pays for everything and receives merchant payments.
 const DEVNET_RPC_URL =
   process.env.DEVNET_RPC_URL ?? 'https://api.devnet.solana.com'
+const DEVNET_GENESIS_HASH = 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG'
 const devnet: Profile = {
   name: 'devnet',
   network: 'devnet',
@@ -69,7 +70,10 @@ const devnet: Profile = {
     '--recipient',
     solanaCli('solana', ['address']),
   ],
+  // Every devnet transfer and payment uses DEVNET_RPC_URL, so a mainnet URL
+  // here could spend real funds. Confirm the cluster before anything signs.
   preflight: async () => {
+    await assertGenesis(DEVNET_RPC_URL, DEVNET_GENESIS_HASH, 'devnet')
     solanaCli('solana', ['address'])
   },
   fund: async (owner, amount) => {

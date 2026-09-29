@@ -43,6 +43,19 @@ export async function assertSurfpool(rpcUrl: string) {
     throw new Error(`${rpcUrl} is not a Surfpool RPC; refusing to fund it`)
 }
 
+/** Fails unless the RPC serves the cluster with this genesis hash. */
+export async function assertGenesis(
+  rpcUrl: string,
+  genesisHash: string,
+  cluster: string,
+) {
+  const actual = await call<string>(rpcUrl, 'getGenesisHash', [])
+  if (actual !== genesisHash)
+    throw new Error(
+      `${rpcUrl} is not Solana ${cluster} (genesis ${actual}); refusing to fund or pay`,
+    )
+}
+
 /** Surfpool cheatcode: creates the owner's token account and sets its balance. */
 export function setTokenBalance(
   rpcUrl: string,
