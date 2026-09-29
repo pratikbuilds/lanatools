@@ -1,0 +1,26 @@
+{
+  "name": "@lanatools/mcp",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "smoke:local": "bun scripts/smoke-local.ts",
+    "verify:local": "bun scripts/verify-local.ts"
+  },
+  "dependencies": {
+    "@cloudflare/workers-oauth-provider": "1.1.0",
+    "@modelcontextprotocol/server": "2.0.0",
+    "@privy-io/react-auth": "^3.45.0",
+    "agents": "0.24.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260901.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "vite": "8.3.0"
+  }
+}

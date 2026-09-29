@@ -6,12 +6,14 @@
     "dev": "wrangler dev -c wrangler.local.jsonc --port 3000 --local",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply DB --local -c wrangler.local.jsonc",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote -c wrangler.jsonc",
     "db:smoke:local": "bun run db:migrate:local && bun scripts/smoke-local.ts",
     "build": "bun build src/index.ts --target=bun --outdir=dist",
     "start": "bun dist/index.js"
   },
   "dependencies": {
     "@lanatools/contracts": "workspace:*",
+    "@privy-io/node": "^0.35.0",
     "arktype": "catalog:",
     "hono": "4.13.8",
     "drizzle-orm": "0.45.2"

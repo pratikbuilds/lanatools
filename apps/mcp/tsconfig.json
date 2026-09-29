@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["bun", "@cloudflare/workers-types", "vite/client"],
+    "lib": ["ES2022", "DOM"],
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "src/**/*.ts",
+    "consent/**/*.tsx",
+    "scripts/**/*.ts",
+    "vite.config.ts",
+    "worker-configuration.d.ts"
+  ]
+}

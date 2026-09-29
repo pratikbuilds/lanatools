@@ -13,5 +13,13 @@
     "logs": { "enabled": true, "head_sampling_rate": 1 },
     "traces": { "enabled": true, "head_sampling_rate": 1 },
   },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "lanatools-production",
+      "database_id": "8670e5d1-a2d5-441b-9bb4-bb2512144bbe",
+      "migrations_dir": "drizzle",
+    },
+  ],
   "routes": [{ "pattern": "api.lanatools.sh", "custom_domain": true }],
 }
