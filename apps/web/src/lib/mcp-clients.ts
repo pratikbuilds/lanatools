@@ -5,7 +5,7 @@ export const MCP_SERVER_URL = 'https://mcp.lanatools.sh/mcp'
 
 export type GetAccessToken = () => Promise<string | null>
 
-async function authorized(getAccessToken: GetAccessToken) {
+export async function authorized(getAccessToken: GetAccessToken) {
   const token = await getAccessToken()
   if (!token) throw new Error('Sign in again to manage connected apps.')
   return { Authorization: `Bearer ${token}` }
@@ -46,4 +46,23 @@ export function timeAgo(timestamp: number, now = Date.now()) {
   for (const [unit, ms] of UNITS)
     if (elapsed >= ms) return relative.format(-Math.floor(elapsed / ms), unit)
   return 'just now'
+}
+
+export async function setMcpClientLimit(
+  getAccessToken: GetAccessToken,
+  grantId: string,
+  limitUsd: string,
+) {
+  const response = await fetch(
+    `/api/mcp/clients/${encodeURIComponent(grantId)}/limit`,
+    {
+      method: 'PUT',
+      headers: {
+        ...(await authorized(getAccessToken)),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ limitUsd }),
+    },
+  )
+  if (!response.ok) throw new Error('Could not change the limit.')
 }

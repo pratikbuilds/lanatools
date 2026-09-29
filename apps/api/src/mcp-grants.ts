@@ -1,8 +1,9 @@
 import { and, desc, eq, lt, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
+import { MAX_CLIENT_LIMIT_MICRO_USD, isMcpScope } from '@lanatools/contracts'
 import type { McpClient } from '@lanatools/contracts'
-import { mcpConsent, mcpGrant } from './db/schema'
+import { mcpConsent, mcpGrant, paymentActivity } from './db/schema'
 
 export type ConsentInput = {
   handle: string
@@ -21,13 +22,50 @@ export type GrantIdentity = {
 // Tool calls record use at most this often, so each call is not a D1 write.
 const LAST_USED_INTERVAL = 5 * 60_000
 
+/** Validates requested scopes; returns them space-separated for storage. */
+export function scopeString(scopes: readonly string[]) {
+  if (
+    scopes.length === 0 ||
+    new Set(scopes).size !== scopes.length ||
+    !scopes.every(isMcpScope)
+  )
+    throw new Error('Unsupported access request')
+  return scopes.join(' ')
+}
+
+export function scopeList(scope: string) {
+  return scope.split(' ')
+}
+
+/**
+ * Checks a spending limit the user approved. A payments grant needs one;
+ * any other grant must not carry one.
+ */
+function approvedLimit(scope: string, limitMicroUsd: number | null) {
+  if (!scopeList(scope).includes('payments:pay')) {
+    if (limitMicroUsd !== null) throw new Error('Unexpected spending limit')
+    return 0
+  }
+  if (!isClientLimit(limitMicroUsd))
+    throw new Error('Set a spending limit to allow payments')
+  return limitMicroUsd
+}
+
+export function isClientLimit(value: number | null): value is number {
+  return (
+    value !== null &&
+    Number.isSafeInteger(value) &&
+    value >= 0 &&
+    value <= MAX_CLIENT_LIMIT_MICRO_USD
+  )
+}
+
 export async function recordConsent(
   database: D1Database,
   input: ConsentInput,
   now = Date.now(),
 ) {
-  if (input.scopes.length !== 1 || input.scopes[0] !== 'account:read')
-    throw new Error('Unsupported access request')
+  const scope = scopeString(input.scopes)
   const db = drizzle(database)
   await db.delete(mcpConsent).where(lt(mcpConsent.expiresAt, now))
   await db.insert(mcpConsent).values({
@@ -35,7 +73,7 @@ export async function recordConsent(
     clientId: input.clientId,
     clientName: input.clientName,
     redirectUri: input.redirectUri,
-    scope: input.scopes[0],
+    scope,
     expiresAt: now + 10 * 60_000,
   })
 }
@@ -57,7 +95,7 @@ export async function pendingConsent(database: D1Database, handle: string) {
     clientName: consent.clientName,
     clientId: consent.clientId,
     redirectUri: consent.redirectUri,
-    scopes: [consent.scope],
+    scopes: scopeList(consent.scope),
   }
 }
 
@@ -110,6 +148,7 @@ export async function activateGrant(
   database: D1Database,
   handle: string,
   { grantId, userId, clientId }: GrantIdentity,
+  limitMicroUsd: number | null,
 ) {
   const db = drizzle(database)
   const consent = await db
@@ -119,12 +158,10 @@ export async function activateGrant(
       and(eq(mcpConsent.handle, handle), eq(mcpConsent.clientId, clientId)),
     )
     .get()
-  if (
-    !consent ||
-    consent.expiresAt < Date.now() ||
-    consent.scope !== 'account:read'
-  )
+  if (!consent || consent.expiresAt < Date.now())
     throw new Error('Authorization request expired')
+  scopeString(scopeList(consent.scope))
+  const limit = approvedLimit(consent.scope, limitMicroUsd)
 
   const now = Date.now()
   const [[grant]] = await db.batch([
@@ -135,6 +172,7 @@ export async function activateGrant(
         privyUserId: userId,
         clientId,
         scope: consent.scope,
+        limitMicroUsd: limit,
         clientName: consent.clientName,
         redirectUri: consent.redirectUri,
         createdAt: now,
@@ -145,6 +183,7 @@ export async function activateGrant(
         set: {
           status: 'active',
           scope: consent.scope,
+          limitMicroUsd: limit,
           clientName: consent.clientName,
           redirectUri: consent.redirectUri,
           activatedAt: now,
@@ -202,18 +241,43 @@ export async function listClients(
   database: D1Database,
   userId: string,
 ): Promise<McpClient[]> {
-  const rows = await drizzle(database)
+  const db = drizzle(database)
+  // Spending belongs to the user and client, not the grant row, so a
+  // reconnected client keeps what it already spent.
+  const totals = db
+    .select({
+      clientId: paymentActivity.clientId,
+      spent: sql<
+        number | null
+      >`coalesce(sum(case when ${paymentActivity.status} = 'paid' then ${paymentActivity.settledAtomic} else 0 end), 0)`.as(
+        'spent',
+      ),
+      reserved: sql<
+        number | null
+      >`coalesce(sum(case when ${paymentActivity.status} in ('reserved', 'uncertain') then ${paymentActivity.reservedAtomic} else 0 end), 0)`.as(
+        'reserved',
+      ),
+    })
+    .from(paymentActivity)
+    .where(eq(paymentActivity.privyUserId, userId))
+    .groupBy(paymentActivity.clientId)
+    .as('totals')
+  const rows = await db
     .select({
       grantId: mcpGrant.id,
       clientId: mcpGrant.clientId,
       clientName: mcpGrant.clientName,
       redirectUri: mcpGrant.redirectUri,
       scope: mcpGrant.scope,
+      limitMicroUsd: mcpGrant.limitMicroUsd,
+      spent: totals.spent,
+      reserved: totals.reserved,
       createdAt: mcpGrant.createdAt,
       activatedAt: mcpGrant.activatedAt,
       lastUsedAt: mcpGrant.lastUsedAt,
     })
     .from(mcpGrant)
+    .leftJoin(totals, eq(totals.clientId, mcpGrant.clientId))
     .where(and(eq(mcpGrant.privyUserId, userId), eq(mcpGrant.status, 'active')))
     .orderBy(desc(mcpGrant.createdAt))
   return rows.map((row) => ({
@@ -221,10 +285,39 @@ export async function listClients(
     clientId: row.clientId,
     clientName: row.clientName,
     redirectHost: row.redirectUri ? new URL(row.redirectUri).host : null,
-    scopes: [row.scope],
+    scopes: scopeList(row.scope),
     connectedAt: row.activatedAt ?? row.createdAt,
     lastUsedAt: row.lastUsedAt,
+    limitMicroUsd: row.limitMicroUsd,
+    spentMicroUsd: row.spent ?? 0,
+    reservedMicroUsd: row.reserved ?? 0,
   }))
+}
+
+/**
+ * Changes an active payments grant's limit. A limit below what the client
+ * already spent blocks further payments; it does not erase history.
+ */
+export async function setClientLimit(
+  database: D1Database,
+  userId: string,
+  grantId: string,
+  limitMicroUsd: number,
+) {
+  if (!isClientLimit(limitMicroUsd)) throw new Error('Invalid spending limit')
+  const [grant] = await drizzle(database)
+    .update(mcpGrant)
+    .set({ limitMicroUsd })
+    .where(
+      and(
+        eq(mcpGrant.id, grantId),
+        eq(mcpGrant.privyUserId, userId),
+        eq(mcpGrant.status, 'active'),
+        sql`(' ' || ${mcpGrant.scope} || ' ') like '% payments:pay %'`,
+      ),
+    )
+    .returning({ id: mcpGrant.id })
+  return !!grant
 }
 
 /** Revokes the user's active grant; returns its client, or null if none. */

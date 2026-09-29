@@ -22,6 +22,10 @@
       "entrypoint": "McpTokenService",
     },
   ],
+  // Agent payments run on this network only. SOLANA_RPC_URL (a secret) must
+  // serve it; the Worker checks its genesis hash before paying. The public
+  // api.devnet.solana.com refuses Workers, so use a provider's devnet URL.
+  "vars": { "SOLANA_NETWORK": "devnet" },
   "d1_databases": [
     {
       "binding": "DB",

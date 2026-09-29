@@ -13,6 +13,9 @@ const claude: McpClient = {
   scopes: ['account:read'],
   connectedAt: now - 3 * 86_400_000,
   lastUsedAt: now - 2 * 3_600_000,
+  limitMicroUsd: 0,
+  spentMicroUsd: 0,
+  reservedMicroUsd: 0,
 }
 
 function render(clients: McpClient[]) {
@@ -47,4 +50,26 @@ test('an app without a stored name or use is still identifiable', () => {
 
 test('with nothing connected, the dashboard says how to connect', () => {
   expect(render([])).toContain('https://mcp.lanatools.sh/mcp')
+})
+
+test('an app that can pay shows its limit, spend, reservations, and what is left', () => {
+  const html = render([
+    {
+      ...claude,
+      scopes: ['account:read', 'payments:pay'],
+      limitMicroUsd: 1_000_000,
+      spentMicroUsd: 20_000,
+      reservedMicroUsd: 10_000,
+    },
+  ])
+  expect(html).toContain('Can pay from your wallet within its limit')
+  expect(html).toContain('$1.00')
+  expect(html).toContain('$0.02')
+  expect(html).toContain('$0.01')
+  expect(html).toContain('$0.97')
+  expect(html).toContain('Change limit')
+})
+
+test('an app without payments shows no spending controls', () => {
+  expect(render([claude])).not.toContain('Change limit')
 })

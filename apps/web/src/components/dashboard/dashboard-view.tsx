@@ -2,6 +2,7 @@ import type { User } from '@privy-io/react-auth'
 import { Wordmark } from '#/components/landing/brand'
 import { getEmbeddedPayer } from '#/lib/payer'
 import type { GetAccessToken } from '#/lib/mcp-clients'
+import { AgentPayments } from './agent-payments'
 import { ConnectedApps } from './connected-apps'
 import { CreateWallet, PaymentWallet } from './wallet-panel'
 
@@ -40,7 +41,14 @@ export function DashboardView({
           {signOutFailed ? 'Sign-out failed. Try again.' : ''}
         </p>
         {payer ? (
-          <PaymentWallet walletAddress={payer.address} />
+          <>
+            <PaymentWallet walletAddress={payer.address} />
+            <AgentPayments
+              userId={user.id}
+              walletAddress={payer.address}
+              getAccessToken={getAccessToken}
+            />
+          </>
         ) : (
           <CreateWallet />
         )}

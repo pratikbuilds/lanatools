@@ -1,6 +1,10 @@
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import { PrivyClient } from '@privy-io/node'
 import type { D1Database } from '@cloudflare/workers-types'
+import { PayHttpError, payHttp, payKitPayer } from './payments/pay-http'
+import type { PayHttpInput, PayHttpResult } from './payments/pay-http'
+import { paymentConfig } from './payments/network'
+import type { PaymentEnv } from './payments/network'
 import {
   activateGrant,
   discardConsent,
@@ -21,20 +25,27 @@ export type McpTokenRevoker = {
   ) => Promise<void>
 }
 
-export type McpEnv = {
+export type McpEnv = PaymentEnv & {
   DB: D1Database
   PRIVY_APP_ID: string
   PRIVY_APP_SECRET: string
+  /** Key quorum ID of the LanaTools payment signer. */
+  PRIVY_PAYMENT_SIGNER_ID: string
+  /** That quorum's P-256 authorization key. Never leaves this Worker. */
+  PRIVY_PAYMENT_SIGNER_KEY: string
 }
 
 export type McpDashboardEnv = McpEnv & { MCP: McpTokenRevoker }
 
-export async function verifyPrivyToken(env: McpEnv, privyToken: string) {
-  const privy = new PrivyClient({
+export function privyClient(env: McpEnv) {
+  return new PrivyClient({
     appId: env.PRIVY_APP_ID,
     appSecret: env.PRIVY_APP_SECRET,
   })
-  const { user_id: userId } = await privy
+}
+
+export async function verifyPrivyToken(env: McpEnv, privyToken: string) {
+  const { user_id: userId } = await privyClient(env)
     .utils()
     .auth()
     .verifyAccessToken(privyToken)
@@ -93,8 +104,54 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
     clientId: string,
     userId: string,
     grantId: string,
+    limitMicroUsd: number | null,
   ) {
-    await activateGrant(this.env.DB, handle, { grantId, userId, clientId })
+    await activateGrant(
+      this.env.DB,
+      handle,
+      { grantId, userId, clientId },
+      limitMicroUsd,
+    )
+  }
+
+  /**
+   * Calls an endpoint for the grant's client, paying its fixed charge from
+   * the user's wallet. RPC does not carry error classes, so refusals come
+   * back as an agent-safe message rather than an exception.
+   */
+  async payHttp(
+    grantId: string,
+    userId: string,
+    clientId: string,
+    input: PayHttpInput,
+  ): Promise<
+    { ok: true; result: PayHttpResult } | { ok: false; error: string }
+  > {
+    const env = this.env
+    const privy = privyClient(env)
+    const config = () => paymentConfig(env)
+    try {
+      const result = await payHttp(
+        {
+          db: env.DB,
+          config,
+          payer: (wallet) => async (request) =>
+            payKitPayer({
+              privy,
+              authorizationKey: env.PRIVY_PAYMENT_SIGNER_KEY,
+              config: await config(),
+              wallet,
+            })(request),
+        },
+        { grantId, userId, clientId },
+        input,
+      )
+      return { ok: true, result }
+    } catch (error) {
+      if (error instanceof PayHttpError)
+        return { ok: false, error: error.message }
+      throw error
+    }
   }
 
   /** Returns the account for an active grant, or null once it is revoked. */

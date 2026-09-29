@@ -4,11 +4,13 @@ import { createApp } from './app'
 import { dbSmoke } from './db/schema'
 import type { McpDashboardEnv } from './mcp-service'
 import { mcpClients } from './routes/mcp-clients'
+import { paymentSignerRoutes } from './routes/payment-signer'
 
 export { McpAccessService } from './mcp-service'
 
 const app = createApp<McpDashboardEnv>()
 app.route('/api/mcp/clients', mcpClients)
+app.route('/api/payments/signer', paymentSignerRoutes)
 
 app.post('/api/db-smoke', async (c) => {
   const id = crypto.randomUUID()

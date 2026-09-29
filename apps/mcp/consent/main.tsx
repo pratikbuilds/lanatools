@@ -3,6 +3,7 @@ import { toSolanaWalletConnectors } from '@privy-io/react-auth/solana'
 import ReactDOM from 'react-dom/client'
 import { useEffect, useState } from 'react'
 import { z } from 'zod'
+import { MCP_SCOPES, formatUsd, parseUsd } from '@lanatools/contracts'
 import logoUrl from '../../web/public/favicon.svg?url'
 import './styles.css'
 
@@ -11,7 +12,7 @@ const PendingConsent = z.object({
   clientId: z.string().min(1),
   clientName: z.string().min(1),
   redirectUri: z.url(),
-  scopes: z.tuple([z.literal('account:read')]),
+  scopes: z.array(z.enum(MCP_SCOPES)).min(1),
 })
 
 function Connect() {
@@ -20,6 +21,7 @@ function Connect() {
   const [pending, setPending] = useState<z.infer<typeof PendingConsent>>()
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const [limitUsd, setLimitUsd] = useState('1.00')
   const handle = new URLSearchParams(window.location.search).get('handle')
 
   useEffect(() => {
@@ -42,8 +44,15 @@ function Connect() {
     return () => controller.abort()
   }, [handle])
 
+  const payments = pending?.scopes.includes('payments:pay') ?? false
+  const limit = parseUsd(limitUsd)
+
   async function decide(decision: 'approve' | 'deny') {
     if (!handle || !pending) return
+    if (decision === 'approve' && payments && limit === null) {
+      setMessage('Enter a spending limit in dollars, such as 1.00.')
+      return
+    }
     setBusy(true)
     setMessage('')
     try {
@@ -57,7 +66,11 @@ function Connect() {
             'Content-Type': 'application/json',
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({ decision }),
+          body: JSON.stringify(
+            decision === 'approve' && payments
+              ? { decision, limitUsd }
+              : { decision },
+          ),
         },
       )
       const result = z
@@ -109,10 +122,51 @@ function Connect() {
               <p className="client-note">Client name supplied by the app</p>
 
               <div className="permission">
-                <span className="permission-label">Permission requested</span>
-                <strong>Read account identity</strong>
-                <span>No wallet or payment access.</span>
+                <span className="permission-label">
+                  {pending.scopes.length > 1
+                    ? 'Permissions requested'
+                    : 'Permission requested'}
+                </span>
+                {pending.scopes.includes('account:read') && (
+                  <strong>Read account identity</strong>
+                )}
+                {payments ? (
+                  <>
+                    <strong>Pay for requests from your wallet</strong>
+                    <span>
+                      USDC from your LanaTools payment wallet, only up to the
+                      limit you set below.
+                    </span>
+                  </>
+                ) : (
+                  <span>No wallet or payment access.</span>
+                )}
               </div>
+
+              {payments && (
+                <label className="limit">
+                  <span className="limit-label">
+                    Spending limit for this app
+                  </span>
+                  <span className="limit-field">
+                    <span aria-hidden="true">$</span>
+                    <input
+                      inputMode="decimal"
+                      autoComplete="off"
+                      value={limitUsd}
+                      disabled={busy}
+                      aria-invalid={limit === null}
+                      onChange={(event) => setLimitUsd(event.target.value)}
+                    />
+                    <span>USD</span>
+                  </span>
+                  <span className="limit-help">
+                    {limit === null
+                      ? 'Enter an amount such as 1.00.'
+                      : `This app can spend ${formatUsd(limit)} in total. You can change or stop this in your dashboard.`}
+                  </span>
+                </label>
+              )}
 
               {ready && authenticated && (
                 <div className="account">

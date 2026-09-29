@@ -10,6 +10,7 @@ import { McpServer } from '@modelcontextprotocol/server'
 import type { CallToolResult } from '@modelcontextprotocol/server'
 import { createMcpHandler } from 'agents/mcp/server'
 import { z } from 'zod'
+import { MCP_SCOPES, isMcpScope, parseUsd } from '@lanatools/contracts'
 import { WorkerEntrypoint, env as bindings } from 'cloudflare:workers'
 import type {
   McpAccessService,
@@ -80,6 +81,69 @@ function createServer(
         content: [{ type: 'text', text: JSON.stringify({ userId, clientId }) }],
       })),
   )
+  server.registerTool(
+    'pay_http',
+    {
+      title: 'Pay for an HTTP request',
+      description: [
+        "Calls an https endpoint the user gave you. If it answers HTTP 402 with a fixed MPP or x402 charge, pays it in USDC from the user's LanaTools wallet and returns the endpoint's response.",
+        "The charge must not exceed max_usd or this client's remaining spending limit.",
+        'Never repeat a call whose payment is reported as uncertain: it may already have been paid.',
+      ].join(' '),
+      inputSchema: z.object({
+        url: z.url().describe('The https endpoint to call'),
+        method: z.enum(['GET', 'POST']).default('GET'),
+        headers: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe(
+            'Optional request headers: accept, accept-language, content-type, user-agent',
+          ),
+        body: z
+          .union([
+            z.string(),
+            z.record(z.string(), z.unknown()),
+            z.array(z.unknown()),
+          ])
+          .optional()
+          .describe('POST body: text, or JSON sent as application/json'),
+        protocol: z
+          .enum(['auto', 'mpp', 'x402'])
+          .default('auto')
+          .describe('Payment protocol; auto prefers MPP when both are offered'),
+        max_usd: z
+          .string()
+          .refine(
+            (value) => parseUsd(value) !== null,
+            'A USD amount such as "0.05"',
+          )
+          .describe(
+            'The most you agree to pay for this call, in USD, e.g. "0.05"',
+          ),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    (input) =>
+      withGrant('payments:pay', async ({ grantId, userId, clientId }) => {
+        const outcome = await env.API.payHttp(grantId, userId, clientId, {
+          url: input.url,
+          method: input.method,
+          headers: input.headers,
+          body: input.body,
+          protocol: input.protocol,
+          maxUsd: input.max_usd,
+        })
+        if (!outcome.ok) return toolError(outcome.error)
+        return {
+          content: [{ type: 'text', text: JSON.stringify(outcome.result) }],
+        }
+      }),
+  )
   return server
 }
 
@@ -96,7 +160,11 @@ const defaultHandler = {
     if (url.pathname === '/authorize' && request.method === 'GET') {
       try {
         const auth = await env.OAUTH_PROVIDER.parseAuthRequest(request)
-        if (auth.scope.length !== 1 || auth.scope[0] !== 'account:read')
+        if (
+          auth.scope.length === 0 ||
+          new Set(auth.scope).size !== auth.scope.length ||
+          !auth.scope.every(isMcpScope)
+        )
           return new Response('Unsupported access request', { status: 400 })
         const client = await env.OAUTH_PROVIDER.lookupClient(auth.clientId)
         if (!client) return new Response('Unknown MCP client', { status: 400 })
@@ -151,15 +219,29 @@ const defaultHandler = {
         if (request.headers.get('origin') !== env.MCP_ORIGIN)
           return new Response('Forbidden', { status: 403 })
         const body = z
-          .object({ decision: z.enum(['approve', 'deny']) })
+          .object({
+            decision: z.enum(['approve', 'deny']),
+            // Required by the API when the client asked for payments:pay.
+            limitUsd: z.string().optional(),
+          })
           .safeParse(await request.json().catch(() => null))
         if (!body.success) return json({ error: 'Invalid decision' }, 400)
+        const limitMicroUsd =
+          body.data.limitUsd === undefined ? null : parseUsd(body.data.limitUsd)
+        if (body.data.limitUsd !== undefined && limitMicroUsd === null)
+          return json({ error: 'Invalid spending limit' }, 400)
         try {
           if (body.data.decision === 'deny') {
             const denied = await env.OAUTH_PROVIDER.denyConsent(request, handle)
             await env.API.discardConsent(handle)
             return json({ redirectTo: denied.redirectTo }, 200, denied.headers)
           }
+          const pending = await env.API.pendingConsent(handle)
+          if (
+            pending?.scopes.includes('payments:pay') &&
+            limitMicroUsd === null
+          )
+            return json({ error: 'Set a spending limit' }, 400)
           const token = /^Bearer (.+)$/.exec(
             request.headers.get('authorization') || '',
           )?.[1]
@@ -191,6 +273,7 @@ const defaultHandler = {
                 approved.request.clientId,
                 userId,
                 grantId,
+                limitMicroUsd,
               ),
           )
           return json({ redirectTo }, 200, approved.headers)
@@ -208,7 +291,7 @@ const oauthOptions: OAuthProviderOptions<McpEnv> = {
   resourceMetadata: {
     resource: new URL('/mcp', bindings.MCP_ORIGIN).href,
     authorization_servers: [bindings.MCP_ORIGIN],
-    scopes_supported: ['account:read'],
+    scopes_supported: [...MCP_SCOPES],
     resource_name: 'LanaTools MCP',
   },
   apiRoute: '/mcp',
@@ -232,7 +315,7 @@ const oauthOptions: OAuthProviderOptions<McpEnv> = {
   tokenEndpoint: '/token',
   clientRegistrationEndpoint: '/register',
   allowPlainPKCE: false,
-  scopesSupported: ['account:read'],
+  scopesSupported: [...MCP_SCOPES],
   // A revoked client cannot mint new tokens. invalid_grant also makes the
   // provider delete this OAuth grant and its tokens.
   async tokenExchangeCallback({ props }) {

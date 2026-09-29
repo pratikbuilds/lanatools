@@ -23,7 +23,9 @@ The [product spec](../specs/agent-payments.md) gives each connected OAuth client
 
 If each client also needs a different Privy-enforced _per-transaction_ cap, assign each one an additional signer with its own override policy. This does not replace the app's cumulative ledger. Privy's documented stateful aggregations currently list Ethereum signing methods, not Solana `signTransaction`; the Solana `TransferChecked.amount` rule in the testbed bounds an instruction, not total wallet or client spend. See [Privy's stateful policy methods](https://docs.privy.io/controls/policies/stateful-policies) and [policy evaluation](https://docs.privy.io/controls/policies/overview).
 
-The current testbed has one server quorum and an in-memory wallet limit per user. Neither provides durable per-client isolation across requests, restarts, or server instances. This is still product work, not a capability proven by the browser payment test.
+The MCP `pay_http` tool now implements this in the product: one LanaTools key quorum per Privy app, a user-owned override policy per user, and a durable per-client ledger in D1 (`apps/api/src/payments/`). It signs through an in-repo Kit signer over `@privy-io/node`, because `@solana/keychain-privy` uses a `fetch` option Cloudflare Workers rejects.
+
+The testbed still has one server quorum and an in-memory wallet limit per user. Neither provides durable per-client isolation across requests, restarts, or server instances. This is still product work, not a capability proven by the browser payment test.
 
 ## Create more than one wallet for a signed-in user
 
