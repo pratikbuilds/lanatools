@@ -1,11 +1,12 @@
 /**
  * ADI-176: Pay Kit paying from a server-authorized Privy wallet.
  *
- * The payer calls the existing pay.sh YAML merchant on the hosted Surfpool
- * sandbox. The proof page sends the signed-in user's
- * Privy access token with each request, so the token never leaves the browser
- * except to this server on 127.0.0.1.
+ * The payer calls the existing pay.sh YAML merchant (`bun run testbed start`)
+ * on the network chosen with `--network sandbox|devnet`. The proof page sends
+ * the signed-in user's Privy access token with each request, so the token
+ * never leaves the browser except to this server on 127.0.0.1.
  */
+import { parseArgs } from 'node:util'
 import { APIError, generateP256KeyPair, PrivyClient } from '@privy-io/node'
 import { createPrivySigner } from '@solana/keychain-privy'
 import { address } from '@solana/kit'
@@ -17,21 +18,18 @@ import {
   usd as usdCap,
 } from '@solana/pay-kit/client'
 import { Receipt } from 'mppx'
+import { MERCHANT_ORIGIN, selectProfile } from './networks'
 import { isPolicyDenial } from './privy-policy-denial'
+import { confirmed, solBalance, tokenBalance } from './rpc'
 import { SpendLimit } from './spend-limit'
-import {
-  assertSurfpool,
-  confirmed,
-  setUsdc,
-  solBalance,
-  usdcBalance,
-  USDC_MINT,
-} from './surfnet'
 
-const rpcUrl = 'https://402.surfnet.dev:8899'
+const profile = selectProfile(
+  parseArgs({ options: { network: { type: 'string' } } }).values.network,
+)
+const { network, rpcUrl, usdcMint } = profile
 const port = 1403
-const merchantUrl = 'http://127.0.0.1:1402/api/v1/fixed'
-const policyDeniedUrl = 'http://127.0.0.1:1402/api/v1/policy-denied'
+const merchantUrl = `${MERCHANT_ORIGIN}/api/v1/fixed`
+const policyDeniedUrl = `${MERCHANT_ORIGIN}/api/v1/policy-denied`
 const priceCap = usdCap('0.01')
 const priceAtomic = 10_000n // 0.01 USDC, 6 decimals
 const policyDeniedPriceAtomic = 20_000n
@@ -43,7 +41,7 @@ if (!appId || !appSecret)
   throw new Error('Set PRIVY_APP_ID and PRIVY_APP_SECRET in the root .env')
 const privyConfig = { appId, appSecret }
 
-await assertSurfpool(rpcUrl)
+await profile.preflight()
 const privy = new PrivyClient(privyConfig)
 
 // The server key exists only in this process. Privy limits each transfer;
@@ -109,7 +107,7 @@ async function walletFor(userId: string, accessToken: string) {
             field_source: 'solana_token_program_instruction',
             field: 'TransferChecked.mint',
             operator: 'eq',
-            value: USDC_MINT,
+            value: usdcMint,
           },
           {
             field_source: 'solana_token_program_instruction',
@@ -193,8 +191,8 @@ function isPayRequest(value: unknown): value is PayRequest {
 
 async function balances(wallet: Address, merchant: Address) {
   const [walletUsdc, merchantUsdc, walletSol] = await Promise.all([
-    usdcBalance(rpcUrl, wallet),
-    usdcBalance(rpcUrl, merchant),
+    tokenBalance(rpcUrl, wallet, usdcMint),
+    tokenBalance(rpcUrl, merchant, usdcMint),
     solBalance(rpcUrl, wallet),
   ])
   return { walletUsdc, merchantUsdc, walletSol }
@@ -218,8 +216,8 @@ async function fixtureRecipient(url: string, expectedAmount: bigint) {
   }
   if (
     terms.amount !== String(expectedAmount) ||
-    terms.currency !== USDC_MINT ||
-    terms.methodDetails.network !== 'localnet'
+    terms.currency !== usdcMint ||
+    terms.methodDetails.network !== network
   )
     throw new Error('YAML merchant returned unexpected payment terms')
   return address(terms.recipient)
@@ -236,7 +234,7 @@ async function prove(
   const merchant = await fixtureRecipient(url, amount)
   const wallet = await walletFor(userId, accessToken)
   if (!wallet.funded) {
-    await setUsdc(rpcUrl, wallet.address, walletCap)
+    await profile.fund(wallet.address, walletCap)
     wallet.funded = true
   }
 
@@ -254,9 +252,9 @@ async function prove(
     // the Kit signing methods. The official Privy signer has no local key.
     signer: signer as unknown as KeyPairSigner,
     rpcUrl,
-    network: 'localnet',
+    network,
     permissions: ClientPermissions.builder()
-      .allowNetwork('localnet')
+      .allowNetwork(network)
       .allowOrigin(new URL(merchantUrl).origin)
       .maxAmountPerPayment(
         mode === 'denied'
@@ -470,7 +468,9 @@ const server = Bun.serve({
     return new Response('Not found', { status: 404 })
   },
 })
-console.log(`Pay Kit payer on ${server.url} (YAML merchant ${merchantUrl})`)
+console.log(
+  `Pay Kit payer on ${server.url} (YAML merchant ${merchantUrl} on ${profile.name})`,
+)
 console.log('Open http://localhost:5174 (bun run proof); Ctrl-C cleans up')
 
 async function cleanupResource(

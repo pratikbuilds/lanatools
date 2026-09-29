@@ -11,6 +11,7 @@ bun run proof
 and open `http://localhost:5174`.
 
 - **Pay Kit payment (ADI-176):** run `bun run testbed start` and
-  `bun --env-file=.env run testbed:paykit`, sign in, and use the MPP and denial buttons.
+  `bun --env-file=.env run testbed:paykit` (or `testbed:devnet start` and
+  `testbed:paykit:devnet` for devnet), sign in, and use the payment buttons.
   The page sends your Privy access token only to the local proof server.
 - **Privy policy proof (ADI-175):** copy a test token for `testbed:privy`.
