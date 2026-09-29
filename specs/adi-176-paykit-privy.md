@@ -37,3 +37,9 @@ The live challenge names `network: devnet`, Circle's devnet USDC `4zMMC9srt5Ri5X
 The browser proof also needs `http://localhost:5174` among the Privy app's allowed domains. Without it, Privy returns `invalid_origin` ("Origin not allowed") and its iframe's `frame-ancestors` blocks the page.
 
 `pay` 0.28 cannot pay the devnet merchant: `pay curl` rejects the challenge with "does not have enough balance on `devnet`" even when its wallet holds devnet USDC, with or without `PAY_RPC_URL`. The CLI has no devnet network flag (`--sandbox` and `--local` both select Surfpool). `testbed pay` therefore stays sandbox-only, and `check` pays through Pay Kit on both networks. The public devnet airdrop returned HTTP 429, so funding comes from the CLI wallet rather than the faucet.
+
+### Hosted devnet merchant
+
+Status, September 29, 2026: the same merchant runs on Railway at `https://devnet-merchant-production.up.railway.app` (project `lanatools-testbed`, service `devnet-merchant`) so deployed LanaTools can reach it. The image installs checksum-verified pay 0.28.0 on Debian trixie, because the x86_64 pay binary needs glibc 2.39. Its fee payer `5BwD4XftSgFjRAYQYPz18MJVKzgyGhrf1GjZ5Lm3e4Q9` lives on the service's `/data` volume and holds 0.1 devnet SOL from the CLI wallet; payments go to that wallet. A Pay Kit keypair client paid it over HTTPS with MPP `4pQF4u7BAFKaJAz1sU3hZi6MRPWt5U1ssyb3Le74FhEQ9uRaHWzQ2ioE6JUzMBnd5hd887x6D8Buyk7rJtHs6hhk` and x402 `5BD4VMQvHHTssLN9qgAhWGqKm6prCVouxmgBctuoQQawHWDZEvF3paZnN2wp66YkCtS3nqP6qSwLPskaCQT1Zj86`; both finalized.
+
+pay 0.29.0 is not usable yet: its gateway rejects Pay Kit 0.12 MPP credentials with "Challenge ID mismatch — not issued by this server", reproduced natively and in Docker, while x402 still settles. Its client still cannot pay devnet challenges.

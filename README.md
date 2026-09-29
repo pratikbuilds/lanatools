@@ -76,13 +76,17 @@ it never sees your shell credentials or `~/.config/pay`.
 ### Hosted devnet merchant
 
 Deployed LanaTools cannot reach a merchant on your machine, so
-`packages/testbed/gateway/` packages the same `merchant.yaml` as a devnet
-container for Railway. Create a service with root directory `packages/testbed`
-(it picks up `railway.json`), attach a volume at `/data`, set `RECIPIENT` to the
-wallet that should receive payments, and optionally set `DEVNET_RPC_URL`. The
-container refuses a non-devnet RPC and serves `/api/v1/fixed` and
-`/api/v1/policy-denied` over HTTPS on the service domain, unregistered with
-pay.sh.
+`packages/testbed/Dockerfile` packages the same `merchant.yaml` as a devnet
+container for Railway. It runs as the `devnet-merchant` service in the
+`lanatools-testbed` Railway project at
+`https://devnet-merchant-production.up.railway.app/api/v1/fixed`, unregistered
+with pay.sh. The container refuses a non-devnet RPC and also serves
+`/api/v1/policy-denied`.
+
+To recreate it, give a Railway service a volume at `/data` and set
+`RAILWAY_DOCKERFILE_PATH=Dockerfile`, `RECIPIENT` (the wallet that receives
+payments), and optionally `DEVNET_RPC_URL`. Then run `railway up` from
+`packages/testbed`.
 
 On the first deploy pay creates the gateway's fee payer on the volume and
 exits because it has no SOL; the deploy log shows its address. Send it about

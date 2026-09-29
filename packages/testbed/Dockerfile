@@ -1,6 +1,7 @@
 # Devnet merchant for testing deployed LanaTools: the testbed's merchant.yaml
 # behind `pay gate api`. Build context: packages/testbed.
-FROM debian:bookworm-slim
+# pay's x86_64 build needs glibc 2.39+, newer than bookworm's.
+FROM debian:trixie-slim
 
 # pay 0.29's gateway rejects Pay Kit 0.12 MPP credentials ("Challenge ID
 # mismatch"); 0.28 accepts both MPP and x402. Recheck before upgrading.
