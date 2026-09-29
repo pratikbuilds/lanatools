@@ -13,6 +13,15 @@
     "logs": { "enabled": true, "head_sampling_rate": 1 },
     "traces": { "enabled": true, "head_sampling_rate": 1 },
   },
+  // Revoking a client in the dashboard also deletes its OAuth tokens, which
+  // only the MCP Worker can reach. The MCP Worker binds back to this one.
+  "services": [
+    {
+      "binding": "MCP",
+      "service": "lanatools-mcp",
+      "entrypoint": "McpTokenService",
+    },
+  ],
   "d1_databases": [
     {
       "binding": "DB",

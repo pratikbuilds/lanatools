@@ -32,6 +32,7 @@ function render(linkedAccounts: User['linkedAccounts']) {
         user={{ linkedAccounts }}
         onSignOut={() => {}}
         signOutFailed={false}
+        getAccessToken={() => Promise.resolve(null)}
       />
     </QueryClientProvider>,
   )

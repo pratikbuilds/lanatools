@@ -4,6 +4,15 @@
   "main": "src/worker.local.ts",
   "compatibility_date": "2026-09-24",
   "compatibility_flags": ["nodejs_compat"],
+  // Revoking a client in the dashboard also deletes its OAuth tokens, which
+  // only the MCP Worker can reach. The MCP Worker binds back to this one.
+  "services": [
+    {
+      "binding": "MCP",
+      "service": "lanatools-mcp-local",
+      "entrypoint": "McpTokenService",
+    },
+  ],
   "d1_databases": [
     {
       "binding": "DB",

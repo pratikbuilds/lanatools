@@ -1,11 +1,22 @@
-import OAuthProvider from '@cloudflare/workers-oauth-provider'
-import type { OAuthHelpers } from '@cloudflare/workers-oauth-provider'
+import OAuthProvider, {
+  OAuthError,
+  getOAuthApi,
+} from '@cloudflare/workers-oauth-provider'
+import type {
+  OAuthHelpers,
+  OAuthProviderOptions,
+} from '@cloudflare/workers-oauth-provider'
 import { McpServer } from '@modelcontextprotocol/server'
+import type { CallToolResult } from '@modelcontextprotocol/server'
 import { createMcpHandler } from 'agents/mcp/server'
 import { z } from 'zod'
-import { env as bindings } from 'cloudflare:workers'
-import type { McpAccessService } from '../../api/src/mcp-service'
+import { WorkerEntrypoint, env as bindings } from 'cloudflare:workers'
+import type {
+  McpAccessService,
+  McpTokenRevoker,
+} from '../../api/src/mcp-service'
 import { completeApproval } from './complete-approval'
+import { revokeClientTokens } from './revoke-tokens'
 
 type McpEnv = Env & {
   OAUTH_PROVIDER: OAuthHelpers
@@ -21,7 +32,37 @@ const OAuthContext = z.object({
   auth: z.object({ scope: z.array(z.string()) }),
 })
 
-function createServer(env: McpEnv, props: unknown, scopes: string[]) {
+function toolError(text: string): CallToolResult {
+  return { isError: true, content: [{ type: 'text', text }] }
+}
+
+function createServer(
+  env: McpEnv,
+  ctx: ExecutionContext,
+  props: unknown,
+  scopes: string[],
+) {
+  // Every tool runs through this check, so a revoked grant cannot reach one
+  // even while its access token has not expired yet.
+  async function withGrant(
+    scope: string,
+    run: (
+      identity: z.infer<typeof Identity>,
+    ) => CallToolResult | Promise<CallToolResult>,
+  ) {
+    if (!scopes.includes(scope)) return toolError(`Missing ${scope} scope`)
+    const identity = Identity.safeParse(props)
+    if (!identity.success) return toolError('Unauthorized')
+    const { grantId, userId, clientId } = identity.data
+    if (!(await env.API.whoami(grantId, userId, clientId))) {
+      ctx.waitUntil(
+        revokeClientTokens(env.OAUTH_PROVIDER, userId, clientId, grantId),
+      )
+      return toolError('Connection revoked')
+    }
+    return run(identity.data)
+  }
+
   const server = new McpServer({ name: 'LanaTools', version: '0.1.0' })
   server.registerTool(
     'whoami',
@@ -34,27 +75,10 @@ function createServer(env: McpEnv, props: unknown, scopes: string[]) {
         openWorldHint: false,
       },
     },
-    async () => {
-      if (!scopes.includes('account:read'))
-        return {
-          isError: true,
-          content: [{ type: 'text', text: 'Missing account:read scope' }],
-        }
-      const identity = Identity.safeParse(props)
-      if (!identity.success)
-        return {
-          isError: true,
-          content: [{ type: 'text', text: 'Unauthorized' }],
-        }
-      const { grantId, userId, clientId } = identity.data
-      const account = await env.API.whoami(grantId, userId, clientId)
-      if (!account)
-        return {
-          isError: true,
-          content: [{ type: 'text', text: 'Connection revoked' }],
-        }
-      return { content: [{ type: 'text', text: JSON.stringify(account) }] }
-    },
+    () =>
+      withGrant('account:read', ({ userId, clientId }) => ({
+        content: [{ type: 'text', text: JSON.stringify({ userId, clientId }) }],
+      })),
   )
   return server
 }
@@ -158,7 +182,8 @@ const defaultHandler = {
                 userId: encodeURIComponent(userId),
                 scope: approved.request.scope,
                 props: { grantId, userId, clientId: approved.request.clientId },
-                metadata: { label: 'LanaTools connection' },
+                // Lets a dashboard revocation find this OAuth grant in KV.
+                metadata: { label: 'LanaTools connection', grantId },
               }),
             () =>
               env.API.activateGrant(
@@ -179,7 +204,7 @@ const defaultHandler = {
   },
 }
 
-export default new OAuthProvider<McpEnv>({
+const oauthOptions: OAuthProviderOptions<McpEnv> = {
   resourceMetadata: {
     resource: new URL('/mcp', bindings.MCP_ORIGIN).href,
     authorization_servers: [bindings.MCP_ORIGIN],
@@ -194,6 +219,7 @@ export default new OAuthProvider<McpEnv>({
         () =>
           createServer(
             env,
+            ctx,
             ctx.props,
             auth.success ? auth.data.auth.scope : [],
           ),
@@ -207,4 +233,42 @@ export default new OAuthProvider<McpEnv>({
   clientRegistrationEndpoint: '/register',
   allowPlainPKCE: false,
   scopesSupported: ['account:read'],
-})
+  // A revoked client cannot mint new tokens. invalid_grant also makes the
+  // provider delete this OAuth grant and its tokens.
+  async tokenExchangeCallback({ props }) {
+    const identity = Identity.safeParse(props)
+    if (!identity.success)
+      throw new OAuthError('invalid_grant', { description: 'Unknown grant' })
+    const { grantId, userId, clientId } = identity.data
+    let active: unknown
+    try {
+      active = await (bindings as McpEnv).API.whoami(grantId, userId, clientId)
+    } catch {
+      throw new OAuthError('temporarily_unavailable', {
+        description: 'Try again shortly',
+        statusCode: 503,
+      })
+    }
+    if (!active)
+      throw new OAuthError('invalid_grant', {
+        description: 'Connection revoked',
+      })
+  },
+}
+
+export default new OAuthProvider<McpEnv>(oauthOptions)
+
+/** Called by the API Worker when a user revokes a client from the dashboard. */
+export class McpTokenService
+  extends WorkerEntrypoint<McpEnv>
+  implements McpTokenRevoker
+{
+  async revokeClient(userId: string, clientId: string, grantId: string) {
+    await revokeClientTokens(
+      getOAuthApi(oauthOptions, this.env),
+      userId,
+      clientId,
+      grantId,
+    )
+  }
+}

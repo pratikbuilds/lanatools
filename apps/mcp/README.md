@@ -18,6 +18,22 @@ signer separation described in `specs/agent-payments.md` and
 `docs/privy-wallet-access.md` before any spending tool is exposed. No Durable
 Object is part of this OAuth slice.
 
+## Connected apps and revocation
+
+Consent records the client's self-reported name and redirect URI in the
+`mcp_client` D1 table. The web dashboard lists a user's active grants at
+`GET /api/mcp/clients` and disconnects one with
+`POST /api/mcp/clients/:grantId/revoke`, both authenticated with a Privy access
+token.
+
+Revocation has two layers. D1 is the source of truth: the grant becomes
+`revoked`, every tool call goes through one grant check, and
+`tokenExchangeCallback` refuses to refresh a revoked grant. The API then calls
+`McpTokenService.revokeClient` on this Worker, which deletes the matching OAuth
+grants and tokens from `OAUTH_KV`. If that call fails, the next tool call or
+refresh from the client deletes them. Reconnecting a revoked client creates a
+new grant ID, so tokens issued before the revocation never work again.
+
 ## Local run
 
 1. Put `PRIVY_APP_ID` and `PRIVY_APP_SECRET` in ignored
@@ -46,6 +62,8 @@ The hosted endpoint is `https://mcp.lanatools.sh/mcp`. The MCP Worker uses its
 own OAuth KV namespace and calls the production API Worker, which stores grants
 in `lanatools-production` D1. Set `PRIVY_APP_ID` and `PRIVY_APP_SECRET` as API
 Worker secrets, supply `VITE_PRIVY_APP_ID` when building consent assets, and
-allow `https://mcp.lanatools.sh` in the Privy app's domains. After applying any
-new D1 migrations, run `bun run deploy:api` followed by `bun run deploy:mcp`.
+allow `https://mcp.lanatools.sh` in the Privy app's domains. The API and MCP
+Workers bind to each other. Apply new D1 migrations with
+`bun run --cwd apps/api db:migrate:remote`, then run `bun run deploy:mcp`
+followed by `bun run deploy:api`.
 Do not point a preview Worker at production KV or D1 for authorization tests.

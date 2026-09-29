@@ -1,12 +1,14 @@
 import { eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
-import type { D1Database } from '@cloudflare/workers-types'
 import { createApp } from './app'
 import { dbSmoke } from './db/schema'
+import type { McpDashboardEnv } from './mcp-service'
+import { mcpClients } from './routes/mcp-clients'
 
 export { McpAccessService } from './mcp-service'
 
-const app = createApp<{ DB: D1Database }>()
+const app = createApp<McpDashboardEnv>()
+app.route('/api/mcp/clients', mcpClients)
 
 app.post('/api/db-smoke', async (c) => {
   const id = crypto.randomUUID()
