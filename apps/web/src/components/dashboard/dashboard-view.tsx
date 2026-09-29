@@ -1,16 +1,20 @@
 import type { User } from '@privy-io/react-auth'
 import { Wordmark } from '#/components/landing/brand'
 import { getEmbeddedPayer } from '#/lib/payer'
+import type { GetAccessToken } from '#/lib/mcp-clients'
+import { ConnectedApps } from './connected-apps'
 import { CreateWallet, PaymentWallet } from './wallet-panel'
 
 export function DashboardView({
   user,
   onSignOut,
   signOutFailed,
+  getAccessToken,
 }: {
-  user: Pick<User, 'linkedAccounts'>
+  user: Pick<User, 'id' | 'linkedAccounts'>
   onSignOut: () => void
   signOutFailed: boolean
+  getAccessToken: GetAccessToken
 }) {
   const payer = getEmbeddedPayer(user)
 
@@ -40,6 +44,7 @@ export function DashboardView({
         ) : (
           <CreateWallet />
         )}
+        <ConnectedApps userId={user.id} getAccessToken={getAccessToken} />
       </main>
     </div>
   )

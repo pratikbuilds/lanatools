@@ -27,7 +27,15 @@ export const mcpGrant = sqliteTable(
     status: text('status', { enum: ['pending', 'active', 'revoked'] })
       .notNull()
       .default('active'),
+    scope: text('scope').notNull().default('account:read'),
+    // Copied from the consent the user approved. Clients choose their own
+    // names, so the dashboard shows the approved redirect host beside it.
+    clientName: text('client_name'),
+    redirectUri: text('redirect_uri'),
     createdAt: integer('created_at').notNull(),
+    activatedAt: integer('activated_at'),
+    revokedAt: integer('revoked_at'),
+    lastUsedAt: integer('last_used_at'),
   },
   (table) => [
     uniqueIndex('mcp_grant_user_client').on(table.privyUserId, table.clientId),

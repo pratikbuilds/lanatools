@@ -1,97 +1,91 @@
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import { PrivyClient } from '@privy-io/node'
-import { and, eq, lt } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
-import { mcpConsent, mcpGrant } from './db/schema'
+import {
+  activateGrant,
+  discardConsent,
+  pendingConsent,
+  prepareGrant,
+  recordConsent,
+  revokeGrant,
+  useActiveGrant,
+} from './mcp-grants'
+import type { ConsentInput } from './mcp-grants'
 
-type ConsentInput = {
-  handle: string
-  clientId: string
-  clientName: string
-  redirectUri: string
-  scopes: string[]
+/** The MCP Worker's RPC surface for deleting OAuth tokens held in its KV. */
+export type McpTokenRevoker = {
+  revokeClient: (
+    userId: string,
+    clientId: string,
+    grantId: string,
+  ) => Promise<void>
 }
 
-type McpEnv = {
+export type McpEnv = {
   DB: D1Database
   PRIVY_APP_ID: string
   PRIVY_APP_SECRET: string
 }
 
+export type McpDashboardEnv = McpEnv & { MCP: McpTokenRevoker }
+
+export async function verifyPrivyToken(env: McpEnv, privyToken: string) {
+  const privy = new PrivyClient({
+    appId: env.PRIVY_APP_ID,
+    appSecret: env.PRIVY_APP_SECRET,
+  })
+  const { user_id: userId } = await privy
+    .utils()
+    .auth()
+    .verifyAccessToken(privyToken)
+  return userId
+}
+
+/**
+ * Cuts off a client. D1 is the source of truth: every tool call and token
+ * refresh checks it, so access ends here even if deleting the client's OAuth
+ * tokens fails. The MCP Worker also deletes them on the client's next attempt.
+ */
+export async function revokeClient(
+  env: McpDashboardEnv,
+  userId: string,
+  grantId: string,
+) {
+  const clientId = await revokeGrant(env.DB, userId, grantId)
+  if (!clientId) return false
+  try {
+    await env.MCP.revokeClient(userId, clientId, grantId)
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        message: 'Could not delete OAuth tokens for a revoked MCP grant',
+        grantId,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    )
+  }
+  return true
+}
+
 export class McpAccessService extends WorkerEntrypoint<McpEnv> {
   async recordConsent(input: ConsentInput) {
-    if (input.scopes.length !== 1 || input.scopes[0] !== 'account:read')
-      throw new Error('Unsupported access request')
-    const db = drizzle(this.env.DB)
-    await db.delete(mcpConsent).where(lt(mcpConsent.expiresAt, Date.now()))
-    await db.insert(mcpConsent).values({
-      handle: input.handle,
-      clientId: input.clientId,
-      clientName: input.clientName,
-      redirectUri: input.redirectUri,
-      scope: input.scopes[0],
-      expiresAt: Date.now() + 10 * 60_000,
-    })
+    await recordConsent(this.env.DB, input)
   }
 
   async discardConsent(handle: string) {
-    await drizzle(this.env.DB)
-      .delete(mcpConsent)
-      .where(eq(mcpConsent.handle, handle))
+    await discardConsent(this.env.DB, handle)
   }
 
   async pendingConsent(handle: string) {
-    const consent = await drizzle(this.env.DB)
-      .select()
-      .from(mcpConsent)
-      .where(eq(mcpConsent.handle, handle))
-      .get()
-    if (!consent || consent.expiresAt < Date.now()) return null
-    return {
-      clientName: consent.clientName,
-      clientId: consent.clientId,
-      redirectUri: consent.redirectUri,
-      scopes: [consent.scope],
-    }
+    return pendingConsent(this.env.DB, handle)
   }
 
   async verifyPrivyToken(privyToken: string) {
-    const privy = new PrivyClient({
-      appId: this.env.PRIVY_APP_ID,
-      appSecret: this.env.PRIVY_APP_SECRET,
-    })
-    const { user_id: userId } = await privy
-      .utils()
-      .auth()
-      .verifyAccessToken(privyToken)
-    return userId
+    return verifyPrivyToken(this.env, privyToken)
   }
 
   async prepareGrant(handle: string, clientId: string, userId: string) {
-    const consent = await this.pendingConsent(handle)
-    if (!consent || consent.clientId !== clientId)
-      throw new Error('Authorization request expired')
-    const db = drizzle(this.env.DB)
-    await db
-      .insert(mcpGrant)
-      .values({
-        id: crypto.randomUUID(),
-        privyUserId: userId,
-        clientId,
-        status: 'pending',
-        createdAt: Date.now(),
-      })
-      .onConflictDoNothing()
-    const grant = await db
-      .select({ id: mcpGrant.id })
-      .from(mcpGrant)
-      .where(
-        and(eq(mcpGrant.privyUserId, userId), eq(mcpGrant.clientId, clientId)),
-      )
-      .get()
-    if (!grant) throw new Error('Could not prepare MCP grant')
-    return { grantId: grant.id }
+    return prepareGrant(this.env.DB, handle, clientId, userId)
   }
 
   async activateGrant(
@@ -100,54 +94,16 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
     userId: string,
     grantId: string,
   ) {
-    const consent = await drizzle(this.env.DB)
-      .select()
-      .from(mcpConsent)
-      .where(
-        and(eq(mcpConsent.handle, handle), eq(mcpConsent.clientId, clientId)),
-      )
-      .get()
-    if (
-      !consent ||
-      consent.expiresAt < Date.now() ||
-      consent.scope !== 'account:read'
-    )
-      throw new Error('Authorization request expired')
-
-    const db = drizzle(this.env.DB)
-    const [[grant]] = await db.batch([
-      db
-        .insert(mcpGrant)
-        .values({
-          id: grantId,
-          privyUserId: userId,
-          clientId,
-          createdAt: Date.now(),
-        })
-        .onConflictDoUpdate({
-          target: [mcpGrant.privyUserId, mcpGrant.clientId],
-          set: { status: 'active' },
-          setWhere: eq(mcpGrant.id, grantId),
-        })
-        .returning({ id: mcpGrant.id }),
-      db.delete(mcpConsent).where(eq(mcpConsent.handle, handle)),
-    ])
-    if (!grant) throw new Error('MCP grant changed during authorization')
+    await activateGrant(this.env.DB, handle, { grantId, userId, clientId })
   }
 
+  /** Returns the account for an active grant, or null once it is revoked. */
   async whoami(grantId: string, userId: string, clientId: string) {
-    const grant = await drizzle(this.env.DB)
-      .select({ id: mcpGrant.id })
-      .from(mcpGrant)
-      .where(
-        and(
-          eq(mcpGrant.id, grantId),
-          eq(mcpGrant.privyUserId, userId),
-          eq(mcpGrant.clientId, clientId),
-          eq(mcpGrant.status, 'active'),
-        ),
-      )
-      .get()
-    return grant ? { userId, clientId } : null
+    const active = await useActiveGrant(this.env.DB, {
+      grantId,
+      userId,
+      clientId,
+    })
+    return active ? { userId, clientId } : null
   }
 }

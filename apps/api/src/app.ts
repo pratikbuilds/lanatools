@@ -14,13 +14,15 @@ export function createApp<TBindings extends object = object>() {
   )
   app.onError((error, c) => {
     const status = error instanceof HTTPException ? error.status : 500
-    console.error(
-      JSON.stringify({
-        requestId: c.get('requestId'),
-        error: error.message,
-        stack: error.stack,
-      }),
-    )
+    // Client errors such as a missing sign-in are expected, not failures.
+    if (status >= 500)
+      console.error(
+        JSON.stringify({
+          requestId: c.get('requestId'),
+          error: error.message,
+          stack: error.stack,
+        }),
+      )
     return c.json(
       {
         error: status >= 500 ? 'Internal server error' : 'Request failed',

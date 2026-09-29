@@ -12,6 +12,28 @@
       "runtimeExecutable": "bun",
       "runtimeArgs": ["run", "--cwd", "apps/proof", "dev"],
       "port": 5174
+    },
+    {
+      "name": "mcp",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "dev:mcp"],
+      "port": 8788
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "bunx",
+      "runtimeArgs": [
+        "wrangler",
+        "dev",
+        "-c",
+        "apps/api/wrangler.local.jsonc",
+        "--port",
+        "3000",
+        "--local",
+        "--persist-to",
+        "apps/api/.wrangler/state"
+      ],
+      "port": 3000
     }
   ]
 }

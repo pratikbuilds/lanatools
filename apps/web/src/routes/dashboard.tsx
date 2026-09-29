@@ -22,7 +22,7 @@ function DashboardRoute() {
 }
 
 function Dashboard() {
-  const { ready, authenticated, user, logout } = usePrivy()
+  const { ready, authenticated, user, logout, getAccessToken } = usePrivy()
   const [signingOut, setSigningOut] = useState(false)
   const [signOutFailed, setSignOutFailed] = useState(false)
 
@@ -48,6 +48,7 @@ function Dashboard() {
       user={user}
       onSignOut={() => void signOut()}
       signOutFailed={signOutFailed}
+      getAccessToken={getAccessToken}
     />
   )
 }
