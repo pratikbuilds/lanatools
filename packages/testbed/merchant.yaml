@@ -1,5 +1,6 @@
 # yaml-language-server: $schema=https://pay.sh/docs-assets/provider.schema.json
-# Private merchant served by `pay --sandbox gate api`; never published.
+# Private merchant served by `bun run testbed start`; never published.
+# `start` writes a copy with operator.network set by --network.
 name: lanatools-testbed
 subdomain: lanatools-testbed
 title: 'LanaTools testbed merchant'

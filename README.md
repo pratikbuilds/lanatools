@@ -40,24 +40,38 @@ Individual commands: `bun run format`, `bun run lint`, `bun run typecheck`,
 
 ## Payment testbed
 
-Pays a fixed 0.01 USDC charge on the hosted Surfpool sandbox that `pay
---sandbox` uses, so no real funds move. Needs the [pay CLI](https://pay.sh) on
-`PATH` and port 1402 free.
+Runs a private pay.sh merchant, `packages/testbed/merchant.yaml`, that charges
+a fixed 0.01 USDC over MPP and x402. Needs the [pay CLI](https://pay.sh) on
+`PATH` and port 1402 free. Choose a network with `--network`:
+
+- **sandbox** (default): the hosted Surfpool that `pay --sandbox` uses. Wallets
+  are funded with cheatcodes and no real funds move.
+- **devnet**: Solana devnet with Circle's devnet USDC. The default Solana CLI
+  keypair (`solana address`) needs devnet SOL and USDC. It receives merchant
+  payments, funds test wallets, and gives the gateway's fee payer 0.1 SOL the
+  first time it starts. Set `DEVNET_RPC_URL` to use an RPC other than
+  `https://api.devnet.solana.com`; the testbed refuses to fund or pay unless
+  its genesis hash is devnet's.
 
 ```sh
-bun run testbed check   # start, pay once, verify on chain, stop
-bun run testbed start   # keep the merchant running
-bun run testbed pay     # pay it while `start` runs
+bun run testbed check           # sandbox: start, pay over MPP and x402, verify, stop
+bun run testbed start           # keep the sandbox merchant running
+bun run testbed pay             # pay it with pay curl while `start` runs
+bun run testbed:devnet check    # the same check on devnet
+bun run testbed:devnet start    # keep the devnet merchant running
 ```
 
-`start` serves `packages/testbed/merchant.yaml` with `pay --sandbox gate api`.
-`check` expects a localnet USDC challenge for 10000 base units, pays it with
-`pay --sandbox curl`, and confirms on `https://402.surfnet.dev:8899` that the
-merchant's USDC balance rose by that amount.
+`start` writes the spec with the chosen network into
+`packages/testbed/.state/<network>/` and serves it with `pay gate api`.
+`check` expects a USDC challenge for 10000 base units on that network, pays it
+over each protocol with Pay Kit from a new funded keypair, and confirms that
+the merchant's USDC balance rose by that amount. `pay` is sandbox-only because
+pay 0.28 refuses devnet challenges with a false insufficient-balance error.
 
-`start` and `check` reset `packages/testbed/.state`, so pay creates new
-auto-funded wallets there; `pay` reuses them. pay gets only `PATH` and a `HOME`
-in that directory, so it never sees your shell credentials or `~/.config/pay`.
+The sandbox state is reset on every start, so pay creates new auto-funded
+wallets; `pay` reuses them. The devnet state persists so the funded fee payer
+survives restarts. pay gets only `PATH` and a `HOME` in the state directory, so
+it never sees your shell credentials or `~/.config/pay`.
 
 ### Privy signing proof
 
@@ -81,10 +95,12 @@ limits.
 `apps/proof` holds local-only proof pages, kept apart from the product UI in
 `apps/web`. With the same `.env` files, run `bun run testbed start` to serve
 `packages/testbed/merchant.yaml`, then `bun --env-file=.env run testbed:paykit`
-and `bun run proof`. Sign in at `http://localhost:5174` and use the MPP,
+and `bun run proof`. For devnet, use `bun run testbed:devnet start` and
+`bun --env-file=.env run testbed:paykit:devnet`; each new proof wallet receives
+0.10 devnet USDC from the Solana CLI keypair. Sign in at `http://localhost:5174` and use the MPP,
 x402, Pay Kit denial, and Privy policy denial buttons. The page sends your
 Privy access token only to the local proof server; you never paste it. Pay Kit
-pays the existing YAML merchant on the hosted Surfpool sandbox from a Privy
+pays the existing YAML merchant on the chosen network from a Privy
 wallet you own, using the official Solana Privy signer. Its user-owned policy
 allows bounded USDC transfers without naming a merchant. The local proof
 reserves each payment against a 0.10 USDC wallet budget before calling Pay

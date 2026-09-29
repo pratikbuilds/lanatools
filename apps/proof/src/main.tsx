@@ -86,7 +86,9 @@ function ProofLogin() {
           <p>
             Run <code>bun run testbed start</code>, then{' '}
             <code>bun --env-file=.env run testbed:paykit</code> to pay the YAML
-            merchant on the hosted Surfpool sandbox.
+            merchant on the hosted Surfpool sandbox. Use{' '}
+            <code>testbed:devnet start</code> and{' '}
+            <code>testbed:paykit:devnet</code> for devnet.
           </p>
           {modes.map(({ mode, label }) => (
             <button
