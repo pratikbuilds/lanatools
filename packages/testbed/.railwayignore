@@ -1,0 +1,3 @@
+# Local pay homes hold wallet keys; never upload them.
+.state/
+node_modules/

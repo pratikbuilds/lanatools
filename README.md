@@ -73,6 +73,28 @@ wallets; `pay` reuses them. The devnet state persists so the funded fee payer
 survives restarts. pay gets only `PATH` and a `HOME` in the state directory, so
 it never sees your shell credentials or `~/.config/pay`.
 
+### Hosted devnet merchant
+
+Deployed LanaTools cannot reach a merchant on your machine, so
+`packages/testbed/Dockerfile` packages the same `merchant.yaml` as a devnet
+container for Railway. It runs as the `devnet-merchant` service in the
+`lanatools-testbed` Railway project at
+`https://devnet-merchant-production.up.railway.app/api/v1/fixed`, unregistered
+with pay.sh. The container refuses a non-devnet RPC and also serves
+`/api/v1/policy-denied`.
+
+To recreate it, give a Railway service a volume at `/data` and set
+`RAILWAY_DOCKERFILE_PATH=Dockerfile`, `RECIPIENT` (the wallet that receives
+payments), and optionally `DEVNET_RPC_URL`. Then run `railway up` from
+`packages/testbed`.
+
+On the first deploy pay creates the gateway's fee payer on the volume and
+exits because it has no SOL; the deploy log shows its address. Send it about
+0.1 devnet SOL (`solana transfer --url devnet <address> 0.1
+--allow-unfunded-recipient`) and redeploy. The key stays on the volume, so
+later deploys reuse it. The image pins pay 0.28.0: pay 0.29's gateway rejects
+Pay Kit 0.12 MPP payments with "Challenge ID mismatch".
+
 ### Privy signing proof
 
 With a dedicated Privy development app, put `PRIVY_APP_ID` and
