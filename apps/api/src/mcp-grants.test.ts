@@ -1,40 +1,30 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test'
-import { readdir } from 'node:fs/promises'
 import type { D1Database } from '@cloudflare/workers-types'
-import { getPlatformProxy } from 'wrangler'
 import {
   activateGrant,
   listClients,
+  pendingConsent,
   prepareGrant,
   recordConsent,
   revokeGrant,
+  setClientLimit,
   useActiveGrant,
 } from './mcp-grants'
+import { testDatabase } from './test-database'
 
-let proxy: Awaited<ReturnType<typeof getPlatformProxy<{ DB: D1Database }>>>
 let db: D1Database
+let dispose: () => Promise<void>
 
 beforeAll(async () => {
-  proxy = await getPlatformProxy<{ DB: D1Database }>({
-    configPath: new URL('../wrangler.local.jsonc', import.meta.url).pathname,
-    persist: false,
-  })
-  db = proxy.env.DB
-  const dir = new URL('../drizzle/', import.meta.url)
-  for (const file of (await readdir(dir))
-    .filter((f) => f.endsWith('.sql'))
-    .sort())
-    for (const statement of (await Bun.file(new URL(file, dir)).text()).split(
-      '--> statement-breakpoint',
-    ))
-      await db.prepare(statement).run()
+  ;({ db, dispose } = await testDatabase())
 }, 60_000)
 
-afterAll(() => proxy.dispose())
+afterAll(() => dispose())
 
 async function startConsent(
   clientId: string,
   redirectUri = 'https://claude.ai/api/mcp/auth_callback',
+  scopes = ['account:read'],
 ) {
   const handle = crypto.randomUUID()
   await recordConsent(db, {
@@ -42,7 +32,7 @@ async function startConsent(
     clientId,
     clientName: 'Claude',
     redirectUri,
-    scopes: ['account:read'],
+    scopes,
   })
   return handle
 }
@@ -50,7 +40,7 @@ async function startConsent(
 async function connect(userId: string, clientId: string) {
   const handle = await startConsent(clientId)
   const { grantId } = await prepareGrant(db, handle, clientId, userId)
-  await activateGrant(db, handle, { grantId, userId, clientId })
+  await activateGrant(db, handle, { grantId, userId, clientId }, null)
   return { grantId, userId, clientId }
 }
 
@@ -65,6 +55,9 @@ test('an approved client is listed with its name and redirect host', async () =>
       scopes: ['account:read'],
       connectedAt: expect.any(Number),
       lastUsedAt: null,
+      limitMicroUsd: 0,
+      spentMicroUsd: 0,
+      reservedMicroUsd: 0,
     },
   ])
   expect(await listClients(db, 'someone-else')).toEqual([])
@@ -121,8 +114,52 @@ test('a disconnect during another approval stays disconnected', async () => {
 
   await revokeGrant(db, 'user-race', grant.grantId)
   await expect(
-    activateGrant(db, handle, { ...grant, grantId: pending.grantId }),
+    activateGrant(db, handle, { ...grant, grantId: pending.grantId }, null),
   ).rejects.toThrow('MCP grant changed during authorization')
   expect(await useActiveGrant(db, grant)).toBe(false)
   expect(await listClients(db, 'user-race')).toEqual([])
+})
+
+test('consent accepts only known scopes, each once', async () => {
+  for (const scopes of [[], ['wallet:drain'], ['account:read', 'account:read']])
+    await expect(
+      startConsent('client-scopes', undefined, scopes),
+    ).rejects.toThrow('Unsupported access request')
+  const handle = await startConsent('client-scopes', undefined, [
+    'account:read',
+    'payments:pay',
+  ])
+  expect((await pendingConsent(db, handle))?.scopes).toEqual([
+    'account:read',
+    'payments:pay',
+  ])
+})
+
+test('a payments grant needs the limit the user approved', async () => {
+  const scopes = ['account:read', 'payments:pay']
+  const handle = await startConsent('client-pay', undefined, scopes)
+  const { grantId } = await prepareGrant(db, handle, 'client-pay', 'user-pay')
+  const grant = { grantId, userId: 'user-pay', clientId: 'client-pay' }
+  await expect(activateGrant(db, handle, grant, null)).rejects.toThrow(
+    'Set a spending limit',
+  )
+  await activateGrant(db, handle, grant, 2_500_000)
+  const [client] = await listClients(db, 'user-pay')
+  expect(client?.scopes).toEqual(scopes)
+  expect(client?.limitMicroUsd).toBe(2_500_000)
+
+  expect(await setClientLimit(db, 'intruder', grantId, 9_000_000)).toBe(false)
+  expect(await setClientLimit(db, 'user-pay', grantId, 500_000)).toBe(true)
+  expect((await listClients(db, 'user-pay'))[0]?.limitMicroUsd).toBe(500_000)
+})
+
+test('a grant without payments cannot carry or change a limit', async () => {
+  const handle = await startConsent('client-read')
+  const { grantId } = await prepareGrant(db, handle, 'client-read', 'user-read')
+  const grant = { grantId, userId: 'user-read', clientId: 'client-read' }
+  await expect(activateGrant(db, handle, grant, 1_000_000)).rejects.toThrow(
+    'Unexpected spending limit',
+  )
+  await activateGrant(db, handle, grant, null)
+  expect(await setClientLimit(db, 'user-read', grantId, 1_000_000)).toBe(false)
 })

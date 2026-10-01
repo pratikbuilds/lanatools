@@ -29,6 +29,20 @@
       "when": 1790666701387,
       "tag": "0003_loose_sauron",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790696643100,
+      "tag": "0004_payments",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1790844989701,
+      "tag": "0005_payment_signing",
+      "breakpoints": true
     }
   ]
 }
