@@ -68,10 +68,10 @@ export async function prepareSigner(
     .from(paymentSigner)
     .where(eq(paymentSigner.privyUserId, userId))
     .get()
-  // Retrying an unfinished setup reuses its policy. Turning payments on again
-  // after they were turned off creates a fresh one, so a wallet never keeps
-  // the rules of an older policy.
-  if (existing?.walletId === walletId && existing.status === 'pending')
+  // A setup that is unfinished or already on (say, from another tab) keeps
+  // its policy and status. Turning payments on again after they were turned
+  // off creates a fresh policy, so a wallet never keeps older rules.
+  if (existing?.walletId === walletId && existing.status !== 'disabled')
     return { signerId, policyIds: [existing.policyId] }
 
   const policy = await privy.policies().create({
