@@ -642,3 +642,47 @@ test('a released reservation can never be signed', async () => {
   await payHttp(deps({ payer: () => payer }), grant, input()).catch(() => {})
   expect(String(refused)).toContain('can no longer be signed')
 })
+
+async function stuckUncertainPayment(
+  grant: Awaited<ReturnType<typeof connectClient>>,
+) {
+  const lost = fakePayer(() => {
+    throw new TypeError('Network connection lost')
+  })
+  await payHttp(deps({ payer: () => lost }), grant, input()).catch(() => {})
+  await ageActivity(10)
+}
+
+test('reconciliation searches the wallet that signed, after a wallet switch', async () => {
+  const grant = await connectClient(50_000)
+  await enableSigner()
+  await stuckUncertainPayment(grant)
+  await drizzle(db)
+    .update(paymentSigner)
+    .set({ walletId: 'wallet-2', walletAddress: MERCHANT })
+    .where(eq(paymentSigner.privyUserId, user))
+
+  const lookup = mock(async () => ({ status: 'pending' }) as const)
+  await payHttp(deps({ lookup }), grant, input())
+  expect(lookup).toHaveBeenCalledWith(
+    expect.objectContaining({ wallet: WALLET }),
+  )
+})
+
+test('concurrent calls resolving the same reservation both go through', async () => {
+  const grant = await connectClient(50_000)
+  await enableSigner()
+  await stuckUncertainPayment(grant)
+
+  const lookup = mock(async () => ({ status: 'unpaid' }) as const)
+  const results = await Promise.all([
+    payHttp(deps({ lookup }), grant, input()),
+    payHttp(deps({ lookup }), grant, input()),
+  ])
+  expect(results.map((r) => r.payment?.state)).toEqual(['paid', 'paid'])
+  expect((await activity()).map((a) => a.status).sort()).toEqual([
+    'paid',
+    'paid',
+    'released',
+  ])
+})

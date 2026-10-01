@@ -7,6 +7,14 @@ import type { FixedCharge } from './challenge'
 
 export type CallTarget = { method: string; origin: string; path: string }
 
+/** The payment row was already resolved, by this call or another. */
+export class NoLongerOpenError extends Error {
+  override readonly name = 'NoLongerOpenError'
+  constructor(id: string, from: string[]) {
+    super(`Payment ${id} is no longer ${from.join(' or ')}`)
+  }
+}
+
 type ClosedStatus = 'free' | 'refused' | 'failed'
 
 /** Records a call that never reserved money: free, refused, or failed. */
@@ -160,12 +168,11 @@ export async function reservationRefusal(
 export async function recordSigning(
   database: D1Database,
   id: string,
-  payerSignature: string,
-  blockhash: string,
+  signed: { payerWallet: string; payerSignature: string; blockhash: string },
 ) {
   const [row] = await drizzle(database)
     .update(paymentActivity)
-    .set({ payerSignature, blockhash })
+    .set(signed)
     .where(
       and(
         eq(paymentActivity.id, id),
@@ -263,5 +270,5 @@ async function transition(
       and(eq(paymentActivity.id, id), inArray(paymentActivity.status, from)),
     )
     .returning({ id: paymentActivity.id })
-  if (!row) throw new Error(`Payment ${id} is no longer ${from.join(' or ')}`)
+  if (!row) throw new NoLongerOpenError(id, from)
 }

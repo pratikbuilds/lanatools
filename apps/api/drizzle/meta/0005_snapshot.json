@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "ea737177-be18-4b87-9930-cef68c01cf91",
+  "id": "6d33f56a-1015-4a94-b14e-fcd226cd87f8",
   "prevId": "64ed21cb-9f16-43a2-825d-97e10ba84730",
   "tables": {
     "db_smoke": {
@@ -274,6 +274,13 @@
         },
         "signature": {
           "name": "signature",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "payer_wallet": {
+          "name": "payer_wallet",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

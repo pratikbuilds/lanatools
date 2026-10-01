@@ -17,6 +17,7 @@ import {
   markUncertain,
   openReservations,
   recordCall,
+  NoLongerOpenError,
   recordSigning,
   release,
   reservationRefusal,
@@ -183,7 +184,7 @@ export async function payHttp(
       'Payments are turned off. Turn them on for your wallet in the LanaTools dashboard.',
       { charge, httpStatus: 402 },
     )
-  await reconcile(deps, identity, signer.walletAddress, rpcUrl)
+  await reconcile(deps, identity, rpcUrl)
 
   // Nothing is signed before this reservation succeeds.
   const activityId = await reserve(
@@ -211,7 +212,11 @@ export async function payHttp(
       init: { ...init, signal: AbortSignal.timeout(PAYMENT_TIMEOUT_MS) },
       charge,
       onSigned: (payerSignature, blockhash) =>
-        recordSigning(deps.db, activityId, payerSignature, blockhash),
+        recordSigning(deps.db, activityId, {
+          payerWallet: signer.walletAddress,
+          payerSignature,
+          blockhash,
+        }),
       onProgress: (event) => {
         const update = event as {
           type?: string
@@ -310,12 +315,12 @@ export async function payHttp(
  * Resolves the client's reservations whose calls have ended, so a call cut
  * off midway does not hold the limit forever. A row without a recorded
  * transaction was never signed and is released. A signed row is settled or
- * released only once the chain proves where its transaction ended up.
+ * released only once the chain proves where its transaction ended up, in
+ * the history of the wallet that signed it.
  */
 async function reconcile(
   deps: PayHttpDeps,
   identity: GrantIdentity,
-  wallet: string,
   rpcUrl: string,
 ) {
   const lookup = deps.lookup ?? ((query) => findPayment(rpcUrl, query))
@@ -324,26 +329,40 @@ async function reconcile(
     identity,
     Date.now() - RECONCILE_AFTER_MS,
   )) {
-    if (!row.payerSignature || !row.blockhash || !row.mint) {
-      await release(
-        deps.db,
-        row.id,
-        'The call ended before anything was signed',
+    if (
+      !row.payerWallet ||
+      !row.payerSignature ||
+      !row.blockhash ||
+      !row.mint
+    ) {
+      await resolved(
+        release(deps.db, row.id, 'The call ended before anything was signed'),
       )
       continue
     }
     const outcome = await lookup({
-      wallet,
+      wallet: row.payerWallet,
       payerSignature: row.payerSignature,
       blockhash: row.blockhash,
       mint: row.mint,
       since: row.createdAt,
     }).catch((): ChainOutcome => ({ status: 'pending' }))
     if (outcome.status === 'paid')
-      await settle(deps.db, row.id, outcome.spentAtomic, outcome.signature)
+      await resolved(
+        settle(deps.db, row.id, outcome.spentAtomic, outcome.signature),
+      )
     else if (outcome.status === 'unpaid')
-      await release(deps.db, row.id, 'The signed payment never landed on chain')
+      await resolved(
+        release(deps.db, row.id, 'The signed payment never landed on chain'),
+      )
   }
+}
+
+/** Another call reconciling the same row may have resolved it first. */
+async function resolved(transition: Promise<void>) {
+  await transition.catch((error: unknown) => {
+    if (!(error instanceof NoLongerOpenError)) throw error
+  })
 }
 
 class ChargeChangedError extends Error {
