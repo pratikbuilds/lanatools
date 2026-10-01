@@ -48,8 +48,9 @@ response cap. The agent's LanaTools token never reaches the endpoint.
 
 The dashboard's **Agent payments** switch adds the LanaTools key quorum to the
 user's embedded wallet through Privy's `addSigners`, with a user-owned override
-policy that allows only `TransferChecked` of USDC up to 0.01 plus Compute
-Budget and Memo instructions. The API enables payments only after Privy
+policy that allows only USDC `TransferChecked` plus Compute Budget and Memo
+instructions. The policy sets no amount; each client's limit in D1 bounds what
+it can spend. The API enables payments only after Privy
 reports that signer and policy on the wallet. Turning it off disables payments
 in D1 first, then removes the wallet's signers.
 

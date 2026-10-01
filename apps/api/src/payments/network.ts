@@ -10,12 +10,6 @@ export type PaymentNetwork = {
   genesisHash: string
   /** Circle's USDC on this network, the only token LanaTools pays with. */
   usdcMint: string
-  /**
-   * The largest single transfer the server signer's Privy policy allows, in
-   * USDC base units. A charge above it is refused by Privy even when the
-   * client's limit would allow it.
-   */
-  maxTransferAtomic: bigint
 }
 
 const NETWORKS: Record<string, PaymentNetwork> = {
@@ -24,7 +18,6 @@ const NETWORKS: Record<string, PaymentNetwork> = {
     caip2: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
     genesisHash: 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG',
     usdcMint: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
-    maxTransferAtomic: 10_000n, // USDC 0.01
   },
 }
 

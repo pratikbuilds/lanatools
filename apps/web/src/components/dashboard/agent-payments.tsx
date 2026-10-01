@@ -96,9 +96,9 @@ export function AgentPaymentsView({
         )}
       </div>
       <p className="mt-3 text-[12.5px] leading-5 text-mute">
-        LanaTools signs only USDC payments of at most $0.01 each, plus network
-        fee instructions. Turning this off stops every app immediately and
-        removes the LanaTools signer from your wallet.
+        LanaTools signs only USDC payments, plus network fee instructions, and
+        each app spends only up to its own limit. Turning this off stops every
+        app immediately and removes the LanaTools signer from your wallet.
       </p>
       <p role="alert" className="mt-3 text-[13px] text-coral-ink empty:hidden">
         {loadFailed ? 'Could not load payment settings.' : error ? error : ''}

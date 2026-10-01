@@ -16,7 +16,6 @@ const DEVNET: PaymentNetwork = {
   caip2: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
   genesisHash: 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG',
   usdcMint: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
-  maxTransferAtomic: 10_000n,
 }
 const MAINNET_USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
 const MERCHANT = 'Du3X3wKN3LHfSbXtX2PW5jhnSHit8j8NSb19VZW6V9mu'

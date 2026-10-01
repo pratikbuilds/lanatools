@@ -33,9 +33,10 @@ export async function signerStatus(
 /**
  * Prepares the LanaTools server signer for the user's embedded wallet: finds
  * the wallet among the user's own Privy wallets and creates a user-owned
- * policy that allows only bounded USDC transfers plus Compute Budget and Memo
- * instructions. The browser then adds the signer with Privy, as only the
- * wallet's owner can.
+ * policy that allows only USDC transfers plus Compute Budget and Memo
+ * instructions. How much may be paid is enforced by each client's limit in
+ * D1, not by this policy. The browser then adds the signer with Privy, as
+ * only the wallet's owner can.
  */
 export async function prepareSigner(
   database: D1Database,
@@ -67,7 +68,10 @@ export async function prepareSigner(
     .from(paymentSigner)
     .where(eq(paymentSigner.privyUserId, userId))
     .get()
-  if (existing?.walletId === walletId)
+  // Retrying an unfinished setup reuses its policy. Turning payments on again
+  // after they were turned off creates a fresh one, so a wallet never keeps
+  // the rules of an older policy.
+  if (existing?.walletId === walletId && existing.status === 'pending')
     return { signerId, policyIds: [existing.policyId] }
 
   const policy = await privy.policies().create({
@@ -90,7 +94,7 @@ export async function prepareSigner(
         ],
       },
       {
-        name: 'Allow bounded USDC transfer to any merchant',
+        name: 'Allow USDC transfer to any merchant',
         method: 'signTransaction',
         action: 'ALLOW',
         conditions: [
@@ -99,12 +103,6 @@ export async function prepareSigner(
             field: 'TransferChecked.mint',
             operator: 'eq',
             value: network.usdcMint,
-          },
-          {
-            field_source: 'solana_token_program_instruction',
-            field: 'TransferChecked.amount',
-            operator: 'lte',
-            value: String(network.maxTransferAtomic),
           },
         ],
       },
