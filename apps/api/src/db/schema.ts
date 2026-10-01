@@ -98,6 +98,11 @@ export const paymentActivity = sqliteTable(
     reservedAtomic: integer('reserved_atomic').notNull().default(0),
     settledAtomic: integer('settled_atomic'),
     signature: text('signature'),
+    // The wallet's own signature and the blockhash of the one transaction
+    // signed for this row, written before the signed transaction can leave
+    // the Worker. A row without them was never signed.
+    payerSignature: text('payer_signature'),
+    blockhash: text('blockhash'),
     httpStatus: integer('http_status'),
     error: text('error'),
     createdAt: integer('created_at').notNull(),

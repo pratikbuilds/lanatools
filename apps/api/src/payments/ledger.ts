@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull, lt } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
 import { paymentActivity, paymentSigner } from '../db/schema'
@@ -152,13 +152,57 @@ export async function reservationRefusal(
   return `The charge exceeds this client's remaining limit of ${remaining} micro-USD`
 }
 
+/**
+ * Records the one transaction signed for a reservation. Refuses when the row
+ * is no longer reserved or already has a transaction, so a released
+ * reservation can never be paid.
+ */
+export async function recordSigning(
+  database: D1Database,
+  id: string,
+  payerSignature: string,
+  blockhash: string,
+) {
+  const [row] = await drizzle(database)
+    .update(paymentActivity)
+    .set({ payerSignature, blockhash })
+    .where(
+      and(
+        eq(paymentActivity.id, id),
+        eq(paymentActivity.status, 'reserved'),
+        isNull(paymentActivity.payerSignature),
+      ),
+    )
+    .returning({ id: paymentActivity.id })
+  if (!row) throw new Error(`Payment ${id} can no longer be signed`)
+}
+
+/** The client's reserved or uncertain rows opened before `before`. */
+export async function openReservations(
+  database: D1Database,
+  identity: GrantIdentity,
+  before: number,
+) {
+  return drizzle(database)
+    .select()
+    .from(paymentActivity)
+    .where(
+      and(
+        eq(paymentActivity.privyUserId, identity.userId),
+        eq(paymentActivity.clientId, identity.clientId),
+        inArray(paymentActivity.status, ['reserved', 'uncertain']),
+        lt(paymentActivity.createdAt, before),
+      ),
+    )
+}
+
 /** Replaces a reservation with the verified spend. */
 export async function settle(
   database: D1Database,
   id: string,
   settledAtomic: bigint,
   signature: string,
-  httpStatus: number,
+  httpStatus?: number,
   now = Date.now(),
 ) {
   await transition(database, id, ['reserved', 'uncertain'], {
@@ -172,8 +216,9 @@ export async function settle(
 }
 
 /**
- * Frees a reservation. Only call this when nothing was signed, or the signer
- * provably refused: any other failure may have paid.
+ * Frees a reservation. Only call this when nothing was signed, the signer
+ * provably refused, or the signed transaction provably never landed: any
+ * other failure may have paid.
  */
 export async function release(
   database: D1Database,
@@ -182,7 +227,7 @@ export async function release(
   httpStatus?: number,
   now = Date.now(),
 ) {
-  await transition(database, id, ['reserved'], {
+  await transition(database, id, ['reserved', 'uncertain'], {
     status: 'released',
     error,
     httpStatus,

@@ -5,6 +5,7 @@ import { drizzle } from 'drizzle-orm/d1'
 import { eq } from 'drizzle-orm'
 import { mcpGrant, paymentActivity, paymentSigner } from '../db/schema'
 import { listClients } from '../mcp-grants'
+import { reserve } from './ledger'
 import { testDatabase } from '../test-database'
 import { PayHttpError, payHttp } from './pay-http'
 import type { Payer, PayHttpDeps, PayHttpInput } from './pay-http'
@@ -21,6 +22,8 @@ const MAINNET_USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
 const MERCHANT = 'Du3X3wKN3LHfSbXtX2PW5jhnSHit8j8NSb19VZW6V9mu'
 const WALLET = 'CLmnd3o7hd4oCpiL9Wb3mC4nnJJAHdV7AjpwmbKrejAW'
 const SIGNATURE = '5'.repeat(87)
+const PAYER_SIGNATURE = '4'.repeat(87)
+const BLOCKHASH = '3'.repeat(44)
 const URL_FIXED = 'https://merchant.example/api/v1/fixed'
 
 let db: D1Database
@@ -127,9 +130,10 @@ function fakePayer(
     recipient: MERCHANT,
   },
 ): Payer {
-  return async ({ onProgress }) => {
+  return async ({ onProgress, onSigned }) => {
     onProgress({ type: 'challenge', ...challenge })
     onProgress({ type: 'signing' })
+    await onSigned(PAYER_SIGNATURE, BLOCKHASH)
     return respond()
   }
 }
@@ -422,7 +426,7 @@ test('a lost response after signing stays reserved and is never repeated', async
     }),
   )
   await expect(payHttp(deps({ payer }), grant, input())).rejects.toThrow(
-    'will not be retried',
+    'Do not repeat this request',
   )
   expect(payer).toHaveBeenCalledTimes(1)
   expect((await activity()).map((a) => a.status)).toEqual(['uncertain'])
@@ -533,4 +537,108 @@ test('a client without the payments scope cannot reserve', async () => {
   await expect(payHttp(deps(), grant, input())).rejects.toThrow(
     'not allowed to make payments',
   )
+})
+
+async function ageActivity(minutes: number) {
+  await drizzle(db)
+    .update(paymentActivity)
+    .set({ createdAt: Date.now() - minutes * 60_000 })
+    .where(eq(paymentActivity.privyUserId, user))
+}
+
+for (const [outcome, status, spent] of [
+  [
+    { status: 'paid', signature: SIGNATURE, spentAtomic: 10_000n },
+    'paid',
+    10_000,
+  ],
+  [{ status: 'unpaid' }, 'released', 0],
+  [{ status: 'pending' }, 'uncertain', 0],
+] as const)
+  test(`the next call resolves an ended uncertain payment the chain shows as ${outcome.status}`, async () => {
+    const grant = await connectClient(50_000)
+    await enableSigner()
+    const lost = fakePayer(() => {
+      throw new TypeError('Network connection lost')
+    })
+    await expect(
+      payHttp(deps({ payer: () => lost }), grant, input()),
+    ).rejects.toThrow('Do not repeat')
+    await ageActivity(10)
+
+    const lookup = mock(async () => outcome)
+    await payHttp(deps({ lookup }), grant, input())
+    expect(lookup).toHaveBeenCalledWith(
+      expect.objectContaining({
+        wallet: WALLET,
+        payerSignature: PAYER_SIGNATURE,
+        blockhash: BLOCKHASH,
+      }),
+    )
+    const [first] = await activity().then((rows) =>
+      rows.sort((a, b) => a.createdAt - b.createdAt),
+    )
+    expect(first?.status).toBe(status)
+    expect((await totals()).spent).toBe(spent + 10_000)
+  })
+
+test('the next call releases an ended reservation that was never signed', async () => {
+  const grant = await connectClient(10_000)
+  await enableSigner()
+  // A call that died after reserving, before anything was signed.
+  await reserve(
+    db,
+    grant,
+    'wallet-1',
+    { method: 'GET', origin: 'https://merchant.example', path: '/' },
+    {
+      protocol: 'x402',
+      amount: 10_000n,
+      mint: DEVNET.usdcMint,
+      recipient: MERCHANT,
+      network: 'devnet',
+    },
+  )
+  await expect(payHttp(deps(), grant, input())).rejects.toThrow(
+    'remaining limit of 0',
+  )
+  await ageActivity(10)
+
+  const lookup = mock(async () => ({ status: 'pending' }) as const)
+  const result = await payHttp(deps({ lookup }), grant, input())
+  expect(result.payment?.state).toBe('paid')
+  expect(lookup).not.toHaveBeenCalled()
+  expect(await totals()).toEqual({ spent: 10_000, reserved: 0 })
+})
+
+test('a reservation of a call still running is left alone', async () => {
+  const grant = await connectClient(50_000)
+  await enableSigner()
+  const lost = fakePayer(() => {
+    throw new TypeError('Network connection lost')
+  })
+  await payHttp(deps({ payer: () => lost }), grant, input()).catch(() => {})
+  const lookup = mock(async () => ({ status: 'unpaid' }) as const)
+  await payHttp(deps({ lookup }), grant, input())
+  expect(lookup).not.toHaveBeenCalled()
+  expect((await activity()).map((a) => a.status).sort()).toEqual([
+    'paid',
+    'uncertain',
+  ])
+})
+
+test('a released reservation can never be signed', async () => {
+  const grant = await connectClient(50_000)
+  await enableSigner()
+  let refused: unknown
+  const payer: Payer = async ({ onSigned }) => {
+    await drizzle(db)
+      .update(paymentActivity)
+      .set({ status: 'released' })
+      .where(eq(paymentActivity.privyUserId, user))
+    refused = await onSigned(PAYER_SIGNATURE, BLOCKHASH).catch((e) => e)
+    throw refused
+  }
+  await payHttp(deps({ payer: () => payer }), grant, input()).catch(() => {})
+  expect(String(refused)).toContain('can no longer be signed')
 })

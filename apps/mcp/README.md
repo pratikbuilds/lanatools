@@ -35,7 +35,18 @@ endpoint and a `max_usd`. The API Worker (`apps/api/src/payments/`) then:
 Only a refusal proven to precede signing (a Pay Kit `PermissionDeniedError`,
 a changed charge, or a Privy `policy_violation`) releases the reservation. Any
 other failure keeps it held as `uncertain`, and the tool never repeats a paid
-request. Every call gets a `payment_activity` row with no request or response
+request.
+
+The signer records the wallet's signature and the transaction's blockhash on
+the activity row before the signed transaction can leave the Worker, and
+refuses to sign for a row that is no longer reserved. Each `pay_http` call
+first resolves the client's reservations older than five minutes, so a call
+cut off midway does not hold the limit forever: a row with no recorded
+transaction is released; a signed row stays held while its blockhash is
+valid, then is settled if the wallet's history shows it finalized, or
+released if it never landed or failed.
+
+Every call gets a `payment_activity` row with no request or response
 body. Spent and reserved amounts are summed per user and client, so they
 survive a reconnect.
 

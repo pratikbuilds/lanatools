@@ -1,8 +1,10 @@
 import { APIError } from '@privy-io/node'
 import type { PrivyClient } from '@privy-io/node'
 import {
+  getBase58Decoder,
   getBase64Encoder,
   getBase64EncodedWireTransaction,
+  getCompiledTransactionMessageDecoder,
   getTransactionDecoder,
 } from '@solana/kit'
 import type {
@@ -30,14 +32,22 @@ export function privyPaymentSigner({
   walletId,
   walletAddress,
   authorizationKey,
+  onSigned,
 }: {
   privy: PrivyClient
   walletId: string
   walletAddress: Address
   authorizationKey: string
+  /**
+   * Awaited before a signature is returned, so the signed transaction cannot
+   * leave the Worker unless this records it. Throwing withholds it.
+   */
+  onSigned: (payerSignature: string, blockhash: string) => Promise<void>
 }): TransactionPartialSigner {
   const decoder = getTransactionDecoder()
   const base64 = getBase64Encoder()
+  const base58 = getBase58Decoder()
+  const messages = getCompiledTransactionMessageDecoder()
   return {
     address: walletAddress,
     signTransactions: (transactions: readonly Transaction[]) =>
@@ -70,6 +80,10 @@ export function privyPaymentSigner({
             throw new Error(
               'Privy returned a transaction without our signature',
             )
+          await onSigned(
+            base58.decode(signature),
+            messages.decode(transaction.messageBytes).lifetimeToken,
+          )
           return { [walletAddress]: signature }
         }),
       ),

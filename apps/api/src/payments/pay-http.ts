@@ -15,7 +15,9 @@ import type { FixedCharge, Protocol } from './challenge'
 import {
   enabledSigner,
   markUncertain,
+  openReservations,
   recordCall,
+  recordSigning,
   release,
   reservationRefusal,
   reserve,
@@ -36,11 +38,14 @@ import {
   asPayKitSigner,
   privyPaymentSigner,
 } from './privy-signer'
-import { receiptSignature, verifySettlement } from './settlement'
-import type { Settlement } from './settlement'
+import { findPayment, receiptSignature, verifySettlement } from './settlement'
+import type { ChainOutcome, Settlement } from './settlement'
 
 // Pay Kit probes again, then sends the paid request; both share this budget.
 const PAYMENT_TIMEOUT_MS = 45_000
+// Longer than any pay_http call (45 s to pay, 60 s to finalize), so a
+// reservation this old belongs to a call that has ended.
+const RECONCILE_AFTER_MS = 5 * 60_000
 
 export type PayHttpInput = OutboundInput & {
   url: string
@@ -74,6 +79,8 @@ export type Payer = (request: {
   init: RequestInit
   charge: FixedCharge
   onProgress: (event: unknown) => void
+  /** Records the signed transaction before it can leave the Worker. */
+  onSigned: (payerSignature: string, blockhash: string) => Promise<void>
 }) => Promise<Response>
 
 export type PayHttpDeps = {
@@ -87,6 +94,7 @@ export type PayHttpDeps = {
     charge: FixedCharge,
     payer: string,
   ) => Promise<Settlement>
+  lookup?: (query: Parameters<typeof findPayment>[1]) => Promise<ChainOutcome>
 }
 
 /**
@@ -175,6 +183,7 @@ export async function payHttp(
       'Payments are turned off. Turn them on for your wallet in the LanaTools dashboard.',
       { charge, httpStatus: 402 },
     )
+  await reconcile(deps, identity, signer.walletAddress, rpcUrl)
 
   // Nothing is signed before this reservation succeeds.
   const activityId = await reserve(
@@ -201,6 +210,8 @@ export async function payHttp(
       url,
       init: { ...init, signal: AbortSignal.timeout(PAYMENT_TIMEOUT_MS) },
       charge,
+      onSigned: (payerSignature, blockhash) =>
+        recordSigning(deps.db, activityId, payerSignature, blockhash),
       onProgress: (event) => {
         const update = event as {
           type?: string
@@ -227,7 +238,7 @@ export async function payHttp(
       throw new PayHttpError(refusal)
     }
     const message =
-      'The payment may have been sent, but its outcome is unknown. It stays reserved against your limit and will not be retried automatically.'
+      'The payment may have been sent, but its outcome is unknown. It stays reserved against your limit until LanaTools resolves it on chain. Do not repeat this request.'
     await markUncertain(deps.db, activityId, errorText(error))
     throw new PayHttpError(message)
   }
@@ -288,10 +299,50 @@ export async function payHttp(
       signature,
       ...(settlement.status === 'unconfirmed'
         ? {
-            note: `${settlement.reason}. The charge stays reserved against your limit; do not repeat this request.`,
+            note: `${settlement.reason}. The charge stays reserved against your limit until LanaTools resolves it on chain; do not repeat this request.`,
           }
         : {}),
     },
+  }
+}
+
+/**
+ * Resolves the client's reservations whose calls have ended, so a call cut
+ * off midway does not hold the limit forever. A row without a recorded
+ * transaction was never signed and is released. A signed row is settled or
+ * released only once the chain proves where its transaction ended up.
+ */
+async function reconcile(
+  deps: PayHttpDeps,
+  identity: GrantIdentity,
+  wallet: string,
+  rpcUrl: string,
+) {
+  const lookup = deps.lookup ?? ((query) => findPayment(rpcUrl, query))
+  for (const row of await openReservations(
+    deps.db,
+    identity,
+    Date.now() - RECONCILE_AFTER_MS,
+  )) {
+    if (!row.payerSignature || !row.blockhash || !row.mint) {
+      await release(
+        deps.db,
+        row.id,
+        'The call ended before anything was signed',
+      )
+      continue
+    }
+    const outcome = await lookup({
+      wallet,
+      payerSignature: row.payerSignature,
+      blockhash: row.blockhash,
+      mint: row.mint,
+      since: row.createdAt,
+    }).catch((): ChainOutcome => ({ status: 'pending' }))
+    if (outcome.status === 'paid')
+      await settle(deps.db, row.id, outcome.spentAtomic, outcome.signature)
+    else if (outcome.status === 'unpaid')
+      await release(deps.db, row.id, 'The signed payment never landed on chain')
   }
 }
 
@@ -352,12 +403,13 @@ export function payKitPayer({
   config: PaymentConfig
   wallet: { walletId: string; walletAddress: string }
 }): Payer {
-  return async ({ url, init, charge, onProgress }) => {
+  return async ({ url, init, charge, onProgress, onSigned }) => {
     const signer = privyPaymentSigner({
       privy,
       walletId: wallet.walletId,
       walletAddress: address(wallet.walletAddress),
       authorizationKey,
+      onSigned,
     })
     const client = await createPayKitClient({
       signer: asPayKitSigner(signer),
