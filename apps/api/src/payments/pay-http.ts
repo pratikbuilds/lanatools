@@ -27,10 +27,10 @@ import {
   OutboundRequestError,
   REQUEST_TIMEOUT_MS,
   checkEndpoint,
-  readCapped,
+  readBody,
   requestInit,
 } from './outbound'
-import type { OutboundInput } from './outbound'
+import type { OutboundInput, ResponseBody } from './outbound'
 import {
   PolicyDeniedError,
   asPayKitSigner,
@@ -49,11 +49,9 @@ export type PayHttpInput = OutboundInput & {
   maxUsd: string
 }
 
-export type PayHttpResult = {
+export type PayHttpResult = ResponseBody & {
   status: number
   contentType: string | null
-  body: string
-  bodyTruncated: boolean
   payment: {
     state: 'paid' | 'uncertain'
     protocol: Protocol
@@ -245,9 +243,10 @@ export async function payHttp(
     return unpaidResult(paid)
   }
 
-  const { text, truncated } = await readCapped(paid).catch(() => ({
-    text: '',
-    truncated: false,
+  // The payment is already made, so a body that cannot be read is not an error.
+  const body = await readBody(paid).catch((): ResponseBody => ({
+    body: '',
+    bodyEncoding: 'text',
   }))
   const signature = receiptSignature(paid, charge.protocol)
   const settlement: Settlement = signature
@@ -279,8 +278,7 @@ export async function payHttp(
   return {
     status: paid.status,
     contentType: paid.headers.get('content-type'),
-    body: text,
-    bodyTruncated: truncated,
+    ...body,
     payment: {
       state: settlement.status === 'paid' ? 'paid' : 'uncertain',
       protocol: charge.protocol,
@@ -334,12 +332,10 @@ function errorText(error: unknown) {
 }
 
 async function unpaidResult(response: Response): Promise<PayHttpResult> {
-  const { text, truncated } = await readCapped(response)
   return {
     status: response.status,
     contentType: response.headers.get('content-type'),
-    body: text,
-    bodyTruncated: truncated,
+    ...(await readBody(response)),
     payment: null,
   }
 }

@@ -1,6 +1,7 @@
+import { createSolanaRpc, signature as toSignature } from '@solana/kit'
 import { Receipt } from 'mppx'
 import type { FixedCharge } from './challenge'
-import { rpc } from './network'
+import { RPC_TIMEOUT_MS } from './network'
 
 const SIGNATURE = /^[1-9A-HJ-NP-Za-km-z]{64,88}$/
 
@@ -45,13 +46,6 @@ type TokenBalance = {
   mint: string
   uiTokenAmount: { amount: string }
 }
-type ParsedTransaction = {
-  meta: {
-    err: unknown
-    preTokenBalances?: TokenBalance[]
-    postTokenBalances?: TokenBalance[]
-  } | null
-}
 
 export type Settlement =
   { status: 'paid' } | { status: 'unconfirmed'; reason: string }
@@ -68,15 +62,15 @@ export async function verifySettlement(
   payer: string,
   { timeoutMs = 60_000, intervalMs = 2_000 } = {},
 ): Promise<Settlement> {
+  const rpc = createSolanaRpc(rpcUrl)
+  const id = toSignature(signature)
   const deadline = Date.now() + timeoutMs
   for (;;) {
-    const { value } = await rpc<{
-      value: Array<{ confirmationStatus?: string; err: unknown } | null>
-    }>(rpcUrl, 'getSignatureStatuses', [
-      [signature],
-      { searchTransactionHistory: true },
-    ]).catch(() => ({ value: [null] }))
-    const status = value[0]
+    const status = await rpc
+      .getSignatureStatuses([id], { searchTransactionHistory: true })
+      .send({ abortSignal: AbortSignal.timeout(RPC_TIMEOUT_MS) })
+      .then(({ value }) => value[0])
+      .catch(() => null)
     if (status?.err)
       return {
         status: 'unconfirmed',
@@ -91,18 +85,14 @@ export async function verifySettlement(
     await new Promise((resolve) => setTimeout(resolve, intervalMs))
   }
 
-  const transaction = await rpc<ParsedTransaction | null>(
-    rpcUrl,
-    'getTransaction',
-    [
-      signature,
-      {
-        encoding: 'jsonParsed',
-        commitment: 'finalized',
-        maxSupportedTransactionVersion: 0,
-      },
-    ],
-  ).catch(() => null)
+  const transaction = await rpc
+    .getTransaction(id, {
+      encoding: 'jsonParsed',
+      commitment: 'finalized',
+      maxSupportedTransactionVersion: 0,
+    })
+    .send({ abortSignal: AbortSignal.timeout(RPC_TIMEOUT_MS) })
+    .catch(() => null)
   if (!transaction?.meta || transaction.meta.err)
     return { status: 'unconfirmed', reason: 'Could not read the transaction' }
   const change = (owner: string) =>
@@ -120,7 +110,7 @@ export async function verifySettlement(
 }
 
 function balance(
-  balances: TokenBalance[] | undefined,
+  balances: readonly TokenBalance[] | undefined,
   owner: string,
   mint: string,
 ) {

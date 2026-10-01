@@ -180,9 +180,28 @@ test('a free endpoint is returned unpaid and recorded', async () => {
     grant,
     input(),
   )
-  expect(result).toMatchObject({ status: 200, body: 'hello', payment: null })
+  expect(result).toMatchObject({
+    status: 200,
+    body: 'hello',
+    bodyEncoding: 'text',
+    payment: null,
+  })
   expect(payer).not.toHaveBeenCalled()
   expect((await activity()).map((a) => a.status)).toEqual(['free'])
+})
+
+test('a large binary response comes back whole as base64', async () => {
+  const grant = await connectClient(50_000)
+  const image = new Uint8Array(200_000).fill(0xff)
+  const result = await payHttp(
+    deps({
+      fetch: (async () => new Response(image)) as unknown as typeof fetch,
+    }),
+    grant,
+    input(),
+  )
+  expect(result.bodyEncoding).toBe('base64')
+  expect(Buffer.from(result.body, 'base64')).toEqual(Buffer.from(image))
 })
 
 test('a fixed x402 charge is reserved, paid, and settled as spend', async () => {

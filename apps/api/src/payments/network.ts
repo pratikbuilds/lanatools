@@ -1,3 +1,8 @@
+import { createSolanaRpc } from '@solana/kit'
+
+/** How long one RPC request may take. */
+export const RPC_TIMEOUT_MS = 10_000
+
 /**
  * The one Solana network agent payments run on. Everything network-specific
  * lives here; mainnet is deliberately absent until it is launched.
@@ -61,30 +66,11 @@ export async function paymentConfig(env: PaymentEnv): Promise<PaymentConfig> {
 }
 
 async function assertGenesis(rpcUrl: string, network: PaymentNetwork) {
-  const genesis = await rpc<string>(rpcUrl, 'getGenesisHash', [])
+  const genesis = await createSolanaRpc(rpcUrl)
+    .getGenesisHash()
+    .send({ abortSignal: AbortSignal.timeout(RPC_TIMEOUT_MS) })
   if (genesis !== network.genesisHash)
     throw new Error(
       `SOLANA_RPC_URL does not serve Solana ${network.name}; refusing to pay`,
     )
-}
-
-/** A JSON-RPC call with a timeout; RPC errors become exceptions. */
-export async function rpc<T>(
-  rpcUrl: string,
-  method: string,
-  params: unknown[],
-): Promise<T> {
-  const response = await fetch(rpcUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-    signal: AbortSignal.timeout(10_000),
-  })
-  const body = (await response.json().catch(() => ({}))) as {
-    result?: T
-    error?: { message?: string }
-  }
-  if (body.error) throw new Error(`${method}: ${body.error.message}`)
-  if (!response.ok) throw new Error(`${method}: HTTP ${response.status}`)
-  return body.result as T
 }

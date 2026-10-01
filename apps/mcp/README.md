@@ -41,8 +41,9 @@ survive a reconnect.
 
 Endpoints are untrusted: only https on the default port, no credentials in the
 URL, no loopback, private or link-local hosts, an allowlist of request
-headers, redirects returned rather than followed, timeouts and a 64 KiB
-response cap. The agent's LanaTools token never reaches the endpoint.
+headers, redirects returned rather than followed, and timeouts. Responses are
+returned whole: as text when they are UTF-8, otherwise base64
+(`bodyEncoding`). The agent's LanaTools token never reaches the endpoint.
 
 ### Server signer
 

@@ -1,12 +1,12 @@
+import { Buffer } from 'node:buffer'
+
 /**
  * Rules for requests LanaTools sends to endpoints an agent names. The
  * endpoint is untrusted: it gets only what the agent asked to send, never a
- * LanaTools token or server secret, and its answer is size-capped.
+ * LanaTools token or server secret.
  */
 
 export const REQUEST_TIMEOUT_MS = 15_000
-export const MAX_RESPONSE_BYTES = 64 * 1024
-export const MAX_REQUEST_BODY_BYTES = 64 * 1024
 
 // Headers an agent may set. Everything else, including Authorization and
 // Cookie, is refused rather than silently dropped.
@@ -122,8 +122,6 @@ export function requestInit(input: OutboundInput): RequestInit {
       if (!headers.has('content-type'))
         headers.set('content-type', 'application/json')
     }
-    if (new TextEncoder().encode(body).byteLength > MAX_REQUEST_BODY_BYTES)
-      throw new OutboundRequestError('Request body is too large')
   }
   // Redirects are returned, not followed, so a redirect cannot lead the
   // request, or a payment, to another host.
@@ -135,31 +133,24 @@ export function requestInit(input: OutboundInput): RequestInit {
   }
 }
 
-/** Reads at most MAX_RESPONSE_BYTES of a response body as text. */
-export async function readCapped(response: Response) {
-  if (!response.body) return { text: '', truncated: false }
-  const reader = response.body.getReader()
-  const chunks: Uint8Array[] = []
-  let size = 0
-  let truncated = false
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    const room = MAX_RESPONSE_BYTES - size
-    if (value.byteLength > room) {
-      chunks.push(value.subarray(0, room))
-      truncated = true
-      await reader.cancel().catch(() => undefined)
-      break
+export type ResponseBody = { body: string; bodyEncoding: 'text' | 'base64' }
+
+/**
+ * Reads the whole response body: as text when it is valid UTF-8, otherwise
+ * as base64, so images, audio and files arrive intact.
+ */
+// ponytail: buffers the body in Worker memory; stream it if very large media hits the Worker or RPC limits.
+export async function readBody(response: Response): Promise<ResponseBody> {
+  const bytes = new Uint8Array(await response.arrayBuffer())
+  try {
+    return {
+      body: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
+      bodyEncoding: 'text',
     }
-    chunks.push(value)
-    size += value.byteLength
+  } catch {
+    return {
+      body: Buffer.from(bytes).toString('base64'),
+      bodyEncoding: 'base64',
+    }
   }
-  const bytes = new Uint8Array(chunks.reduce((n, c) => n + c.byteLength, 0))
-  let offset = 0
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  return { text: new TextDecoder().decode(bytes), truncated }
 }
