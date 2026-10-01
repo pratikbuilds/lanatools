@@ -10,7 +10,12 @@ import { McpServer } from '@modelcontextprotocol/server'
 import type { CallToolResult } from '@modelcontextprotocol/server'
 import { createMcpHandler } from 'agents/mcp/server'
 import { z } from 'zod'
-import { MCP_SCOPES, isMcpScope, parseUsd } from '@lanatools/contracts'
+import {
+  MCP_SCOPES,
+  isMcpScope,
+  parseClientLimit,
+  parseUsd,
+} from '@lanatools/contracts'
 import { WorkerEntrypoint, env as bindings } from 'cloudflare:workers'
 import type {
   McpAccessService,
@@ -228,7 +233,9 @@ const defaultHandler = {
           .safeParse(await request.json().catch(() => null))
         if (!body.success) return json({ error: 'Invalid decision' }, 400)
         const limitMicroUsd =
-          body.data.limitUsd === undefined ? null : parseUsd(body.data.limitUsd)
+          body.data.limitUsd === undefined
+            ? null
+            : parseClientLimit(body.data.limitUsd)
         if (body.data.limitUsd !== undefined && limitMicroUsd === null)
           return json({ error: 'Invalid spending limit' }, 400)
         try {

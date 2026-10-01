@@ -1,6 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { formatUsd, parseUsd } from '@lanatools/contracts'
+import {
+  MAX_CLIENT_LIMIT_MICRO_USD,
+  formatUsd,
+  parseClientLimit,
+} from '@lanatools/contracts'
 import type { McpClient } from '@lanatools/contracts'
 import {
   MCP_SERVER_URL,
@@ -209,7 +213,7 @@ function Spending({
     0,
     client.limitMicroUsd - client.spentMicroUsd - client.reservedMicroUsd,
   )
-  const valid = parseUsd(draft) !== null
+  const valid = parseClientLimit(draft) !== null
 
   async function save() {
     if (!valid) return
@@ -282,6 +286,11 @@ function Spending({
           >
             Cancel
           </button>
+          {!valid && (
+            <p className="w-full text-[12px] text-coral-ink">
+              Enter an amount up to {formatUsd(MAX_CLIENT_LIMIT_MICRO_USD)}.
+            </p>
+          )}
         </form>
       ) : (
         <button

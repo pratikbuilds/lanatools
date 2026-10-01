@@ -1,7 +1,7 @@
 import { and, desc, eq, lt, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
-import { MAX_CLIENT_LIMIT_MICRO_USD, isMcpScope } from '@lanatools/contracts'
+import { isClientLimit, isMcpScope } from '@lanatools/contracts'
 import type { McpClient } from '@lanatools/contracts'
 import { mcpConsent, mcpGrant, paymentActivity } from './db/schema'
 
@@ -49,15 +49,6 @@ function approvedLimit(scope: string, limitMicroUsd: number | null) {
   if (!isClientLimit(limitMicroUsd))
     throw new Error('Set a spending limit to allow payments')
   return limitMicroUsd
-}
-
-export function isClientLimit(value: number | null): value is number {
-  return (
-    value !== null &&
-    Number.isSafeInteger(value) &&
-    value >= 0 &&
-    value <= MAX_CLIENT_LIMIT_MICRO_USD
-  )
 }
 
 export async function recordConsent(

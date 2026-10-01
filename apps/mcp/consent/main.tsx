@@ -3,10 +3,16 @@ import { toSolanaWalletConnectors } from '@privy-io/react-auth/solana'
 import ReactDOM from 'react-dom/client'
 import { useEffect, useState } from 'react'
 import { z } from 'zod'
-import { MCP_SCOPES, formatUsd, parseUsd } from '@lanatools/contracts'
+import {
+  MAX_CLIENT_LIMIT_MICRO_USD,
+  MCP_SCOPES,
+  formatUsd,
+  parseClientLimit,
+} from '@lanatools/contracts'
 import logoUrl from '../../web/public/favicon.svg?url'
 import './styles.css'
 
+const LIMIT_HINT = `Enter an amount up to ${formatUsd(MAX_CLIENT_LIMIT_MICRO_USD)}, such as 1.00.`
 const appId = import.meta.env.VITE_PRIVY_APP_ID
 const PendingConsent = z.object({
   clientId: z.string().min(1),
@@ -45,12 +51,12 @@ function Connect() {
   }, [handle])
 
   const payments = pending?.scopes.includes('payments:pay') ?? false
-  const limit = parseUsd(limitUsd)
+  const limit = parseClientLimit(limitUsd)
 
   async function decide(decision: 'approve' | 'deny') {
     if (!handle || !pending) return
     if (decision === 'approve' && payments && limit === null) {
-      setMessage('Enter a spending limit in dollars, such as 1.00.')
+      setMessage(LIMIT_HINT)
       return
     }
     setBusy(true)
@@ -162,7 +168,7 @@ function Connect() {
                   </span>
                   <span className="limit-help">
                     {limit === null
-                      ? 'Enter an amount such as 1.00.'
+                      ? LIMIT_HINT
                       : `This app can spend ${formatUsd(limit)} in total. You can change or stop this in your dashboard.`}
                   </span>
                 </label>

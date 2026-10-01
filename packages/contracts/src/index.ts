@@ -25,6 +25,22 @@ export function parseUsd(value: string): number | null {
   return Number(whole) * 1_000_000 + Number(fraction.padEnd(6, '0'))
 }
 
+/** Whether a micro-USD amount is a spending limit a client can have. */
+export function isClientLimit(value: number | null): value is number {
+  return (
+    value !== null &&
+    Number.isSafeInteger(value) &&
+    value >= 0 &&
+    value <= MAX_CLIENT_LIMIT_MICRO_USD
+  )
+}
+
+/** Parses a USD spending limit into micro-USD, or null if it is not one. */
+export function parseClientLimit(value: string): number | null {
+  const limit = parseUsd(value)
+  return isClientLimit(limit) ? limit : null
+}
+
 /** Formats micro-USD as dollars, keeping cents and any smaller digits. */
 export function formatUsd(microUsd: number) {
   const whole = Math.trunc(microUsd / 1_000_000)

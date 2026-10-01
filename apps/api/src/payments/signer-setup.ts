@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
 import type {
@@ -151,11 +151,24 @@ export async function confirmSigner(
     throw new SignerSetupError(
       'Privy does not show the LanaTools signer on this wallet yet',
     )
-  await db
+  // Only the setup that was checked can be enabled: a turn-off or a new setup
+  // since the read above wins.
+  const [enabled] = await db
     .update(paymentSigner)
     .set({ status: 'enabled', updatedAt: now })
-    .where(eq(paymentSigner.privyUserId, userId))
-  return { status: 'enabled', walletAddress: row.walletAddress }
+    .where(
+      and(
+        eq(paymentSigner.privyUserId, userId),
+        eq(paymentSigner.policyId, row.policyId),
+        inArray(paymentSigner.status, ['pending', 'enabled']),
+      ),
+    )
+    .returning({ walletAddress: paymentSigner.walletAddress })
+  if (!enabled)
+    throw new SignerSetupError(
+      'Payments were turned off or set up again meanwhile. Try again.',
+    )
+  return { status: 'enabled', walletAddress: enabled.walletAddress }
 }
 
 /**
