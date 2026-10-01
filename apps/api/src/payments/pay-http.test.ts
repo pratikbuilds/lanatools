@@ -686,3 +686,34 @@ test('concurrent calls resolving the same reservation both go through', async ()
     'released',
   ])
 })
+
+test('proof of payment wins over a release from a lookup that missed it', async () => {
+  const grant = await connectClient(50_000)
+  await enableSigner()
+  await stuckUncertainPayment(grant)
+
+  // One call's lookup misses the transaction and releases first; the
+  // other's finds it finalized.
+  let release: () => void = () => {}
+  const released = new Promise<void>((resolve) => (release = resolve))
+  const missed = mock(async () => {
+    setTimeout(release, 50)
+    return { status: 'unpaid' } as const
+  })
+  const found = mock(async () => {
+    await released
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    return {
+      status: 'paid',
+      signature: SIGNATURE,
+      spentAtomic: 10_000n,
+    } as const
+  })
+  await Promise.all([
+    payHttp(deps({ lookup: missed }), grant, input()),
+    payHttp(deps({ lookup: found }), grant, input()),
+  ])
+  const [first] = (await activity()).sort((a, b) => a.createdAt - b.createdAt)
+  expect(first?.status).toBe('paid')
+  expect((await totals()).spent).toBe(30_000)
+})

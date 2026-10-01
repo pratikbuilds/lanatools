@@ -203,7 +203,11 @@ export async function openReservations(
     )
 }
 
-/** Replaces a reservation with the verified spend. */
+/**
+ * Replaces a reservation with the verified spend. Only called with proof
+ * from the chain, which wins over a release made on weaker evidence, such
+ * as a concurrent reconciliation whose lookup missed the transaction.
+ */
 export async function settle(
   database: D1Database,
   id: string,
@@ -212,7 +216,7 @@ export async function settle(
   httpStatus?: number,
   now = Date.now(),
 ) {
-  await transition(database, id, ['reserved', 'uncertain'], {
+  await transition(database, id, ['reserved', 'uncertain', 'released'], {
     status: 'paid',
     settledAtomic: Number(settledAtomic),
     signature,
@@ -260,7 +264,7 @@ export async function markUncertain(
 async function transition(
   database: D1Database,
   id: string,
-  from: Array<'reserved' | 'uncertain'>,
+  from: Array<'reserved' | 'uncertain' | 'released'>,
   set: Partial<typeof paymentActivity.$inferInsert>,
 ) {
   const [row] = await drizzle(database)
