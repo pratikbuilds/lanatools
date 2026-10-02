@@ -130,7 +130,42 @@ in `lanatools-production` D1. Set `PRIVY_APP_ID`, `PRIVY_APP_SECRET`,
 `PRIVY_PAYMENT_SIGNER_ID`, `PRIVY_PAYMENT_SIGNER_KEY` and `SOLANA_RPC_URL` as
 API Worker secrets, supply `VITE_PRIVY_APP_ID` when building consent assets, and
 allow `https://mcp.lanatools.sh` in the Privy app's domains. The API and MCP
-Workers bind to each other. Apply new D1 migrations with
+Workers bind to each other.
+
+### Automatic deployment
+
+The `lanatools-mcp` Worker is connected to `pratikbuilds/lanatools` through
+Cloudflare Workers Builds. These settings live in Cloudflare under
+**Settings → Builds**, not in Wrangler or a GitHub deployment workflow:
+
+| Setting                            | Value                                                             |
+| ---------------------------------- | ----------------------------------------------------------------- |
+| Production branch                  | `master`                                                          |
+| Root directory                     | `/`                                                               |
+| Build command                      | `bun test apps/mcp/src && bun run --cwd apps/mcp build`           |
+| Deploy command                     | `bunx wrangler deploy -c apps/mcp/wrangler.jsonc`                 |
+| Builds for non-production branches | Disabled                                                          |
+| Build watch paths                  | Include `*`; no exclusions                                        |
+| Build variable                     | `VITE_PRIVY_APP_ID`, the same public app ID used by the web build |
+| API token                          | Reuse the existing Workers Builds token used by web/API           |
+
+A push or merge to `master` tests MCP, builds the consent page, and deploys
+`mcp.lanatools.sh`. Failed MCP tests or builds stop that deployment. The full
+GitHub `Check` workflow runs independently; Cloudflare does not wait for it.
+Web, API, and MCP also deploy independently, so cross-Worker changes must
+remain compatible while their deployments finish.
+
+MCP branch previews are disabled. Its OAuth KV and API service binding are
+production resources; do not enable preview authorization tests against them.
+Merging documentation changes does not configure Workers Builds: the repository
+connection, branch control, commands, token, and build variable must also be
+saved in Cloudflare. Follow the
+[Workers Builds configuration guide](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/)
+when recreating the setup.
+
+### Manual recovery
+
+For a manual rollout, apply new D1 migrations with
 `bun run --cwd apps/api db:migrate:remote`, then run `bun run deploy:mcp`
-followed by `bun run deploy:api`.
-Do not point a preview Worker at production KV or D1 for authorization tests.
+followed by `bun run deploy:api`. Normal API builds already apply migrations
+before deployment. Supply `VITE_PRIVY_APP_ID` when building MCP locally.
