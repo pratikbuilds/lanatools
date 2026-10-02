@@ -15,9 +15,7 @@ import './styles.css'
 const LIMIT_HINT = `Enter an amount up to ${formatUsd(MAX_CLIENT_LIMIT_MICRO_USD)}, such as 1.00.`
 const appId = import.meta.env.VITE_PRIVY_APP_ID
 const PendingConsent = z.object({
-  clientId: z.string().min(1),
   clientName: z.string().min(1),
-  redirectUri: z.url(),
   scopes: z.array(z.enum(MCP_SCOPES)).min(1),
 })
 
@@ -79,10 +77,17 @@ function Connect() {
           ),
         },
       )
-      const result = z
-        .object({ redirectTo: z.url() })
-        .safeParse(await response.json())
-      if (!response.ok || !result.success)
+      const body: unknown = await response.json()
+      if (!response.ok) {
+        const error = z.object({ error: z.string() }).safeParse(body)
+        throw new Error(
+          error.success
+            ? error.data.error
+            : 'Connection failed. Please try again.',
+        )
+      }
+      const result = z.object({ redirectTo: z.url() }).safeParse(body)
+      if (!result.success)
         throw new Error('Connection failed. Start again from your MCP client.')
       window.location.assign(result.data.redirectTo)
     } catch (error) {
@@ -96,7 +101,6 @@ function Connect() {
     user?.email?.address ||
     user?.wallet?.address ||
     user?.id
-  const redirect = pending && new URL(pending.redirectUri)
 
   return (
     <main className="page">
@@ -189,27 +193,9 @@ function Connect() {
                 </div>
               )}
 
-              <div className="destination">
-                <span className="destination-label">Returns to</span>
-                <strong>{redirect?.host}</strong>
-                {redirect &&
-                  ['localhost', '127.0.0.1', '[::1]'].includes(
-                    redirect.hostname,
-                  ) && (
-                    <p>
-                      Only continue if you started this in an app on your
-                      computer.
-                    </p>
-                  )}
-              </div>
-
-              <details className="details">
-                <summary>Connection details</summary>
-                <span>Callback URL</span>
-                <code>{pending.redirectUri}</code>
-                <span>Client ID</span>
-                <code>{pending.clientId}</code>
-              </details>
+              <p className="client-note">
+                Only continue if you started this connection in your app.
+              </p>
 
               <div className="actions">
                 {ready && !authenticated ? (

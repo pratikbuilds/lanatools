@@ -163,3 +163,39 @@ test('a grant without payments cannot carry or change a limit', async () => {
   await activateGrant(db, handle, grant, null)
   expect(await setClientLimit(db, 'user-read', grantId, 1_000_000)).toBe(false)
 })
+
+test('older MCP callers can approve read-only access without a spending limit', async () => {
+  const handle = await startConsent('legacy-read')
+  const { grantId } = await prepareGrant(
+    db,
+    handle,
+    'legacy-read',
+    'legacy-user',
+  )
+  const grant = { grantId, userId: 'legacy-user', clientId: 'legacy-read' }
+  await activateGrant(db, handle, grant)
+  expect(await useActiveGrant(db, grant)).toBe(true)
+  expect((await listClients(db, 'legacy-user'))[0]).toMatchObject({
+    clientName: 'Claude',
+    limitMicroUsd: 0,
+  })
+
+  const paymentHandle = await startConsent('legacy-pay', undefined, [
+    'payments:pay',
+  ])
+  const payment = await prepareGrant(
+    db,
+    paymentHandle,
+    'legacy-pay',
+    'legacy-user',
+  )
+  const paymentGrant = {
+    grantId: payment.grantId,
+    userId: 'legacy-user',
+    clientId: 'legacy-pay',
+  }
+  await expect(activateGrant(db, paymentHandle, paymentGrant)).rejects.toThrow(
+    'Set a spending limit',
+  )
+  expect(await useActiveGrant(db, paymentGrant)).toBe(false)
+})
