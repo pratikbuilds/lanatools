@@ -1,31 +1,6 @@
+import { useId } from 'react'
 import { LOGO_MARKS } from './logos'
 import type { LogoId } from './logos'
-
-function boxOf(viewBox: string) {
-  const [minX, minY, width, height] = viewBox.split(' ').map(Number)
-  return {
-    minX: minX ?? 0,
-    minY: minY ?? 0,
-    width: width ?? 24,
-    height: height ?? 24,
-  }
-}
-
-function GrokGlyph({ fill }: { fill: string }) {
-  const mark = LOGO_MARKS.grok
-  const box = boxOf(mark.viewBox)
-  const pad = 2.4
-  const inner = 24 - pad * 2
-  return (
-    <g
-      transform={`translate(${pad} ${pad}) scale(${inner / box.width}) translate(${-box.minX} ${-box.minY})`}
-    >
-      {mark.paths.map((d) => (
-        <path key={d} d={d} fill={fill} />
-      ))}
-    </g>
-  )
-}
 
 export function Logo({
   id,
@@ -36,20 +11,8 @@ export function Logo({
   size?: number
   className?: string
 }) {
+  const gradientId = useId()
   const mark = LOGO_MARKS[id]
-  if (id === 'grok') {
-    return (
-      <svg
-        viewBox="0 0 24 24"
-        {...(size === undefined ? {} : { width: size, height: size })}
-        aria-hidden="true"
-        className={`shrink-0 ${className}`}
-      >
-        <rect width="24" height="24" rx="5.5" fill="currentColor" />
-        <GrokGlyph fill="var(--color-card)" />
-      </svg>
-    )
-  }
   return (
     <svg
       viewBox={mark.viewBox}
@@ -57,8 +20,32 @@ export function Logo({
       aria-hidden="true"
       className={`shrink-0 ${className}`}
     >
+      {id === 'solana' && (
+        <defs>
+          <linearGradient
+            id={gradientId}
+            x1="8.52558"
+            y1="90.0973"
+            x2="88.9933"
+            y2="-3.01622"
+            gradientUnits="userSpaceOnUse"
+          >
+            <stop offset="0.08" stopColor="#9945FF" />
+            <stop offset="0.3" stopColor="#8752F3" />
+            <stop offset="0.5" stopColor="#5497D5" />
+            <stop offset="0.6" stopColor="#43B4CA" />
+            <stop offset="0.72" stopColor="#28E0B9" />
+            <stop offset="0.97" stopColor="#19FB9B" />
+          </linearGradient>
+        </defs>
+      )}
       {mark.paths.map((d) => (
-        <path key={d} d={d} fill="currentColor" />
+        <path
+          key={d}
+          d={d}
+          fillRule={mark.fillRule}
+          fill={id === 'solana' ? `url(#${gradientId})` : mark.color}
+        />
       ))}
     </svg>
   )
@@ -76,35 +63,9 @@ export function LogoGlyph({
   y: number
   size: number
 }) {
-  const mark = LOGO_MARKS[id]
-  const box = boxOf(mark.viewBox)
-  if (id === 'grok') {
-    const pad = size * 0.12
-    return (
-      <g transform={`translate(${x} ${y})`}>
-        <rect
-          width={size}
-          height={size}
-          rx={size * 0.22}
-          className="fill-ink"
-        />
-        <g
-          transform={`translate(${pad} ${pad}) scale(${(size - pad * 2) / box.width}) translate(${-box.minX} ${-box.minY})`}
-        >
-          {mark.paths.map((d) => (
-            <path key={d} d={d} className="fill-card" />
-          ))}
-        </g>
-      </g>
-    )
-  }
   return (
-    <g
-      transform={`translate(${x} ${y}) scale(${size / box.width}) translate(${-box.minX} ${-box.minY})`}
-    >
-      {mark.paths.map((d) => (
-        <path key={d} d={d} className="fill-ink" />
-      ))}
+    <g transform={`translate(${x} ${y})`}>
+      <Logo id={id} size={size} />
     </g>
   )
 }

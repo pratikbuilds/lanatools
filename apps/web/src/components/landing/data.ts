@@ -1,6 +1,6 @@
 import type { AgentId } from './logos'
 
-export type Permission = 'read' | 'pay' | 'prepare'
+export type Permission = 'read' | 'pay' | 'prepare' | 'execute'
 
 export type Client = {
   id: AgentId
@@ -35,27 +35,56 @@ export const CLIENTS: Array<Client> = [
     kind: 'desktop · cloud',
     cap: 15,
     spent: 4.5,
-    can: ['read', 'pay'],
+    can: ['read', 'pay', 'prepare', 'execute'],
   },
   {
     id: 'grok',
-    name: 'Grok',
-    kind: 'cloud',
+    name: 'Grok bot',
+    kind: 'agent',
     cap: 8,
     spent: 0.4,
-    can: ['read'],
+    can: ['read', 'prepare', 'execute'],
   },
   {
-    id: 'cloud',
-    name: 'Cloud agent',
-    kind: 'server',
+    id: 'others',
+    name: 'Other agents',
+    kind: 'OpenClaw · Hermes',
     cap: 5,
     spent: 5,
     can: ['read', 'pay'],
   },
 ]
 
-export const PROVIDERS = ['pay.sh', 'Helius', 'Jupiter', 'Dune']
+export const CAPABILITIES = [
+  {
+    name: 'Payments',
+    icon: '/icons/payments.svg',
+    note: 'x402 · MPP',
+    cost: '+ $0.25',
+    paid: true,
+  },
+  {
+    name: 'Onchain data',
+    icon: '/icons/onchain-data.svg',
+    note: 'read · explore',
+    cost: '1 credit',
+    paid: false,
+  },
+  {
+    name: 'Transactions',
+    icon: '/icons/transactions.svg',
+    note: 'create · execute',
+    cost: 'free',
+    paid: false,
+  },
+  {
+    name: 'Analytics',
+    icon: '/icons/analytics.svg',
+    note: 'query · analyze',
+    cost: '+ $0.10',
+    paid: true,
+  },
+]
 
 export const usd = new Intl.NumberFormat('en-US', {
   style: 'currency',
