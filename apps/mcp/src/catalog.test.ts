@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import {
+  CATALOG_URL,
   CatalogError,
-  createCatalog,
   endpointURL,
   getCatalogEntry,
   listCatalog,
@@ -30,6 +30,7 @@ function provider(fqn: string, fields: Record<string, unknown> = {}) {
 const market = provider('blocksize/market-data', {
   title: 'Blocksize Market Data',
   description: 'Institutional crypto, FX, and metals market data.',
+  use_case: 'Use for live crypto prices and FX exchange rates.',
   category: 'finance',
   service_url: 'https://mcp.blocksize.info',
 })
@@ -78,6 +79,7 @@ const details: Record<string, unknown> = {
     fqn: 'exa/search',
     endpoints: [
       { method: 'POST', path: 'search', description: 'Search the web' },
+      { method: 'GET', description: 'An endpoint listed without a path' },
     ],
   },
 }
@@ -97,7 +99,7 @@ function fakeFetch(
   const requested: string[] = []
   const fetcher = async (url: string) => {
     requested.push(url)
-    if (url === `${BASE}/skills.json`) return Response.json(index)
+    if (url === CATALOG_URL) return Response.json(index)
     const fqn = url.slice(`${BASE}/providers/`.length, -'.json'.length)
     const detail = details[fqn]
     return detail
@@ -108,10 +110,7 @@ function fakeFetch(
 }
 
 test('ranks a provider by its endpoints once they are loaded', async () => {
-  const { fetcher } = fakeFetch()
-  const catalog = createCatalog(fetcher, `${BASE}/skills.json`)
-
-  const [top] = await searchCatalog(catalog, {
+  const [top] = await searchCatalog(fakeFetch().fetcher, {
     query: 'EURUSD exchange rate',
     maxResults: 5,
   })
@@ -130,10 +129,7 @@ test('ranks a provider by its endpoints once they are loaded', async () => {
 })
 
 test('filters by category and skips providers that do not match', async () => {
-  const { fetcher } = fakeFetch()
-  const catalog = createCatalog(fetcher, `${BASE}/skills.json`)
-
-  const results = await searchCatalog(catalog, {
+  const results = await searchCatalog(fakeFetch().fetcher, {
     query: 'web search',
     category: 'search',
     maxResults: 5,
@@ -142,47 +138,47 @@ test('filters by category and skips providers that do not match', async () => {
   expect(results.map((r) => r.fqn)).toEqual(['exa/search'])
 })
 
-test('reports a provider whose endpoints could not load', async () => {
+test('finds nothing for a task no provider matches', async () => {
+  const results = await searchCatalog(fakeFetch().fetcher, {
+    query: 'xyzzy quux',
+    maxResults: 5,
+  })
+
+  expect(results).toEqual([])
+})
+
+test('ranks a provider without endpoints when its detail file fails', async () => {
   const { fetcher } = fakeFetch({
     version: 2,
     base_url: BASE,
     providers: [provider('gone/away', { title: 'Weather forecasts' })],
   })
-  const catalog = createCatalog(fetcher, `${BASE}/skills.json`)
 
-  const [result] = await searchCatalog(catalog, {
+  const [result] = await searchCatalog(fetcher, {
     query: 'weather',
     maxResults: 5,
   })
 
+  expect(result?.fqn).toBe('gone/away')
   expect(result?.endpoints).toEqual([])
-  expect(result?.endpoint_lookup_error).toBe('The catalog returned HTTP 404')
 })
 
 test('drops malformed listings and rejects an unknown index format', async () => {
-  const { fetcher, requested } = fakeFetch()
-  const catalog = createCatalog(fetcher, `${BASE}/skills.json`)
-  const listed = await listCatalog(catalog)
+  const listed = await listCatalog(fakeFetch().fetcher)
   expect(listed.provider_count).toBe(2)
   expect(listed.categories.map((c) => c.category)).toEqual([
     'finance',
     'search',
   ])
-  await listCatalog(catalog)
-  expect(requested).toEqual([`${BASE}/skills.json`])
 
-  const old = createCatalog(
-    fakeFetch({ schema_version: '1', providers: [] }).fetcher,
-    `${BASE}/skills.json`,
-  )
+  const old = fakeFetch({ schema_version: '1', providers: [] }).fetcher
   expect(listCatalog(old)).rejects.toBeInstanceOf(CatalogError)
 })
 
 test('returns an endpoint request shape with only referenced components', async () => {
   const { fetcher } = fakeFetch()
-  const catalog = createCatalog(fetcher, `${BASE}/skills.json`)
 
-  const entry = await getCatalogEntry(catalog, {
+  const entry = await getCatalogEntry(fetcher, {
     fqn: 'Blocksize/Market-Data',
     method: 'GET',
     path: '/v1/fx/EURUSD',
@@ -196,10 +192,24 @@ test('returns an endpoint request shape with only referenced components', async 
     requestBody: null,
     components: { parameters: { Format: { name: 'format', in: 'query' } } },
   })
-  expect(await getCatalogEntry(catalog, { fqn: 'nobody/here' })).toBeNull()
+  expect(await getCatalogEntry(fetcher, { fqn: 'nobody/here' })).toBeNull()
+})
+
+test('keeps valid endpoints and explains a missing path or method', async () => {
+  const { fetcher } = fakeFetch()
+
+  const entry = await getCatalogEntry(fetcher, { fqn: 'exa/search' })
+  expect(entry?.endpoints.map((e) => e.path)).toEqual(['search'])
   expect(
-    getCatalogEntry(catalog, { fqn: 'exa/search', path: 'nope' }),
+    getCatalogEntry(fetcher, { fqn: 'exa/search', path: 'nope' }),
   ).rejects.toThrow('exa/search has no endpoint nope')
+  expect(
+    getCatalogEntry(fetcher, {
+      fqn: 'exa/search',
+      path: 'search',
+      method: 'GET',
+    }),
+  ).rejects.toThrow('exa/search serves search only with POST')
 })
 
 test('follows schema references without looping on cycles', () => {

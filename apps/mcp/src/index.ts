@@ -23,7 +23,6 @@ import type {
 } from '../../api/src/mcp-service'
 import {
   CatalogError,
-  createCatalog,
   getCatalogEntry,
   listCatalog,
   searchCatalog,
@@ -78,7 +77,6 @@ function createServer(
     return run(identity.data)
   }
 
-  const catalog = createCatalog()
   // Catalog tools read public listings, so any active grant may use them.
   // Failures come back as tool errors instead of failing the MCP request.
   const fromCatalog = (read: () => Promise<unknown>) =>
@@ -134,7 +132,7 @@ function createServer(
       ].join(' '),
       annotations: catalogAnnotations,
     },
-    () => fromCatalog(() => listCatalog(catalog)),
+    () => fromCatalog(() => listCatalog(fetch)),
   )
   server.registerTool(
     'search_catalog',
@@ -152,7 +150,7 @@ function createServer(
           .trim()
           .min(1)
           .describe(
-            "The user's task in plain words, e.g. 'current EUR to USD rate'",
+            "The user's task in plain words, e.g. 'find restaurants near me'",
           ),
         category: z
           .string()
@@ -164,10 +162,10 @@ function createServer(
     },
     (input) =>
       fromCatalog(() =>
-        searchCatalog(catalog, {
+        searchCatalog(fetch, {
           query: input.query,
+          category: input.category,
           maxResults: input.max_results,
-          ...(input.category ? { category: input.category } : {}),
         }),
       ),
   )
@@ -197,7 +195,7 @@ function createServer(
     },
     (input) =>
       fromCatalog(async () => {
-        const entry = await getCatalogEntry(catalog, input)
+        const entry = await getCatalogEntry(fetch, input)
         if (!entry)
           throw new CatalogError(
             `No catalog provider named ${input.fqn}; use search_catalog to find one`,

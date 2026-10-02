@@ -35,7 +35,7 @@ const Provider = z.object({
   min_price_usd: z.number().nullish(),
   max_price_usd: z.number().nullish(),
 })
-export type CatalogProvider = z.infer<typeof Provider>
+type Provider = z.infer<typeof Provider>
 
 const Index = z.object({
   version: z.literal(2),
@@ -52,21 +52,26 @@ const Endpoint = z.object({
   protocol: z.array(z.string()).nullish(),
   supported_usd: z.array(z.string()).nullish(),
 })
-export type CatalogEndpoint = z.infer<typeof Endpoint>
+type Endpoint = z.infer<typeof Endpoint>
 
 const Detail = z.object({
   fqn: z.string(),
   content: z.string().nullish(),
-  endpoints: z.array(Endpoint),
+  endpoints: z.array(z.unknown()),
   openapi_doc: z.unknown().optional(),
 })
-export type CatalogDetail = z.infer<typeof Detail>
-
-export type CatalogIndex = { baseURL: string; providers: CatalogProvider[] }
 
 export class CatalogError extends Error {}
 
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>
+
+/** Keeps the items that pass a schema, so one malformed entry hides nothing else. */
+function validItems<T>(schema: z.ZodType<T>, items: unknown[]) {
+  return items.flatMap((item) => {
+    const parsed = schema.safeParse(item)
+    return parsed.success ? [parsed.data] : []
+  })
+}
 
 async function getJSON(fetcher: Fetch, url: string) {
   // The catalog is served with `cache-control: max-age=60`; caching .json
@@ -77,57 +82,27 @@ async function getJSON(fetcher: Fetch, url: string) {
   return response.json()
 }
 
-export function createCatalog(fetcher: Fetch = fetch, url = CATALOG_URL) {
-  let index: Promise<CatalogIndex> | undefined
-  const details = new Map<string, Promise<CatalogDetail>>()
-
-  async function readIndex(): Promise<CatalogIndex> {
-    const parsed = Index.safeParse(await getJSON(fetcher, url))
-    if (!parsed.success)
-      throw new CatalogError('The catalog index has an unsupported format')
-    const base = new URL(parsed.data.base_url)
-    if (base.protocol !== 'https:')
-      throw new CatalogError('The catalog index has an unsupported format')
-    // One malformed listing must not hide the rest of the catalog.
-    const providers = parsed.data.providers.flatMap((value) => {
-      const provider = Provider.safeParse(value)
-      return provider.success ? [provider.data] : []
-    })
-    return { baseURL: parsed.data.base_url.replace(/\/+$/, ''), providers }
+async function loadIndex(fetcher: Fetch) {
+  const parsed = Index.safeParse(await getJSON(fetcher, CATALOG_URL))
+  if (!parsed.success || !parsed.data.base_url.startsWith('https://'))
+    throw new CatalogError('The catalog index has an unsupported format')
+  return {
+    baseURL: parsed.data.base_url.replace(/\/+$/, ''),
+    providers: validItems(Provider, parsed.data.providers),
   }
-
-  function getIndex() {
-    index ??= readIndex()
-    return index
-  }
-
-  async function readDetail(fqn: string) {
-    const { baseURL } = await getIndex()
-    const parsed = Detail.safeParse(
-      await getJSON(fetcher, `${baseURL}/providers/${fqn}.json`),
-    )
-    if (!parsed.success || parsed.data.fqn !== fqn)
-      throw new CatalogError(`The catalog entry for ${fqn} is malformed`)
-    return parsed.data
-  }
-
-  function getDetail(fqn: string) {
-    let detail = details.get(fqn)
-    if (!detail) {
-      detail = readDetail(fqn)
-      details.set(fqn, detail)
-    }
-    return detail
-  }
-
-  async function lookupProvider(fqn: string) {
-    const { providers } = await getIndex()
-    return providers.find((p) => p.fqn.toLowerCase() === fqn.toLowerCase())
-  }
-
-  return { getIndex, getDetail, lookupProvider }
 }
-export type Catalog = ReturnType<typeof createCatalog>
+
+async function loadDetail(fetcher: Fetch, baseURL: string, fqn: string) {
+  const parsed = Detail.safeParse(
+    await getJSON(fetcher, `${baseURL}/providers/${fqn}.json`),
+  )
+  if (!parsed.success || parsed.data.fqn !== fqn)
+    throw new CatalogError(`The catalog entry for ${fqn} is malformed`)
+  return {
+    ...parsed.data,
+    endpoints: validItems(Endpoint, parsed.data.endpoints),
+  }
+}
 
 /** Joins a provider's service URL and an endpoint path, as pay does. */
 export function endpointURL(serviceURL: string, path: string) {
@@ -138,7 +113,7 @@ export function endpointURL(serviceURL: string, path: string) {
 }
 
 /** The lowest and highest USD prices anywhere in a pricing block. */
-export function priceRange(pricing: unknown) {
+function priceRange(pricing: unknown) {
   const prices: number[] = []
   const visit = (value: unknown) => {
     if (Array.isArray(value)) value.forEach(visit)
@@ -153,10 +128,7 @@ export function priceRange(pricing: unknown) {
   return { min: Math.min(...prices), max: Math.max(...prices) }
 }
 
-export function describeEndpoint(
-  provider: CatalogProvider,
-  endpoint: CatalogEndpoint,
-) {
+function describeEndpoint(provider: Provider, endpoint: Endpoint) {
   return {
     method: endpoint.method,
     path: endpoint.path,
@@ -176,7 +148,7 @@ const STOPWORDS = new Set(
   ),
 )
 
-export function tokenize(query: string) {
+function tokenize(query: string) {
   return query
     .split(/[^A-Za-z0-9]+/)
     .map((term) => term.toLowerCase())
@@ -184,7 +156,7 @@ export function tokenize(query: string) {
 }
 
 /** Matches whole words for short terms and tolerates naive plurals. */
-export function containsTerm(haystack: string, term: string) {
+function containsTerm(haystack: string, term: string) {
   if (term.length <= 3) return haystack.split(/[^a-z0-9]+/).includes(term)
   if (haystack.includes(term) || haystack.includes(`${term}s`)) return true
   if (term.endsWith('y') && haystack.includes(`${term.slice(0, -1)}ies`))
@@ -195,7 +167,7 @@ export function containsTerm(haystack: string, term: string) {
   return singular.length > 2 && haystack.includes(singular)
 }
 
-function endpointText(endpoint: CatalogEndpoint) {
+function endpointText(endpoint: Endpoint) {
   return {
     path: endpoint.path.toLowerCase(),
     resource: (endpoint.resource ?? '').toLowerCase(),
@@ -203,40 +175,34 @@ function endpointText(endpoint: CatalogEndpoint) {
   }
 }
 
-export function scoreProvider(
-  provider: CatalogProvider,
-  endpoints: CatalogEndpoint[] | undefined,
+function scoreProvider(
+  provider: Provider,
+  endpoints: Endpoint[] | undefined,
   query: string,
   terms: string[],
 ) {
-  let score = 0
-  const reasons: string[] = []
   const fqn = provider.fqn.toLowerCase()
-  const name = (fqn.split('/').at(-1) ?? fqn).toLowerCase()
+  const name = fqn.split('/').at(-1) ?? fqn
   const title = provider.title.toLowerCase()
   const description = provider.description.toLowerCase()
   const useCase = (provider.use_case ?? '').toLowerCase()
   const category = provider.category.toLowerCase()
+  const endpointTexts = (endpoints ?? []).map((endpoint) => {
+    const text = endpointText(endpoint)
+    return `${endpoint.method.toLowerCase()} ${text.path} ${text.resource} ${text.description}`
+  })
 
+  // The whole query appearing as one phrase.
+  let score = 0
   if (query) {
-    if (fqn.includes(query) || name.includes(query)) {
-      score += 90
-      reasons.push('provider name matches the task')
-    }
-    if (title.includes(query)) {
-      score += 80
-      reasons.push('provider title matches the task')
-    }
-    if (useCase.includes(query)) {
-      score += 70
-      reasons.push('provider use case directly matches the task')
-    }
-    if (description.includes(query)) {
-      score += 55
-      reasons.push('provider description matches the task')
-    }
+    if (fqn.includes(query) || name.includes(query)) score += 90
+    if (title.includes(query)) score += 80
+    if (useCase.includes(query)) score += 70
+    if (description.includes(query)) score += 55
+    if (endpointTexts.some((text) => text.includes(query))) score += 45
   }
 
+  // Each query word, wherever it appears, plus a bonus for covering them all.
   let matched = 0
   for (const term of terms) {
     const hits = [
@@ -245,64 +211,22 @@ export function scoreProvider(
       [containsTerm(useCase, term), 14],
       [containsTerm(description, term), 10],
       [containsTerm(category, term), 8],
-      [
-        endpoints?.some((endpoint) => {
-          const text = endpointText(endpoint)
-          return containsTerm(
-            `${text.path} ${text.resource} ${text.description}`,
-            term,
-          )
-        }) ?? false,
-        12,
-      ],
+      [endpointTexts.some((text) => containsTerm(text, term)), 12],
     ] as const
     for (const [hit, points] of hits) if (hit) score += points
     if (hits.some(([hit]) => hit)) matched += 1
   }
+  if (terms.length > 0) score += Math.floor((matched * 100) / terms.length)
 
-  if (terms.length > 0) {
-    const coverage = Math.floor((matched * 100) / terms.length)
-    score += coverage
-    if (coverage === 100)
-      reasons.push('all important query terms match this provider')
-    else if (coverage >= 50)
-      reasons.push('most important query terms match this provider')
-  }
-
-  if (
-    query &&
-    endpoints?.some((endpoint) => {
-      const text = endpointText(endpoint)
-      return `${endpoint.method.toLowerCase()} ${text.path} ${text.resource} ${text.description}`.includes(
-        query,
-      )
-    })
-  ) {
-    score += 45
-    reasons.push('a specific endpoint matches the task')
-  }
-
-  if (provider.endpoint_count <= 5) score += 12
-  else if (provider.endpoint_count <= 20) score += 6
-  else if (provider.endpoint_count >= 100) score = Math.max(0, score - 8)
-
-  const demo =
-    fqn.includes('payment-debugger') || description.includes('demo api')
-  const asksForDemo =
-    query.includes('payment debugger') ||
-    terms.some((term) => ['demo', 'debugger', 'test', 'testing'].includes(term))
-  if (demo && !asksForDemo) score = Math.max(0, score - 40)
-
-  if (score > 0 && reasons.length === 0)
-    reasons.push('provider metadata partially matches the task')
-  return { score, reasons }
+  // Favour focused providers, but never turn a non-match into a match.
+  if (score === 0) return 0
+  if (provider.endpoint_count <= 5) return score + 12
+  if (provider.endpoint_count <= 20) return score + 6
+  if (provider.endpoint_count >= 100) return Math.max(0, score - 8)
+  return score
 }
 
-export function scoreEndpoint(
-  endpoint: CatalogEndpoint,
-  query: string,
-  terms: string[],
-) {
+function scoreEndpoint(endpoint: Endpoint, query: string, terms: string[]) {
   const text = endpointText(endpoint)
   let score =
     query &&
@@ -320,8 +244,8 @@ export function scoreEndpoint(
 }
 
 function rank(
-  providers: CatalogProvider[],
-  endpoints: Map<string, CatalogEndpoint[]>,
+  providers: Provider[],
+  endpoints: Map<string, Endpoint[]>,
   query: string,
   terms: string[],
   limit: number,
@@ -329,7 +253,7 @@ function rank(
   return providers
     .map((provider) => ({
       provider,
-      ...scoreProvider(provider, endpoints.get(provider.fqn), query, terms),
+      score: scoreProvider(provider, endpoints.get(provider.fqn), query, terms),
     }))
     .filter((candidate) => candidate.score > 0)
     .sort(
@@ -346,46 +270,34 @@ function rank(
  * again after loading the endpoints of the best preliminary candidates.
  */
 export async function searchCatalog(
-  catalog: Catalog,
-  input: { query: string; category?: string; maxResults: number },
+  fetcher: Fetch,
+  input: { query: string; category?: string | undefined; maxResults: number },
 ) {
   const query = input.query.trim().toLowerCase()
   const terms = tokenize(query)
-  const { providers: all } = await catalog.getIndex()
-  const providers = input.category
-    ? all.filter(
-        (p) => p.category.toLowerCase() === input.category?.toLowerCase(),
-      )
-    : all
+  const category = input.category?.toLowerCase()
+  const index = await loadIndex(fetcher)
+  const providers = category
+    ? index.providers.filter((p) => p.category.toLowerCase() === category)
+    : index.providers
 
-  const endpoints = new Map<string, CatalogEndpoint[]>()
-  const lookupErrors = new Map<string, string>()
+  // A provider whose detail file fails to load is ranked without endpoints.
+  const endpoints = new Map<string, Endpoint[]>()
   const lookups = Math.min(
     MAX_LOOKUPS,
     input.maxResults * ENDPOINT_LOOKUP_MULTIPLIER,
   )
   await Promise.all(
-    rank(providers, endpoints, query, terms, lookups).map(
-      async ({ provider }) => {
-        try {
-          endpoints.set(
-            provider.fqn,
-            (await catalog.getDetail(provider.fqn)).endpoints,
-          )
-        } catch (error) {
-          lookupErrors.set(
-            provider.fqn,
-            error instanceof CatalogError
-              ? error.message
-              : 'Could not load endpoints',
-          )
-        }
-      },
+    rank(providers, endpoints, query, terms, lookups).map(({ provider }) =>
+      loadDetail(fetcher, index.baseURL, provider.fqn).then(
+        (detail) => endpoints.set(provider.fqn, detail.endpoints),
+        () => undefined,
+      ),
     ),
   )
 
   return rank(providers, endpoints, query, terms, input.maxResults).map(
-    ({ provider, score, reasons }) => ({
+    ({ provider, score }) => ({
       fqn: provider.fqn,
       title: provider.title,
       category: provider.category,
@@ -397,7 +309,6 @@ export async function searchCatalog(
           ? null
           : { min: provider.min_price_usd, max: provider.max_price_usd },
       score,
-      reasons,
       endpoints: (endpoints.get(provider.fqn) ?? [])
         .map((endpoint) => ({
           endpoint,
@@ -412,34 +323,24 @@ export async function searchCatalog(
         )
         .slice(0, ENDPOINTS_PER_CANDIDATE)
         .map(({ endpoint }) => describeEndpoint(provider, endpoint)),
-      ...(lookupErrors.has(provider.fqn)
-        ? { endpoint_lookup_error: lookupErrors.get(provider.fqn) }
-        : {}),
     }),
   )
 }
 
 /** Groups every provider by category, for capability questions. */
-export async function listCatalog(catalog: Catalog) {
-  const { providers } = await catalog.getIndex()
-  const categories = new Map<string, CatalogProvider[]>()
-  for (const provider of providers)
-    categories.set(provider.category, [
-      ...(categories.get(provider.category) ?? []),
-      provider,
-    ])
+export async function listCatalog(fetcher: Fetch) {
+  const { providers } = await loadIndex(fetcher)
+  const categories: Record<
+    string,
+    { fqn: string; title: string; endpoint_count: number }[]
+  > = {}
+  for (const { category, fqn, title, endpoint_count } of providers)
+    (categories[category] ??= []).push({ fqn, title, endpoint_count })
   return {
     provider_count: providers.length,
-    categories: [...categories]
+    categories: Object.entries(categories)
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([category, members]) => ({
-        category,
-        providers: members.map((p) => ({
-          fqn: p.fqn,
-          title: p.title,
-          endpoint_count: p.endpoint_count,
-        })),
-      })),
+      .map(([category, members]) => ({ category, providers: members })),
   }
 }
 
@@ -500,16 +401,19 @@ export function requestShape(openapi: unknown, method: string, path: string) {
 
 /** One provider's listing, optionally with one endpoint's request shape. */
 export async function getCatalogEntry(
-  catalog: Catalog,
+  fetcher: Fetch,
   input: {
     fqn: string
     method?: string | undefined
     path?: string | undefined
   },
 ) {
-  const provider = await catalog.lookupProvider(input.fqn)
+  const index = await loadIndex(fetcher)
+  const provider = index.providers.find(
+    (p) => p.fqn.toLowerCase() === input.fqn.toLowerCase(),
+  )
   if (!provider) return null
-  const detail = await catalog.getDetail(provider.fqn)
+  const detail = await loadDetail(fetcher, index.baseURL, provider.fqn)
   const entry = {
     fqn: provider.fqn,
     title: provider.title,
@@ -525,13 +429,19 @@ export async function getCatalogEntry(
   if (!input.path) return entry
 
   const wanted = input.path.replace(/^\/+/, '')
-  const endpoint = detail.endpoints.find(
+  const atPath = detail.endpoints.filter(
+    (e) => e.path.replace(/^\/+/, '') === wanted,
+  )
+  const endpoint = atPath.find(
     (e) =>
-      e.path.replace(/^\/+/, '') === wanted &&
-      (!input.method || e.method.toUpperCase() === input.method.toUpperCase()),
+      !input.method || e.method.toUpperCase() === input.method.toUpperCase(),
   )
   if (!endpoint)
-    throw new CatalogError(`${provider.fqn} has no endpoint ${input.path}`)
+    throw new CatalogError(
+      atPath.length === 0
+        ? `${provider.fqn} has no endpoint ${input.path}`
+        : `${provider.fqn} serves ${input.path} only with ${atPath.map((e) => e.method).join(', ')}`,
+    )
   return {
     ...entry,
     endpoints: [describeEndpoint(provider, endpoint)],
