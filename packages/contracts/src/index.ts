@@ -9,7 +9,7 @@ export const EarlyAccessEmail = type('string')
 
 export const EarlyAccessRequest = type({ email: EarlyAccessEmail })
 export const EarlyAccessResponse = type({
-  status: "'saved' | 'already-present'",
+  status: "'joined'",
   email: 'string.email <= 254',
 })
 export type EarlyAccessResponse = typeof EarlyAccessResponse.infer

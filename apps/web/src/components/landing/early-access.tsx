@@ -51,7 +51,11 @@ function JoinForm({ tone, note }: { tone: Tone; note?: ReactNode }) {
   const shake = useAnimationControls()
   const signup = useSignup()
   const [validationError, setError] = useState('')
-  const error = validationError || (signup.phase === 'edit' ? signup.error : '')
+  const error =
+    signup.phase === 'edit'
+      ? validationError ||
+        (signup.failure?.formId === inputId ? signup.failure.message : '')
+      : ''
   const [focused, setFocused] = useState(false)
   const busy = signup.phase !== 'edit'
 
@@ -75,7 +79,7 @@ function JoinForm({ tone, note }: { tone: Tone; note?: ReactNode }) {
     }
     setError('')
     field.value = value
-    await joinEarlyAccess(value)
+    await joinEarlyAccess(value, inputId)
   }
 
   return (
@@ -119,7 +123,7 @@ function JoinForm({ tone, note }: { tone: Tone; note?: ReactNode }) {
             onBlur={() => setFocused(false)}
             onChange={() => {
               setError('')
-              clearSignupError()
+              clearSignupError(inputId)
             }}
             className="h-12 w-full min-w-0 bg-transparent px-4 text-[15px] text-ink outline-none! placeholder:text-mute/70 disabled:opacity-60"
           />

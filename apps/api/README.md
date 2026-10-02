@@ -27,11 +27,23 @@ for the existing health test and manual startup; it does not have D1.
 `POST /api/early-access` accepts `{ "email": "you@example.com" }`. The shared
 contract trims and lowercases the email and rejects invalid input. D1 stores
 one row per normalized email in `early_access_signup`, with its first signup
-timestamp. A confirmed write returns `{ "status": "saved", "email": "..." }`;
-retries and duplicates return `already-present`. Database failures return an
+timestamp. Both fresh signups and duplicates return
+`{ "status": "joined", "email": "..." }` after the write completes, so the public
+response does not reveal list membership. Database failures return an
 error, never a signup confirmation. The endpoint does not send email.
 
-The landing forms share pending and confirmed state in memory. The previous
+The API uses the native Workers `SIGNUP_LIMITER` binding, configured in both
+local and hosted Wrangler files, to allow 20 attempts per IP per minute per
+Cloudflare location. Cloudflare supplies `CF-Connecting-IP`; local requests
+without that header share a local bucket. This limits single-source spam,
+though the platform limit is approximate and distributed callers can use
+multiple IPs. Shared networks also share the allowance. A rejected request
+returns 429 and `Retry-After: 60`, before writing to D1. No extra credentials
+or separately provisioned service are required.
+
+The landing forms share pending and confirmed state in memory. Failure
+messages stay with the submitting form and its retained input. A 429 asks the
+visitor to wait a minute before retrying. The previous
 browser-only localStorage flag is ignored because it did not represent a saved
 signup. A reload shows the form again; resubmitting confirms the existing row.
 

@@ -1,10 +1,13 @@
 import { readdir } from 'node:fs/promises'
-import type { D1Database } from '@cloudflare/workers-types'
+import type { D1Database, RateLimit } from '@cloudflare/workers-types'
 import { getPlatformProxy } from 'wrangler'
 
 /** A throwaway local D1 database with every migration applied. */
 export async function testDatabase() {
-  const proxy = await getPlatformProxy<{ DB: D1Database }>({
+  const proxy = await getPlatformProxy<{
+    DB: D1Database
+    SIGNUP_LIMITER: RateLimit
+  }>({
     configPath: new URL('../wrangler.local.jsonc', import.meta.url).pathname,
     persist: false,
   })
@@ -17,5 +20,9 @@ export async function testDatabase() {
       '--> statement-breakpoint',
     ))
       await db.prepare(statement).run()
-  return { db, dispose: () => proxy.dispose() }
+  return {
+    db,
+    signupLimiter: proxy.env.SIGNUP_LIMITER,
+    dispose: () => proxy.dispose(),
+  }
 }

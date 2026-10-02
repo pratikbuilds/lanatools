@@ -26,6 +26,13 @@
   // serve it; the Worker checks its genesis hash before paying. The public
   // api.devnet.solana.com refuses Workers, so use a provider's devnet URL.
   "vars": { "SOLANA_NETWORK": "devnet" },
+  "ratelimits": [
+    {
+      "name": "SIGNUP_LIMITER",
+      "namespace_id": "2001001",
+      "simple": { "limit": 20, "period": 60 },
+    },
+  ],
   "d1_databases": [
     {
       "binding": "DB",

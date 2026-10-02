@@ -1,31 +1,30 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { EarlyAccessResponse } from '@lanatools/contracts'
-import type { D1Database } from '@cloudflare/workers-types'
+import type { D1Database, RateLimit } from '@cloudflare/workers-types'
 import { createApp } from '../app'
 import { testDatabase } from '../test-database'
 import { earlyAccess } from './early-access'
+import type { EarlyAccessEnv } from './early-access'
 
 let db: D1Database
+let signupLimiter: RateLimit
 let dispose: () => Promise<void>
-const app = createApp<{ DB: D1Database }>().route(
-  '/api/early-access',
-  earlyAccess,
-)
+const app = createApp<EarlyAccessEnv>().route('/api/early-access', earlyAccess)
 
 beforeAll(async () => {
-  ;({ db, dispose } = await testDatabase())
+  ;({ db, signupLimiter, dispose } = await testDatabase())
 }, 60_000)
 afterAll(() => dispose())
 
-function signup(body: unknown) {
+function signup(body: unknown, ip = '192.0.2.1') {
   return app.request(
     '/api/early-access',
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': ip },
       body: JSON.stringify(body),
     },
-    { DB: db },
+    { DB: db, SIGNUP_LIMITER: signupLimiter },
   )
 }
 
@@ -33,7 +32,7 @@ test('new and normalized duplicate signups persist exactly one row', async () =>
   const response = await signup({ email: '  Tester@Example.com  ' })
   expect(response.status).toBe(200)
   expect<unknown>(await response.json()).toEqual({
-    status: 'saved',
+    status: 'joined',
     email: 'tester@example.com',
   })
   const row = await db
@@ -47,7 +46,7 @@ test('new and normalized duplicate signups persist exactly one row', async () =>
   const duplicate = await signup({ email: 'tester@example.com' })
   expect(duplicate.status).toBe(200)
   expect(EarlyAccessResponse.assert(await duplicate.json())).toEqual({
-    status: 'already-present',
+    status: 'joined',
     email: 'tester@example.com',
   })
   expect(
@@ -68,10 +67,12 @@ test('concurrent submissions save one email and confirm every request', async ()
       EarlyAccessResponse.assert(await response.json()),
     ),
   )
-  expect(results.filter((result) => result.status === 'saved')).toHaveLength(1)
-  expect(
-    results.filter((result) => result.status === 'already-present'),
-  ).toHaveLength(4)
+  expect(results).toEqual(
+    Array.from({ length: 5 }, () => ({
+      status: 'joined',
+      email: 'race@example.com',
+    })),
+  )
   expect(
     await db
       .prepare(
@@ -102,7 +103,7 @@ test('invalid, malformed, and oversized requests cannot create signups', async (
       await app.request(
         '/api/early-access',
         { method: 'POST', body: '{' },
-        { DB: db },
+        { DB: db, SIGNUP_LIMITER: signupLimiter },
       )
     ).status,
   ).toBe(400)
@@ -135,7 +136,26 @@ test('a failed database write returns an error and can be retried', async () => 
       await (await signup({ email: 'retry@example.com' })).json(),
     ),
   ).toEqual({
-    status: 'saved',
+    status: 'joined',
     email: 'retry@example.com',
   })
+})
+
+test('anonymous requests are rate limited before a new address is stored', async () => {
+  for (let attempt = 0; attempt < 20; attempt++)
+    expect(
+      (await signup({ email: 'limited@example.com' }, '192.0.2.2')).status,
+    ).toBe(200)
+  const blocked = await signup({ email: 'blocked@example.com' }, '192.0.2.2')
+  expect(blocked.status).toBe(429)
+  expect(blocked.headers.get('Retry-After')).toBe('60')
+  expect(
+    await db
+      .prepare('SELECT email FROM early_access_signup WHERE email = ?')
+      .bind('blocked@example.com')
+      .first(),
+  ).toBeNull()
+  expect(
+    (await signup({ email: 'another@example.com' }, '192.0.2.3')).status,
+  ).toBe(200)
 })

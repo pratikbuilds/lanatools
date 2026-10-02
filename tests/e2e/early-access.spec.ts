@@ -24,7 +24,7 @@ test('a saved signup confirms both forms and a reload safely deduplicates', asyn
     .fill(`  ${email.toUpperCase()}  `)
   const saved = page.waitForResponse('**/api/early-access')
   await form.getByRole('button', { name: 'Get early access' }).click()
-  expect(await (await saved).json()).toEqual({ status: 'saved', email })
+  expect(await (await saved).json()).toEqual({ status: 'joined', email })
   await expect(page.getByText(joinedText)).toHaveCount(2)
   await expect(page.getByText(email).first()).toBeVisible()
 
@@ -34,7 +34,7 @@ test('a saved signup confirms both forms and a reload safely deduplicates', asyn
   const duplicate = page.waitForResponse('**/api/early-access')
   await form.getByRole('button', { name: 'Get early access' }).click()
   expect(await (await duplicate).json()).toEqual({
-    status: 'already-present',
+    status: 'joined',
     email,
   })
   await expect(page.getByText(joinedText)).toHaveCount(2)
@@ -79,6 +79,14 @@ test('pending submissions disable both forms and a failure preserves the email f
   )
   await expect(form.getByRole('textbox', { name: inputName })).toHaveValue(
     email,
+  )
+  const other = page.getByRole('form', { name: formName }).last()
+  await expect(other.getByRole('alert')).toHaveCount(0)
+  await other
+    .getByRole('textbox', { name: inputName })
+    .fill('other@example.com')
+  await expect(form.getByRole('alert')).toHaveText(
+    'We couldn’t add you just now. Try again.',
   )
   await form.getByRole('button', { name: 'Get early access' }).click()
   await expect(page.getByText(joinedText)).toHaveCount(2)
