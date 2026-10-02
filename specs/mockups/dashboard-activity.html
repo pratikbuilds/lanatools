@@ -1,0 +1,727 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LanaTools dashboard mockup</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400..800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* Tokens are copied from apps/web/src/styles.css. */
+      :root {
+        --blue: #0b2fb2;
+        --blue-deep: #071f7a;
+        --ink: #0a1f6e;
+        --paper: #f3efe6;
+        --card: #fffdf8;
+        --paper-2: #b5c1f0;
+        --paper-3: #7f92dd;
+        --mute: #4a5480;
+        --rule: #d6d0c2;
+        --lime: #d9ff4a;
+        --coral: #ff6b4a;
+        --coral-ink: #b8361a;
+        --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-width: 320px;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+        font-size: 13.5px;
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+        font-variant-numeric: tabular-nums;
+      }
+      h1, h2, h3, p, dl, dd, ul { margin: 0; padding: 0; }
+      button, input, select { font: inherit; color: inherit; }
+      :focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+      [hidden] { display: none !important; }
+
+      .meta { font-size: 12px; color: var(--mute); }
+      .btn {
+        display: inline-flex; align-items: center; justify-content: center; height: 34px; padding: 0 14px;
+        border: 1.5px solid var(--ink); border-radius: 6px; background: var(--card); color: var(--ink);
+        font-size: 12.5px; font-weight: 600; line-height: 1; white-space: nowrap; cursor: pointer;
+      }
+      .btn:hover { background: var(--paper); }
+      .btn-primary { background: var(--lime); }
+      .btn-primary:hover { background: #e6ff7a; }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .link { border: 0; background: none; padding: 0; cursor: pointer; font-size: 12.5px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+      .link.danger { color: var(--coral-ink); }
+      .chip { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border: 1px solid var(--rule); border-radius: 11px; font-size: 11.5px; color: var(--mute); white-space: nowrap; }
+      .chip::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--coral); }
+      .wrap { max-width: 66rem; margin: 0 auto; padding: 0 28px; }
+
+      /* Navigation holds destinations only. No money lives here. */
+      .bar-top { background: var(--blue); color: var(--paper); }
+      .bar-top .wrap { display: flex; align-items: center; gap: 28px; height: 60px; }
+      .bar-top :focus-visible { outline-color: var(--lime); }
+      .wordmark { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
+      .wordmark span span { font-weight: 500; color: var(--paper-2); }
+      .nav { display: flex; gap: 4px; }
+      .nav button { height: 32px; padding: 0 12px; border: 0; border-radius: 6px; background: none; color: var(--paper-2); font-size: 13px; cursor: pointer; }
+      .nav button:hover { background: rgb(255 255 255 / 0.1); color: var(--paper); }
+      .nav button[aria-current='page'] { background: var(--paper); color: var(--ink); font-weight: 700; }
+      /* The account: who is signed in, and the way out, behind one control. */
+      .acct { position: relative; margin-left: auto; }
+      .acct-btn { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px 0 4px; border: 1.5px solid rgb(181 193 240 / 0.5); border-radius: 17px; background: none; color: var(--paper); font-size: 12.5px; cursor: pointer; }
+      .acct-btn:hover, .acct-btn[aria-expanded='true'] { border-color: var(--paper); }
+      .avatar { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--paper); color: var(--ink); font-size: 12px; font-weight: 700; }
+      .acct-caret { width: 6px; height: 6px; margin: -3px 2px 0; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); }
+      .menu { position: absolute; right: 0; top: 42px; z-index: 6; min-width: 16rem; padding: 14px 16px 16px; border: 1.5px solid var(--ink); border-radius: 10px; background: var(--card); color: var(--ink); box-shadow: 4px 4px 0 0 var(--ink); }
+      .menu b { display: block; margin: 2px 0 14px; overflow-wrap: anywhere; }
+      .menu :focus-visible { outline-color: var(--blue); }
+
+      h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.03em; }
+      h2 { font-size: 15px; font-weight: 700; }
+      .page-head { padding: 36px 0 0; }
+
+      /* Shared pieces of the wallet block */
+      .avail { display: flex; align-items: baseline; gap: 10px; font-weight: 700; letter-spacing: -0.05em; line-height: 0.95; }
+      .avail small { font-size: 14px; letter-spacing: 0; color: var(--mute); }
+      .addr { display: flex; align-items: center; gap: 8px; padding: 5px 5px 5px 12px; border: 1.5px solid var(--ink); border-radius: 8px; background: var(--paper); }
+      .addr code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: inherit; font-weight: 600; }
+      .addr .btn { height: 28px; padding: 0 10px; font-size: 12px; }
+
+      /* Sections and tables: clients under the wallet, calls under the clients. */
+      .section { padding: 0 0 44px; }
+      .section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding-bottom: 12px; border-bottom: 1.5px solid var(--ink); }
+      .section-head .side { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+      .total b { font-size: 15px; }
+      .thead, .tr { display: grid; align-items: center; gap: 20px; padding: 0 4px; }
+      .thead { height: 34px; font-size: 12px; color: var(--mute); border-bottom: 1px solid var(--rule); }
+      .tr { width: 100%; min-height: 46px; border: 0; border-bottom: 1px solid var(--rule); background: none; text-align: left; cursor: pointer; }
+      .tr:hover { background: var(--card); }
+      .num { text-align: right; white-space: nowrap; }
+      .cut { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+      /* Connected clients: its own bordered surface, to pair with the wallet panel above. */
+      .section-head.flush { border-bottom: 0; }
+      .ctable { border: 1.5px solid var(--ink); border-radius: 10px; background: var(--card); overflow: hidden; }
+      .c-head, .c-row { display: grid; grid-template-columns: minmax(9rem, 1.1fr) minmax(12rem, 2.2fr) 6.5rem 7rem 5.5rem; align-items: center; gap: 24px; padding: 0 22px; }
+      .c-head { height: 38px; background: var(--paper); border-bottom: 1.5px solid var(--ink); font-size: 12px; color: var(--mute); }
+      .c-row { width: 100%; min-height: 72px; border: 0; border-bottom: 1px solid var(--rule); background: none; text-align: left; cursor: pointer; }
+      .c-row:last-child { border-bottom: 0; }
+      .c-row:hover { background: #fff; }
+      .c-name b { display: block; font-size: 14.5px; }
+      .usage { display: flex; align-items: center; gap: 14px; }
+      .meter { flex: 1; display: block; height: 10px; border: 1.5px solid var(--ink); border-radius: 5px; overflow: hidden; background: var(--card); }
+      .meter i { display: block; height: 100%; background: var(--blue); }
+      .meter.over i { background: var(--coral); }
+      .frac { white-space: nowrap; font-size: 12.5px; color: var(--mute); }
+      .frac b { color: var(--ink); }
+      .left { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
+      .left.none { color: var(--coral-ink); }
+      .btn-sm { height: 28px; padding: 0 10px; font-size: 12px; }
+      .calls-grid { grid-template-columns: 4.6rem 6.5rem minmax(0, 1fr) 4rem 7rem; }
+      .day { padding: 20px 4px 8px; font-size: 12px; font-weight: 700; border-bottom: 1px solid var(--rule); }
+      .req b { font-weight: 600; }
+      .req span { color: var(--mute); }
+      .req .why { display: block; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .req .why.refused { color: var(--coral-ink); }
+      .tr.has-why { padding-top: 8px; padding-bottom: 8px; }
+      .refused { padding: 2px 7px; border-radius: 4px; background: var(--coral); color: var(--ink); font-weight: 700; }
+      .out { color: var(--mute); font-size: 12.5px; }
+      .paid { padding: 2px 7px; border-radius: 4px; background: var(--lime); color: var(--ink); font-size: 13.5px; font-weight: 700; }
+      .foot { padding: 22px 0 0; text-align: center; }
+      .empty { padding: 40px 0 8px; text-align: center; }
+
+      /* ---------- Design A: one wallet panel, then two tables ---------- */
+      .a-wallet { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 26rem); margin: 22px 0 40px; border: 1.5px solid var(--ink); border-radius: 10px; background: var(--card); overflow: hidden; }
+      .a-wallet > div { padding: 24px 26px; }
+      .a-wallet .dep { border-left: 1.5px solid var(--ink); background: var(--paper); }
+      .a-wallet .avail { margin: 10px 0 16px; font-size: 4.4rem; }
+      .a-wallet .dep p { margin: 10px 0 14px; }
+
+      /* Activity page */
+      .summary { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 24px 56px; padding: 26px 0 28px; }
+      .figures { display: flex; flex-wrap: wrap; gap: 20px 56px; }
+      .figure .meta { display: block; margin-bottom: 6px; }
+      .figure b { display: block; font-size: 1.6rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
+      .heat { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 9px); gap: 3px; }
+      .heat i { width: 9px; height: 9px; border-radius: 2px; background: var(--rule); }
+      .heat i[data-l='1'] { background: var(--paper-2); }
+      .heat i[data-l='2'] { background: var(--paper-3); }
+      .heat i[data-l='3'] { background: var(--blue); }
+      .heat i[data-l='4'] { background: var(--ink); }
+      .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-bottom: 14px; border-bottom: 1.5px solid var(--ink); }
+      .seg { display: inline-flex; border: 1.5px solid var(--ink); border-radius: 6px; overflow: hidden; }
+      .seg button { height: 30px; padding: 0 12px; border: 0; border-right: 1.5px solid var(--ink); background: var(--card); font-size: 12.5px; cursor: pointer; }
+      .seg button:last-child { border-right: 0; }
+      .seg button[aria-pressed='true'] { background: var(--ink); color: var(--card); font-weight: 700; }
+      .filters select { height: 33px; padding: 0 8px; border: 1.5px solid var(--ink); border-radius: 6px; background: var(--card); font-size: 12.5px; font-weight: 600; }
+
+      /* Settings */
+      .setting { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 32px; padding: 20px 4px; border-bottom: 1px solid var(--rule); }
+      .setting b { display: block; font-size: 14px; }
+      .setting p { max-width: 44rem; }
+      .setting.is-off p { color: var(--coral-ink); }
+      .switch { position: relative; width: 44px; height: 26px; flex: none; border: 1.5px solid var(--ink); border-radius: 13px; background: var(--card); cursor: pointer; transition: background-color 160ms var(--ease-out); }
+      .switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 17px; height: 17px; border-radius: 50%; background: var(--ink); transition: transform 160ms var(--ease-out); }
+      .switch[aria-checked='true'] { background: var(--lime); }
+      .switch[aria-checked='true']::after { transform: translateX(18px); }
+
+      /* Drawer */
+      .scrim { position: fixed; inset: 0; background: rgb(10 31 110 / 0.28); }
+      .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(28rem, 100vw); overflow-y: auto; padding: 22px 26px 32px; background: var(--card); border-left: 1.5px solid var(--ink); animation: slide 220ms var(--ease-out); }
+      @keyframes slide { from { transform: translateX(24px); opacity: 0; } }
+      .drawer-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 18px; }
+      .drawer h2 { font-size: 18px; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+      .big { display: block; margin: 6px 0 4px; font-size: 3.2rem; font-weight: 700; letter-spacing: -0.05em; line-height: 1; }
+      .kv { display: grid; grid-template-columns: 8.5rem minmax(0, 1fr); gap: 0 16px; margin-top: 18px; border-top: 1px solid var(--rule); }
+      .kv dt, .kv dd { padding: 10px 0; border-bottom: 1px solid var(--rule); }
+      .kv dt { font-size: 12px; color: var(--mute); }
+      .kv dd { overflow-wrap: anywhere; }
+      /* The ruler from Rare UI's AnimatedCounter demo: a native range input laid over tick marks. */
+      .ruler { position: relative; height: 34px; margin-top: 18px; border-radius: 8px; }
+      .ruler:has(:focus-visible) { outline: 2px solid var(--blue); outline-offset: 5px; }
+      .ticks { display: flex; align-items: flex-end; justify-content: space-between; height: 100%; }
+      .ticks i { width: 2px; height: 18px; border-radius: 1px; background: var(--rule); transition: height 200ms var(--ease-out), background-color 200ms var(--ease-out); }
+      .ticks i.on { background: var(--ink); }
+      .ticks i.at { width: 3px; height: 30px; margin: 0 -0.5px; background: var(--blue); }
+      .ruler input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize; }
+      .ruler-ends { display: flex; justify-content: space-between; margin-top: 6px; }
+      .editor { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
+      .editor label { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+      .editor input { width: 8rem; height: 34px; padding: 0 10px; border: 1.5px solid var(--ink); border-radius: 6px; background: #fff; font-weight: 600; }
+      .editor input[aria-invalid='true'] { border-color: var(--coral-ink); }
+      .note { width: 100%; font-size: 12px; color: var(--coral-ink); }
+      .note:empty { display: none; }
+      .drawer-foot { display: flex; flex-wrap: wrap; gap: 12px 20px; margin-top: 24px; }
+      .copybox { margin: 14px 0; padding: 12px 14px; border: 1.5px solid var(--ink); border-radius: 8px; background: var(--paper); font-weight: 700; overflow-wrap: anywhere; }
+      .pick { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 18px; }
+      .pick button { height: 30px; padding: 0 12px; border: 1.5px solid var(--rule); border-radius: 15px; background: none; font-size: 12.5px; cursor: pointer; }
+      .pick button[aria-pressed='true'] { border-color: var(--ink); background: var(--ink); color: var(--card); font-weight: 700; }
+      .steps { margin: 0 0 0 1.2rem; padding: 0; }
+      .steps li { padding: 3px 0; }
+
+      /* Rolling digits: stands in for Rare UI's AnimatedCounter. */
+      .od { display: inline-flex; align-items: center; line-height: 1; }
+      .od > span { height: 1em; line-height: 1; }
+      .od-d { display: inline-block; overflow: hidden; }
+      .od-s { display: flex; flex-direction: column; transition: transform 700ms var(--ease-out); }
+      .od-s span { height: 1em; line-height: 1; }
+
+      /* Mockup controls: not part of the design. */
+      .mock { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 6px 14px; border: 1.5px dashed var(--mute); border-radius: 22px; background: var(--card); font-size: 12px; color: var(--mute); white-space: nowrap; z-index: 5; }
+      .spacer { height: 80px; }
+      #view-wallet { padding-bottom: 80px; }
+
+      @media (max-width: 820px) {
+        .wrap { padding-left: 16px; padding-right: 16px; }
+        .bar-top .wrap { gap: 12px; }
+        .acct-mail { display: none; }
+        .acct-btn { padding-right: 8px; }
+        .a-wallet { grid-template-columns: minmax(0, 1fr); }
+        .a-wallet .dep { border-left: 0; border-top: 1.5px solid var(--ink); }
+        .a-wallet .avail { font-size: 3.4rem; }
+        .thead, .c-head { display: none; }
+        .c-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; padding: 14px 16px; }
+        .c-row .usage { grid-column: 1 / -1; grid-row: 2; }
+        .c-row .last, .c-row .go { display: none; }
+        .c-row .left::after { content: ' left'; font-size: 12px; font-weight: 400; color: var(--mute); letter-spacing: 0; }
+        .calls-grid { grid-template-columns: 4.6rem minmax(0, 1fr) auto; gap: 2px 12px; }
+        .tr.calls-grid { padding: 9px 4px; }
+        .tr.calls-grid .client, .tr.calls-grid .proto { display: none; }
+        .setting { grid-template-columns: minmax(0, 1fr); }
+        .mock > span:first-child { display: none; }
+      }
+      @media (max-width: 480px) {
+        .wordmark span { display: none; }
+        .nav button { padding: 0 8px; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .od-s, .switch, .switch::after, .ticks i { transition: none; }
+        .drawer { animation: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="bar-top">
+      <div class="wrap">
+        <span class="wordmark">
+          <svg width="24" height="24" viewBox="0 0 64 64" aria-hidden="true">
+            <path d="M16 56h-4q-4 0-4-4V15q0-7 7-7h23l19 12.5V29L37 16H19.5q-3.5 0-3.5 3.5Z" fill="currentColor" />
+            <path d="M23 26l8 7-8 7" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" />
+            <rect x="35" y="41" width="15" height="5" rx="2.5" fill="#d9ff4a" />
+          </svg>
+          <span>lanatools<span>.sh</span></span>
+        </span>
+        <nav class="nav" id="nav" aria-label="Main">
+          <button data-view="wallet" aria-current="page">Wallet</button>
+          <button data-view="activity">Activity</button>
+          <button data-view="settings">Settings</button>
+        </nav>
+        <div class="acct">
+          <button class="acct-btn" id="acct" aria-haspopup="menu" aria-expanded="false" aria-label="Account, pratik@example.com">
+            <span class="avatar" aria-hidden="true">P</span><span class="acct-mail">pratik@example.com</span><span class="acct-caret" aria-hidden="true"></span>
+          </button>
+          <div class="menu" id="acct-menu" role="menu" hidden>
+            <span class="meta">Signed in as</span>
+            <b>pratik@example.com</b>
+            <button class="btn" role="menuitem">Sign out</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="view-wallet">
+      <main class="wrap">
+        <div class="page-head"><h1>Wallet</h1></div>
+        <div class="a-wallet">
+          <div>
+            <span class="meta">Available</span>
+            <p class="avail"><span class="od" data-balance></span><small>USDC</small></p>
+            <span class="chip">Solana devnet</span>
+          </div>
+          <div class="dep">
+            <h2>Deposit USDC</h2>
+            <p class="meta">Send USDC on Solana devnet to your wallet address.</p>
+            <div class="addr"><code>G7fu2vBDEZ9SYM4agJPshffJQUmyg6UCEEUnxuYRAMuq</code><button class="btn">Copy</button></div>
+            <p style="margin-bottom: 0"><button class="btn btn-primary" data-deposit>Deposit</button></p>
+          </div>
+        </div>
+        <section class="section">
+          <div class="section-head flush">
+            <h2>Connected clients</h2>
+            <div class="side"><span class="meta total" data-total></span><button class="btn" data-connect>Connect a client</button></div>
+          </div>
+          <div class="ctable" id="clients"></div>
+        </section>
+        <section class="section">
+          <div class="section-head"><h2>Latest activity</h2><button class="link" data-all>View all activity</button></div>
+          <div class="thead calls-grid"><span>Time</span><span>Client</span><span>Request</span><span>Protocol</span><span class="num">Outcome</span></div>
+          <div data-recent></div>
+        </section>
+      </main>
+
+    </div>
+
+    <main class="wrap">
+      <div id="view-activity" hidden>
+        <div class="page-head"><h1>Activity</h1></div>
+        <div class="summary">
+          <div class="figures">
+            <div class="figure"><span class="meta">Spent</span><b id="s-spent"></b></div>
+            <div class="figure"><span class="meta">Calls</span><b id="s-calls"></b></div>
+          </div>
+          <div>
+            <div class="heat" id="heat" role="img" aria-label="Calls per day over the last 12 weeks"></div>
+            <p class="meta" style="margin-top: 6px">Calls per day, last 12 weeks</p>
+          </div>
+        </div>
+        <div class="filters">
+          <span class="seg" id="f-outcome" role="group" aria-label="Filter by outcome"></span>
+          <select id="f-client" aria-label="Filter by client"></select>
+        </div>
+        <div class="thead calls-grid"><span>Time</span><span>Client</span><span>Request</span><span>Protocol</span><span class="num">Outcome</span></div>
+        <div id="rows"></div>
+        <div id="tail"></div>
+      </div>
+
+      <div id="view-settings" hidden>
+        <div class="page-head"><h1>Settings</h1></div>
+        <section class="section" style="padding-top: 26px">
+          <div class="section-head"><h2>Permissions</h2><p class="meta">What LanaTools may sign with your wallet.</p></div>
+          <div class="setting" id="perm">
+            <div><b id="switch-copy"></b><p class="meta" id="perm-copy" style="margin-top: 4px"></p></div>
+            <button class="switch" id="switch" role="switch" aria-checked="true" aria-label="Agent payments"></button>
+          </div>
+        </section>
+      </div>
+      <div class="spacer"></div>
+    </main>
+
+    <div class="mock">
+      <span>Mockup, sample data.</span>
+      <button class="link" id="mock-empty">empty state</button>
+    </div>
+
+    <div id="overlay" hidden>
+      <div class="scrim" id="scrim"></div>
+      <aside class="drawer" id="drawer" role="dialog" aria-modal="true"></aside>
+    </div>
+
+    <script>
+      const usd = (micro) => {
+        const whole = Math.trunc(micro / 1e6)
+        const fraction = String(Math.abs(micro % 1e6)).padStart(6, '0').replace(/0{1,4}$/, '')
+        return `$${whole.toLocaleString('en-US')}.${fraction.padEnd(2, '0')}`
+      }
+      const parseUsd = (value) => {
+        const match = /^\$?(\d{1,7})(?:\.(\d{1,6}))?$/.exec(value.trim())
+        if (!match) return null
+        const micro = Number(match[1]) * 1e6 + Number((match[2] ?? '').padEnd(6, '0'))
+        return micro <= 1e9 ? micro : null
+      }
+
+      // Digits roll on a wheel; columns are kept from the right so shared places animate.
+      function counter(el) {
+        const cols = []
+        return (text) => {
+          const chars = [...text].reverse()
+          chars.forEach((ch, i) => {
+            const digit = /\d/.test(ch)
+            let col = cols[i]
+            if (!col || col.digit !== digit) {
+              const node = document.createElement('span')
+              if (digit) {
+                node.className = 'od-d'
+                node.innerHTML = `<span class="od-s">${[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<span>${n}</span>`).join('')}</span>`
+              }
+              if (col) el.replaceChild(node, col.node)
+              else el.insertBefore(node, el.firstChild)
+              col = cols[i] = { node, digit }
+            }
+            if (digit) requestAnimationFrame(() => requestAnimationFrame(() => (col.node.firstChild.style.transform = `translateY(-${ch}em)`)))
+            else col.node.textContent = ch
+          })
+          while (cols.length > chars.length) el.removeChild(cols.pop().node)
+        }
+      }
+
+      const state = { empty: false, client: 'all', outcome: 'all', loaded: 0 }
+      const clients = [
+        { id: 'codex', name: 'Codex', host: '127.0.0.1:58113', connected: '1 hour ago', used: '2 min ago', limit: 1_000_000, spent: 340_000 },
+        { id: 'grok', name: 'Grok', host: 'grok.com', connected: '3 days ago', used: '41 min ago', limit: 5_000_000, spent: 120_000 },
+      ]
+      const sig = '4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi8nXv2Tq1ZsVhUuYc6mRkQ3d5yW7oE2pBtGxHnLfAaJe9'
+      const calls = [
+        { o: 'paid', c: 'codex', m: 'GET', host: 'weather.example', path: '/v1/forecast', amount: 10_000, day: 'Today', t: '14:31', p: 'x402', http: 200, sig },
+        { o: 'refused', c: 'codex', m: 'POST', host: 'search.example', path: '/search', day: 'Today', t: '14:07', p: 'MPP', http: 402, why: "The charge exceeds this client's remaining limit" },
+        { o: 'free', c: 'grok', m: 'GET', host: 'weather.example', path: '/health', day: 'Today', t: '13:52', http: 200 },
+        { o: 'paid', c: 'codex', m: 'POST', host: 'images.example', path: '/v1/generate', amount: 250_000, day: 'Today', t: '13:20', p: 'MPP', http: 200, sig },
+        { o: 'paid', c: 'grok', m: 'GET', host: 'quotes.example', path: '/v2/price/SOL', amount: 120_000, day: 'Today', t: '09:12', p: 'x402', http: 200, sig },
+        { o: 'free', c: 'codex', m: 'GET', host: 'quotes.example', path: '/v2/status', day: 'Today', t: '09:10', http: 200 },
+        { o: 'paid', c: 'codex', m: 'GET', host: 'weather.example', path: '/v1/forecast', amount: 80_000, day: 'Yesterday', t: '16:45', p: 'x402', http: 200, sig },
+        { o: 'failed', c: 'grok', m: 'GET', host: 'api.offline.example', path: '/lookup', day: 'Yesterday', t: '11:02', why: 'Could not reach the endpoint' },
+      ]
+      const older = Array.from({ length: 12 }, (_, i) => ({
+        o: i % 4 === 3 ? 'free' : 'paid', c: i % 3 ? 'codex' : 'grok', m: 'GET', host: 'weather.example', path: '/v1/forecast',
+        amount: i % 4 === 3 ? undefined : 10_000, day: `Sep ${30 - Math.floor(i / 4)}`, t: `10:${String(50 - i * 4).padStart(2, '0')}`, p: 'x402', http: 200, sig,
+      }))
+      const OUTCOMES = {
+        paid: { label: 'Paid', note: 'Verified on chain.' },
+        free: { label: 'Free', note: 'The endpoint did not ask for payment.' },
+        refused: { label: 'Refused', note: 'LanaTools declined before signing anything.' },
+        failed: { label: 'Failed', note: 'Nothing was charged.' },
+      }
+      const GROUPS = [['all', 'All'], ['paid', 'Paid'], ['free', 'Free'], ['refused', 'Refused'], ['failed', 'Failed']]
+      const MCP = 'https://mcp.lanatools.sh/mcp'
+      const $ = (id) => document.getElementById(id)
+      const all = (selector, root = document) => [...root.querySelectorAll(selector)]
+      const clientOf = (id) => clients.find((a) => a.id === id)
+      const leftOf = (a) => Math.max(0, a.limit - a.spent)
+      const pct = (a) => Math.min(100, (a.spent / (a.limit || 1)) * 100)
+
+      // ---- views and designs
+      function show(view) {
+        for (const v of ['wallet', 'activity', 'settings']) $(`view-${v}`).hidden = v !== view
+        all('button', $('nav')).forEach((b) => (b.dataset.view === view ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current')))
+        window.scrollTo(0, 0)
+        if (view === 'activity') renderRows()
+      }
+      all('button', $('nav')).forEach((b) => (b.onclick = () => show(b.dataset.view)))
+      $('acct').onclick = () => {
+        const open = $('acct-menu').hidden
+        $('acct-menu').hidden = !open
+        $('acct').setAttribute('aria-expanded', open)
+      }
+      addEventListener('click', (event) => {
+        if (event.target.closest('.acct')) return
+        $('acct-menu').hidden = true
+        $('acct').setAttribute('aria-expanded', false)
+      })
+      const time = (t) => {
+        const [h, m] = t.split(':').map(Number)
+        return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`
+      }
+
+      // ---- drawer
+      function openDrawer(html, wire) {
+        $('drawer').innerHTML = html
+        $('overlay').hidden = false
+        $('drawer').querySelector('[data-close]').onclick = closeDrawer
+        wire?.($('drawer'))
+      }
+      function closeDrawer() {
+        $('overlay').hidden = true
+        renderClients()
+      }
+      $('scrim').onclick = closeDrawer
+      addEventListener('keydown', (event) => event.key === 'Escape' && !$('overlay').hidden && closeDrawer())
+      const head = (title, sub) =>
+        `<div class="drawer-head"><div><p class="meta">${sub}</p><h2>${title}</h2></div><button class="link" data-close>Close</button></div>`
+
+      // ---- calls
+      const outcomeCell = (c) =>
+        c.o === 'paid' ? `<span class="paid">${usd(c.amount)}</span>` : c.o === 'refused' ? `<span class="refused">Refused</span>` : OUTCOMES[c.o].label
+      const row = (c) => `<button class="tr calls-grid ${c.why ? 'has-why' : ''}" data-call="${[...calls, ...older].indexOf(c)}">
+          <span class="meta">${time(c.t)}</span>
+          <span class="client cut">${clientOf(c.c).name}</span>
+          <span class="req cut"><b>${c.host}</b><span>${c.path}</span>${c.why ? `<span class="why ${c.o}">${c.why}</span>` : ''}</span>
+          <span class="meta proto">${c.p ?? ''}</span>
+          <span class="num out">${outcomeCell(c)}</span>
+        </button>`
+      const emptyCalls = `<div class="empty"><h2>No calls yet</h2><p class="meta" style="margin-top:6px">Ask a connected client to call a paid endpoint. Every call shows up here, with what it cost.</p></div>`
+      function wireCalls(root) {
+        all('[data-call]', root).forEach((b) => (b.onclick = () => openCall([...calls, ...older][+b.dataset.call])))
+      }
+
+      function openCall(c) {
+        const o = OUTCOMES[c.o]
+        openDrawer(
+          `${head(`${c.host}${c.path}`, `${clientOf(c.c).name}, ${c.day.toLowerCase()} at ${time(c.t)}`)}
+          <p class="meta">${o.label}</p>
+          <span class="big">${c.o === 'paid' ? usd(c.amount) : '$0.00'}</span>
+          <p class="${c.o === 'refused' ? 'note' : 'meta'}" style="display:block">${c.why ? `${c.why}. ${o.note}` : o.note}</p>
+          <dl class="kv">
+            <dt>Request</dt><dd>${c.m} https://${c.host}${c.path}</dd>
+            <dt>Client</dt><dd>${clientOf(c.c).name}</dd>
+            ${c.p ? `<dt>Protocol</dt><dd>${c.p}, USDC on Solana devnet</dd>` : ''}
+            ${c.http ? `<dt>Endpoint answered</dt><dd>HTTP ${c.http}</dd>` : ''}
+            ${c.o === 'paid' ? `<dt>Transaction</dt><dd>${c.sig.slice(0, 16)}…${c.sig.slice(-8)}</dd>` : ''}
+          </dl>
+          ${c.o === 'paid' ? `<div class="drawer-foot"><a class="link" style="color:inherit" href="#">View on Solana Explorer</a><button class="link">Copy signature</button></div>` : ''}`,
+        )
+      }
+
+      // ---- clients, three ways
+      function renderClients() {
+        const total = clients.reduce((sum, a) => sum + a.spent, 0)
+        all('[data-total]').forEach((el) => (el.innerHTML = `${clients.length} connected, <b>${usd(total)}</b> spent in total`))
+        const recent = state.empty ? [] : calls.slice(0, 5)
+
+        const meter = (a) => `<span class="meter ${leftOf(a) ? '' : 'over'}"><i style="width:${pct(a)}%"></i></span>`
+        $('clients').innerHTML =
+          `<div class="c-head"><span>Client</span><span>Spent of limit</span><span class="num">Left</span><span class="num">Last used</span><span></span></div>` +
+          clients
+            .map(
+              (a) => `<button class="c-row" data-client="${a.id}">
+                <span class="c-name cut"><b>${a.name}</b><span class="meta">${a.host}</span></span>
+                <span class="usage">${meter(a)}<span class="frac"><b>${usd(a.spent)}</b> / ${usd(a.limit)}</span></span>
+                <span class="num left ${leftOf(a) ? '' : 'none'}">${usd(leftOf(a))}</span>
+                <span class="num meta last">${a.used}</span>
+                <span class="num go"><span class="btn btn-sm">Manage</span></span>
+              </button>`,
+            )
+            .join('')
+
+        all('[data-recent]').forEach((el) => (el.innerHTML = recent.length ? recent.map((c) => row(c)).join('') : emptyCalls))
+        all('[data-all]').forEach((el) => {
+          el.hidden = state.empty
+          el.onclick = () => show('activity')
+        })
+        all('[data-client]').forEach(
+          (b) =>
+            (b.onclick = (event) => {
+              event.stopPropagation()
+              openClient(b.dataset.client)
+            }),
+        )
+        all('[data-connect]').forEach((b) => (b.onclick = openConnect))
+        all('[data-deposit]').forEach((b) => (b.onclick = openDeposit))
+        wireCalls($('view-wallet'))
+      }
+
+      // The ruler runs from nothing to what the wallet can actually cover for this client:
+      // what it already spent plus the whole available balance. The input takes any exact amount.
+      const BALANCE = 4_520_000
+      const MAX_LIMIT = 1_000_000_000
+      const TICKS = 41
+
+      function openClient(id) {
+        const a = clientOf(id)
+        const top = a.spent + BALANCE
+        const fromPos = (pos) => Math.round(((pos / 1000) * top) / 10_000) * 10_000
+        const toPos = (limit) => Math.min(1000, Math.round((limit / (top || 1)) * 1000))
+        openDrawer(
+          `${head(a.name, a.host)}
+          <p class="meta">Spending limit</p>
+          <span class="big od" data-limit></span>
+          <p class="meta" data-left></p>
+          <div class="ruler">
+            <div class="ticks" aria-hidden="true">${'<i></i>'.repeat(TICKS)}</div>
+            <input type="range" min="0" max="1000" step="1" aria-label="Spending limit" />
+          </div>
+          <div class="ruler-ends meta"><span>$0</span><span>${usd(top)}, your whole wallet</span></div>
+          <form class="editor">
+            <label>$<input inputmode="decimal" aria-label="New spending limit in USD" value="${usd(a.limit).slice(1).replaceAll(',', '')}" /></label>
+            <button class="btn btn-primary" type="submit">Save limit</button>
+            <p class="note" role="alert"></p>
+            <p class="meta" style="width:100%" data-hint></p>
+          </form>
+          <dl class="kv">
+            <dt>Spent</dt><dd>${usd(a.spent)}</dd>
+            <dt>Can</dt><dd>Pay from your wallet within this limit</dd>
+            <dt>Connected</dt><dd>${a.connected}</dd>
+            <dt>Last used</dt><dd>${a.used}</dd>
+          </dl>
+          <div class="drawer-foot"><button class="link" data-view>View its activity</button><button class="link danger">Disconnect</button></div>`,
+          (el) => {
+            const roll = counter(el.querySelector('[data-limit]'))
+            const left = el.querySelector('[data-left]')
+            const paint = (limit) => {
+              roll(usd(limit))
+              left.textContent = `${usd(Math.max(0, limit - a.spent))} left after ${usd(a.spent)} spent`
+            }
+            const input = el.querySelector('.editor input')
+            const range = el.querySelector('.ruler input')
+            const ticks = all('.ticks i', el)
+            const save = el.querySelector('[type=submit]')
+            const note = el.querySelector('.note')
+            const hint = el.querySelector('[data-hint]')
+            // Shows one limit everywhere: the rolling number, what is left, the ruler, the warning.
+            const set = (limit, from) => {
+              paint(limit)
+              const at = Math.round((toPos(limit) / 1000) * (TICKS - 1))
+              ticks.forEach((t, i) => (t.className = i === at ? 'at' : i < at ? 'on' : ''))
+              if (from !== 'range') range.value = toPos(limit)
+              if (from !== 'input') input.value = usd(limit).slice(1).replaceAll(',', '')
+              input.setAttribute('aria-invalid', false)
+              save.disabled = false
+              note.textContent = limit < a.spent ? `${a.name} has already spent ${usd(a.spent)}. It cannot pay until the limit is higher.` : ''
+              hint.textContent = limit > top ? `Your wallet holds ${usd(BALANCE)}. ${a.name} can only pay what is in it.` : ''
+            }
+            set(a.limit)
+            range.oninput = () => set(fromPos(+range.value), 'range')
+            input.oninput = () => {
+              const limit = parseUsd(input.value)
+              if (limit !== null) return set(limit, 'input')
+              input.setAttribute('aria-invalid', true)
+              save.disabled = true
+              hint.textContent = ''
+              note.textContent = `Enter an amount up to ${usd(MAX_LIMIT)}.`
+            }
+            el.querySelector('form').onsubmit = (event) => {
+              event.preventDefault()
+              a.limit = parseUsd(input.value)
+              closeDrawer()
+            }
+            el.querySelector('[data-view]').onclick = () => {
+              state.client = a.id
+              $('f-client').value = a.id
+              closeDrawer()
+              show('activity')
+            }
+          },
+        )
+      }
+
+      function openDeposit() {
+        openDrawer(
+          `${head('Deposit USDC', 'Your wallet on Solana devnet')}
+          <p>Send USDC on Solana devnet to this address. It shows up in your balance once the transfer confirms.</p>
+          <p class="copybox">G7fu2vBDEZ9SYM4agJPshffJQUmyg6UCEEUnxuYRAMuq</p>
+          <div class="drawer-foot"><button class="btn btn-primary">Copy address</button></div>
+          <dl class="kv"><dt>Network</dt><dd>Solana devnet</dd><dt>Network fees</dt><dd>0 SOL in this wallet</dd></dl>`,
+        )
+      }
+
+      // Pick your client first, then one thing to do: the pattern Higgsfield and Linear use.
+      const HOW = {
+        Claude: { steps: ['Open Settings, then Connectors.', 'Choose "Add custom connector" and name it LanaTools.', 'Paste this URL and connect.'], copy: MCP },
+        ChatGPT: { steps: ['Open Settings, then Connectors.', 'Add a custom connector named LanaTools.', 'Paste this URL and connect.'], copy: MCP },
+        'Claude Code': { steps: ['Run this command in your terminal.', 'Then run /mcp in Claude Code to sign in.'], copy: `claude mcp add --transport http lanatools ${MCP}` },
+        Codex: { steps: ['Run this command in your terminal.', 'Codex opens a browser window to sign in.'], copy: `codex mcp add lanatools --url ${MCP}` },
+        Cursor: { steps: ['Open Cursor Settings, then MCP.', 'Add a new server named lanatools with this URL.'], copy: MCP },
+        Other: { steps: ['Add a remote MCP server in your client.', 'Use this URL. It signs you in with OAuth.'], copy: MCP },
+      }
+      function openConnect() {
+        const paint = (name) => {
+          const how = HOW[name]
+          openDrawer(
+            `${head('Connect a client', 'One URL for every AI client')}
+            <div class="pick" role="group" aria-label="Your client">${Object.keys(HOW)
+              .map((k) => `<button aria-pressed="${k === name}" data-pick="${k}">${k}</button>`)
+              .join('')}</div>
+            <ol class="steps">${how.steps.map((s) => `<li>${s}</li>`).join('')}</ol>
+            <p class="copybox">${how.copy}</p>
+            <div class="drawer-foot"><button class="btn btn-primary">${how.copy === MCP ? 'Copy URL' : 'Copy command'}</button></div>
+            <p class="meta" style="margin-top:22px">LanaTools then asks you to approve the client and set its spending limit. It appears under Connected clients once approved.</p>`,
+            (el) => all('[data-pick]', el).forEach((b) => (b.onclick = () => paint(b.dataset.pick))),
+          )
+        }
+        paint('Claude')
+      }
+
+      // ---- activity page
+      function visible() {
+        const list = state.empty ? [] : [...calls, ...older.slice(0, state.loaded)]
+        return list.filter((c) => (state.client === 'all' || c.c === state.client) && (state.outcome === 'all' || c.o === state.outcome))
+      }
+      function renderRows() {
+        const list = visible()
+        $('s-spent').textContent = usd(list.filter((c) => c.o === 'paid').reduce((sum, c) => sum + c.amount, 0))
+        $('s-calls').textContent = list.length
+        let day = null
+        $('rows').innerHTML = list.map((c) => (c.day === day ? '' : `<p class="day">${(day = c.day)}</p>`) + row(c)).join('')
+        wireCalls($('rows'))
+        const filtered = state.client !== 'all' || state.outcome !== 'all'
+        $('tail').innerHTML = state.empty
+          ? emptyCalls
+          : !list.length
+            ? `<p class="foot meta">No calls match these filters.</p>`
+            : state.loaded < older.length && !filtered
+              ? `<p class="foot meta" id="more">Loading older calls…</p>`
+              : `<p class="foot meta">That is every call.</p>`
+        const more = $('more')
+        if (more)
+          new IntersectionObserver((entries, observer) => {
+            if (!entries[0].isIntersecting) return
+            observer.disconnect()
+            setTimeout(() => ((state.loaded += 6), renderRows()), 700)
+          }).observe(more)
+      }
+      function renderHeat() {
+        // Sample shape only: quiet early weeks, busier lately.
+        const cells = Array.from({ length: 84 }, (_, i) => {
+          const n = (i * 37 + (i % 7) * 11) % 9
+          return i < 30 ? (n > 6 ? 1 : 0) : i < 60 ? Math.min(2, n % 4) : n > 6 ? 4 : n % 4
+        })
+        $('heat').innerHTML = cells.map((l) => `<i data-l="${l}"></i>`).join('')
+      }
+      function setPayments(on) {
+        $('switch').setAttribute('aria-checked', on)
+        $('perm').classList.toggle('is-off', !on)
+        $('switch-copy').textContent = on ? 'Agent payments are on' : 'Agent payments are off'
+        $('perm-copy').textContent = on
+          ? 'LanaTools signs only USDC payments from this wallet, and each client only within its own limit. Turn this off to stop every client at once.'
+          : 'No client can pay, and the LanaTools signer is removed from your wallet. Turn this back on to let your clients pay again.'
+      }
+
+      $('f-client').innerHTML = `<option value="all">All clients</option>` + clients.map((a) => `<option value="${a.id}">${a.name}</option>`).join('')
+      $('f-client').onchange = (event) => ((state.client = event.target.value), renderRows())
+      $('f-outcome').innerHTML = GROUPS.map(([id, label]) => `<button data-o="${id}" aria-pressed="${id === 'all'}">${label}</button>`).join('')
+      all('button', $('f-outcome')).forEach(
+        (b) =>
+          (b.onclick = () => {
+            state.outcome = b.dataset.o
+            all('button', $('f-outcome')).forEach((x) => x.setAttribute('aria-pressed', x === b))
+            renderRows()
+          }),
+      )
+      $('switch').onclick = () => setPayments($('switch').getAttribute('aria-checked') !== 'true')
+      $('mock-empty').onclick = () => {
+        state.empty = !state.empty
+        $('mock-empty').textContent = state.empty ? 'sample data' : 'empty state'
+        renderClients()
+        renderRows()
+      }
+
+      all('[data-balance]').forEach((el) => counter(el)('4.52'))
+      renderClients()
+      renderHeat()
+      renderRows()
+      setPayments(true)
+    </script>
+  </body>
+</html>
