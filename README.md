@@ -132,13 +132,25 @@ attempts to delete policies and the key quorum.
 
 ## Production
 
-The site and API run as Cloudflare Workers. `lanatools.sh` serves the Vite
-build and forwards `/api/*` to the `lanatools-api` Worker, which is also
-reachable at `api.lanatools.sh`. Pushes to `master` deploy both through
-Workers Builds. Pushes to any other branch publish a Worker Preview for each
-app and do not change `lanatools.sh`. Preview URLs are public. A site Preview
-still calls the production API. `/api/health` is a process-liveness check, not
-a database or external-dependency readiness check.
+The site, API, and MCP server run as Cloudflare Workers. `lanatools.sh`
+serves the Vite build and forwards `/api/*` to `lanatools-api`, which is also
+reachable at `api.lanatools.sh`. `mcp.lanatools.sh` serves MCP and its consent
+page.
+
+All three Workers connect to this repository through Cloudflare Workers
+Builds and deploy production on pushes to `master`. Web and API also publish
+Worker Previews for other branches. MCP builds only `master`; it has no
+branch previews. See [MCP build settings](apps/mcp/README.md#automatic-deployment)
+for its commands and required build variable.
+
+Each Worker builds and deploys independently. GitHub's full `Check` workflow
+runs separately and does not gate these deployments. API deployment applies
+D1 migrations first. Changes between Workers must remain compatible during
+rollout; this setup does not deploy all three atomically.
+
+Preview URLs are public. A site Preview still calls the production API.
+`/api/health` is a process-liveness check, not a database or external-dependency
+readiness check. For a manual deployment:
 
 ```sh
 bun run deploy
