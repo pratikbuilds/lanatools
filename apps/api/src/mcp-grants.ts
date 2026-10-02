@@ -139,7 +139,7 @@ export async function activateGrant(
   database: D1Database,
   handle: string,
   { grantId, userId, clientId }: GrantIdentity,
-  limitMicroUsd: number | null,
+  limitMicroUsd: number | null = null,
 ) {
   const db = drizzle(database)
   const consent = await db

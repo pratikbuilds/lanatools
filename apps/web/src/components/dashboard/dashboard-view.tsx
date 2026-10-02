@@ -12,12 +12,13 @@ export function DashboardView({
   signOutFailed,
   getAccessToken,
 }: {
-  user: Pick<User, 'id' | 'linkedAccounts'>
+  user: Pick<User, 'id' | 'linkedAccounts' | 'google' | 'email'>
   onSignOut: () => void
   signOutFailed: boolean
   getAccessToken: GetAccessToken
 }) {
   const payer = getEmbeddedPayer(user)
+  const account = user.google?.name || user.google?.email || user.email?.address
 
   return (
     <div className="on-paper min-h-screen bg-paper text-ink">
@@ -34,6 +35,12 @@ export function DashboardView({
         </button>
       </header>
       <main className="mx-auto w-full max-w-[40rem] px-5 pt-6 pb-16">
+        {account && (
+          <div className="mb-6">
+            <p className="text-[12px] text-mute">Signed in as</p>
+            <p className="text-[18px] font-bold break-words">{account}</p>
+          </div>
+        )}
         <p
           role="alert"
           className="mb-4 text-[13px] text-coral-ink empty:hidden"

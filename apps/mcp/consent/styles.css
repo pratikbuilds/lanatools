@@ -135,8 +135,7 @@ h1 {
 }
 
 .permission-label,
-.account-label,
-.destination-label {
+.account-label {
   font-family: var(--mono);
   font-size: 11px;
   font-weight: 600;
@@ -233,56 +232,6 @@ h1 {
   text-underline-offset: 3px;
 }
 
-.destination {
-  display: grid;
-  gap: 3px;
-  margin-top: 16px;
-  padding-bottom: 13px;
-  border-bottom: 1px solid var(--rule);
-}
-
-.destination strong {
-  overflow-wrap: anywhere;
-  font-family: var(--mono);
-  font-size: 14px;
-}
-
-.destination p {
-  margin: 6px 0 0;
-  color: var(--mute);
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.details {
-  padding: 9px 0;
-  border-bottom: 1px solid var(--rule);
-  color: var(--mute);
-  font-size: 12px;
-}
-
-.details summary {
-  width: fit-content;
-  color: var(--blue);
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.details span {
-  display: block;
-  margin: 13px 0 3px;
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.details code {
-  overflow-wrap: anywhere;
-  font-family: var(--mono);
-  font-size: 11px;
-}
-
 .actions {
   display: flex;
   gap: 12px;
@@ -334,8 +283,7 @@ button:disabled {
   opacity: 0.5;
 }
 
-button:focus-visible,
-summary:focus-visible {
+button:focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 3px;
 }

@@ -104,7 +104,7 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
     clientId: string,
     userId: string,
     grantId: string,
-    limitMicroUsd: number | null,
+    limitMicroUsd: number | null = null,
   ) {
     await activateGrant(
       this.env.DB,
