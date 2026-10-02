@@ -209,7 +209,8 @@ function Home() {
                 API key, and payment setup, repeated for each agent. Every copy
                 is a key that can leak, and no single place shows what your
                 agents did. With LanaTools, each agent connects once to one
-                toolkit, with no keys in its config and every call in one log.
+                toolkit, with no API keys in its config and every call in one
+                log.
               </p>
             </Reveal>
             <div className="mt-12">

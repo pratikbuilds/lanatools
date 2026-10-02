@@ -711,7 +711,7 @@ function useWideLayout() {
 const STEPS = [
   {
     title: 'Every agent connects once.',
-    body: `Connect Cursor, Claude, Codex, Grok bot, and MCP-compatible harnesses such as OpenClaw and Hermes through ${MCP_HOST}. No keys live in their configs.`,
+    body: `Connect Cursor, Claude, Codex, Grok bot, and MCP-compatible harnesses such as OpenClaw and Hermes through ${MCP_HOST}. No API keys live in their configs.`,
   },
   {
     title: 'Every call is checked first.',

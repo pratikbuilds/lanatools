@@ -5,10 +5,13 @@ import type { LogoId } from './logos'
 export function Logo({
   id,
   size,
+  color,
   className = '',
 }: {
   id: LogoId
   size?: number
+  /** Overrides the mark's own colour, for a mark placed on a dark tile. */
+  color?: string
   className?: string
 }) {
   const gradientId = useId()
@@ -44,7 +47,7 @@ export function Logo({
           key={d}
           d={d}
           fillRule={mark.fillRule}
-          fill={id === 'solana' ? `url(#${gradientId})` : mark.color}
+          fill={color ?? (id === 'solana' ? `url(#${gradientId})` : mark.color)}
         />
       ))}
     </svg>
@@ -57,15 +60,17 @@ export function LogoGlyph({
   x,
   y,
   size,
+  color,
 }: {
   id: LogoId
   x: number
   y: number
   size: number
+  color?: string
 }) {
   return (
     <g transform={`translate(${x} ${y})`}>
-      <Logo id={id} size={size} />
+      <Logo id={id} size={size} {...(color === undefined ? {} : { color })} />
     </g>
   )
 }

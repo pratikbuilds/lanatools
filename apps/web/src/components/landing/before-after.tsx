@@ -15,7 +15,8 @@ import { CAPABILITIES } from './data'
 import { EASE } from './reveal'
 
 // One drawing, two states. `progress` runs 0 (today) to 1 (with lanatools):
-// the tangle of direct wires gathers into a single line through the hub.
+// the tangle of direct wires gathers into a single line through the hub, the
+// API key each wire needed goes away, and paid calls settle from one wallet.
 // The wide drawing shares its node sizes with the flow diagram below it.
 type Geometry = {
   w: number
@@ -24,6 +25,8 @@ type Geometry = {
   agent: { x: number; w: number; ys: Array<number> }
   cap: { x: number; w: number; ys: Array<number> }
   hub: { x: number; y: number; w: number; h: number }
+  wallet: { y: number; w: number; h: number }
+  key: { size: number; pitch: number }
   compact: boolean
 }
 
@@ -34,6 +37,8 @@ const WIDE: Geometry = {
   agent: { x: 20, w: 176, ys: AGENTS.map((_, i) => 42 + i * 72) },
   cap: { x: 844, w: 176, ys: CAPABILITIES.map((_, i) => 52 + i * 94) },
   hub: { x: 520, y: 186, w: 176, h: 76 },
+  wallet: { y: 300, w: 240, h: 44 },
+  key: { size: 7, pitch: 10 },
   compact: false,
 }
 
@@ -44,6 +49,8 @@ const NARROW: Geometry = {
   agent: { x: 10, w: 108, ys: AGENTS.map((_, i) => 34 + i * 54) },
   cap: { x: 322, w: 114, ys: CAPABILITIES.map((_, i) => 52 + i * 62) },
   hub: { x: 220, y: 142, w: 112, h: 60 },
+  wallet: { y: 244, w: 140, h: 40 },
+  key: { size: 5, pitch: 7.5 },
   compact: true,
 }
 
@@ -59,10 +66,18 @@ const ease = (t: number) =>
   t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
 const at = (p: Point) => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`
 
-// A wire from agent `a` to capability `p`. At t=0 it is one direct curve;
-// at t=1 it runs into the hub, across it, and out to the capability.
+// Today an agent holds one key per tool, stacked down its right edge.
+const keyOffset = (g: Geometry, p: number) =>
+  (p - (CAPABILITIES.length - 1) / 2) * g.key.pitch
+
+// A wire from agent `a` to capability `p`. At t=0 it is one direct curve
+// that leaves the agent through its own key; at t=1 it leaves from the
+// agent's centre, runs into the hub, across it, and out to the capability.
 function wirePath(g: Geometry, a: number, p: number, t: number) {
-  const start: Point = [g.agent.x + g.agent.w, g.agent.ys[a] ?? 0]
+  const start: Point = [
+    g.agent.x + g.agent.w,
+    (g.agent.ys[a] ?? 0) + keyOffset(g, p) * (1 - t),
+  ]
   const end: Point = [g.cap.x, g.cap.ys[p] ?? 0]
   const hubIn: Point = [g.hub.x - g.hub.w / 2, g.hub.y]
   const hubOut: Point = [g.hub.x + g.hub.w / 2, g.hub.y]
@@ -149,17 +164,22 @@ function directRoutes(g: Geometry): Array<Route> {
 }
 
 const BEAT = 0.7
+const HUB_CALLS: Array<[agent: number, capability: number]> = [
+  [0, 0],
+  [2, 2],
+  [4, 1],
+  [1, 3],
+  [3, 0],
+]
+const CYCLE = BEAT * HUB_CALLS.length
+// A paid call crosses the hub halfway along its route. Its payment leaves
+// the wallet this many seconds earlier, so both arrive together.
+const SETTLE = 0.5
 
 function hubRoutes(g: Geometry): Array<Route> {
-  return [
-    [0, 0],
-    [2, 2],
-    [4, 1],
-    [1, 3],
-    [3, 0],
-  ].map(([a, p], i) => ({
-    d: wirePath(g, a!, p!, 1),
-    dur: BEAT * 5,
+  return HUB_CALLS.map(([a, p], i) => ({
+    d: wirePath(g, a, p, 1),
+    dur: CYCLE,
     begin: i * BEAT,
   }))
 }
@@ -318,57 +338,42 @@ function Capabilities({ g }: { g: Geometry }) {
   )
 }
 
-const KEY = { w: 34, h: 17 }
-
-// Each agent's key leaves its config and lands in the hub.
-function KeyTag({
+// The key for one agent and tool pair, where that wire leaves the agent. It
+// shrinks away as its wire gathers: no key moves to the hub.
+function Key({
   g,
-  i,
+  a,
+  p,
   progress,
 }: {
   g: Geometry
-  i: number
+  a: number
+  p: number
   progress: MotionValue<number>
 }) {
-  const from: Point = [
-    g.agent.x + g.agent.w - KEY.w + 4,
-    (g.agent.ys[i] ?? 0) - g.nodeH / 2 - 10,
-  ]
-  const to: Point = [
-    g.hub.x + g.hub.w / 2 - KEY.w + 4,
-    g.hub.y - g.hub.h / 2 - 10,
-  ]
+  const { size } = g.key
+  const offset = keyOffset(g, p)
   const t = useTransform(progress, (v) =>
-    ease(clamp((v - (0.14 + i * 0.045)) / 0.4)),
+    wireProgress(v, a * CAPABILITIES.length + p),
   )
-  const x = useTransform(t, (k) => (to[0] - from[0]) * k)
-  const y = useTransform(
-    t,
-    (k) => (to[1] - from[1]) * k - Math.sin(Math.PI * k) * 26,
-  )
-  const opacity = useTransform(t, [0, 0.9, 1], [1, 1, 0])
+  const y = useTransform(t, (k) => -offset * k)
+  const scale = useTransform(t, [0, 0.6], [1, 0])
   return (
-    <motion.g style={{ x, y, opacity }}>
+    <motion.g style={{ y, scale }}>
       <rect
-        x={from[0]}
-        y={from[1]}
-        width={KEY.w}
-        height={KEY.h}
-        rx={3}
+        x={g.agent.x + g.agent.w - size / 2}
+        y={(g.agent.ys[a] ?? 0) + offset - size / 2}
+        width={size}
+        height={size}
+        rx={1.5}
         className="fill-coral stroke-ink"
         strokeWidth={1}
       />
-      <text
-        x={from[0] + KEY.w / 2}
-        y={from[1] + 12.5}
-        textAnchor="middle"
-        className="fill-ink text-[11px] font-bold"
-      >
-        key
-      </text>
     </motion.g>
   )
 }
+
+const BADGE = { w: 84, h: 17 }
 
 function Hub({
   g,
@@ -382,7 +387,7 @@ function Hub({
   const { x, y, w, h } = g.hub
   const scale = useTransform(progress, [0.3, 0.55], [0.5, 1], { ease })
   const opacity = useTransform(progress, [0.3, 0.45], [0, 1])
-  const keys = useTransform(progress, [0.66, 0.78], [0, 1])
+  const badge = useTransform(progress, [0.66, 0.78], [0, 1])
   return (
     <motion.g style={{ scale, opacity }}>
       {pulse && (
@@ -440,25 +445,144 @@ function Hub({
       >
         one URL
       </text>
-      <motion.g style={{ opacity: keys }}>
+      <motion.g style={{ opacity: badge }}>
         <rect
-          x={x + w / 2 - 94}
+          x={x + w / 2 - BADGE.w + 8}
           y={y - h / 2 - 10}
-          width={102}
-          height={KEY.h}
+          width={BADGE.w}
+          height={BADGE.h}
           rx={3}
           className="fill-ink stroke-ink"
           strokeWidth={1}
         />
         <text
-          x={x + w / 2 - 43}
+          x={x + w / 2 - BADGE.w / 2 + 8}
           y={y - h / 2 + 2.5}
           textAnchor="middle"
           className="fill-lime text-[11px] font-bold"
         >
-          keys stay here
+          no API keys
         </text>
       </motion.g>
+    </motion.g>
+  )
+}
+
+// The wallet is the user's and sits outside the hub: Privy holds its key,
+// lanatools does not. It arrives once the wires have gathered.
+function Wallet({
+  g,
+  progress,
+  live,
+}: {
+  g: Geometry
+  progress: MotionValue<number>
+  live: boolean
+}) {
+  const { x } = g.hub
+  const { y, w, h } = g.wallet
+  const from = g.hub.y + g.hub.h / 2
+  const to = y - h / 2
+  const left = x - w / 2
+  const tile = g.compact ? 20 : 26
+  const pad = g.compact ? 8 : 12
+  const mark = g.compact ? 12 : 16
+  const textX = left + pad + tile + (g.compact ? 6 : 10)
+  const opacity = useTransform(progress, [0.7, 0.85], [0, 1])
+  return (
+    <motion.g style={{ opacity }}>
+      <line
+        x1={x}
+        y1={from}
+        x2={x}
+        y2={to}
+        className="stroke-ink"
+        strokeWidth={1.5}
+        strokeDasharray="3 4"
+      />
+      {live &&
+        HUB_CALLS.map(([, p], i) =>
+          CAPABILITIES[p]?.paid ? (
+            <circle
+              key={i}
+              r={g.compact ? 3 : 3.5}
+              opacity={0}
+              className="fill-lime stroke-ink"
+              strokeWidth={1.5}
+            >
+              <animateMotion
+                path={`M${x} ${to + 6}L${x} ${from - 6}`}
+                dur={`${CYCLE}s`}
+                begin={`${i * BEAT + CYCLE / 2 - SETTLE}s`}
+                keyPoints="0;1;1"
+                keyTimes={`0;${SETTLE / CYCLE};1`}
+                calcMode="linear"
+                repeatCount="indefinite"
+              />
+              <animate
+                attributeName="opacity"
+                values="0;1;1;0;0"
+                keyTimes={`0;0.01;${SETTLE / CYCLE};${SETTLE / CYCLE + 0.01};1`}
+                dur={`${CYCLE}s`}
+                begin={`${i * BEAT + CYCLE / 2 - SETTLE}s`}
+                repeatCount="indefinite"
+              />
+            </circle>
+          ) : null,
+        )}
+      <text
+        x={x + 10}
+        y={(from + to) / 2 + 4}
+        className={`fill-mute ${g.compact ? 'text-[10px]' : 'text-[11px]'}`}
+      >
+        {g.compact ? 'paid calls' : 'paid calls settle here'}
+      </text>
+      <rect
+        x={left + 3}
+        y={to + 3}
+        width={w}
+        height={h}
+        rx={6}
+        className="fill-ink"
+      />
+      <rect
+        x={left}
+        y={to}
+        width={w}
+        height={h}
+        rx={6}
+        className="fill-card stroke-ink"
+        strokeWidth={1.5}
+      />
+      <rect
+        x={left + pad}
+        y={y - tile / 2}
+        width={tile}
+        height={tile}
+        rx={5}
+        className="fill-ink"
+      />
+      <LogoGlyph
+        id="privy"
+        x={left + pad + (tile - mark) / 2}
+        y={y - mark / 2}
+        size={mark}
+        color="var(--color-card)"
+      />
+      <text
+        x={textX}
+        y={y - 3}
+        className={`fill-ink font-bold ${g.compact ? 'text-[12px]' : 'text-[14px]'}`}
+      >
+        your wallet
+      </text>
+      <text
+        x={textX}
+        y={y + (g.compact ? 11 : 13)}
+        className={`fill-mute ${g.compact ? 'text-[10px]' : 'text-[11px]'}`}
+      >
+        {g.compact ? 'secured by Privy' : 'embedded · secured by Privy'}
+      </text>
     </motion.g>
   )
 }
@@ -511,9 +635,10 @@ function Diagram({
       )}
       <Agents g={g} />
       <Capabilities g={g} />
+      <Wallet g={g} progress={progress} live={live && phase === 'after'} />
       <Hub g={g} progress={progress} pulse={live && phase === 'after'} />
-      {AGENTS.map((a, i) => (
-        <KeyTag key={a.id} g={g} i={i} progress={progress} />
+      {WIRES.map(({ a, p }) => (
+        <Key key={`${a}-${p}`} g={g} a={a} p={p} progress={progress} />
       ))}
     </svg>
   )
@@ -545,12 +670,12 @@ const STATES = [
   {
     label: 'today',
     chip: 'chip-coral',
-    body: 'Each agent and tool pair needs its own server, key, and config. Add a tool and you repeat it five times.',
+    body: 'Each agent and tool pair needs its own server, API key, and config. Add a tool and you repeat it five times.',
   },
   {
     label: 'with lanatools',
     chip: 'chip-lime',
-    body: 'Each agent connects once, with one URL and no keys in its config. Add a tool and every agent can use it.',
+    body: 'Each agent connects once, with one URL and no API keys in its config. Paid calls settle from your embedded wallet, within the limit you approve for each agent.',
   },
 ]
 
@@ -640,7 +765,7 @@ export function BeforeAfter() {
                 aria-hidden="true"
                 className="inline-block size-2.5 rounded-[2px] border border-ink bg-coral"
               />
-              a key in an agent&rsquo;s config
+              an API key in an agent&rsquo;s config
             </span>
             <span className="flex items-center gap-1.5">
               <span
