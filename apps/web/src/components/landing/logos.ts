@@ -2,8 +2,9 @@
 // Claude: https://claude.ai/favicon.svg
 // Solana: https://solana.com/src/img/branding/solanaLogoMark.svg
 // Grok Bot: https://x.ai/bot
+// Privy: the symbol from the "Protected by Privy" mark in @privy-io/react-auth
 export type AgentId = 'cursor' | 'claude' | 'codex' | 'grok' | 'others'
-export type LogoId = AgentId | 'solana'
+export type LogoId = AgentId | 'solana' | 'privy'
 
 export type LogoMark = {
   viewBox: string
@@ -49,6 +50,14 @@ export const LOGO_MARKS: Record<LogoId, LogoMark> = {
     viewBox: '0 0 24 24',
     paths: [
       'M3 4h18v16H3V4Zm2 2v12h14V6H5Zm2 2 4 4-4 4-1.4-1.4L8.2 12 5.6 9.4 7 8Zm5 6h5v2h-5v-2Z',
+    ],
+  },
+  privy: {
+    color: '#000000',
+    viewBox: '274.7 1.5 39 39',
+    paths: [
+      'M293.41 2.36a14.56 14.56 0 0 0-13.7 16.07 14.59 14.59 0 0 0 21.86 11.08 14.5 14.5 0 0 0 7.11-14.07 14.61 14.61 0 0 0-6.53-10.73 14.49 14.49 0 0 0-8.74-2.35Z',
+      'M293.05 35.8c-1.18.04-1.93.09-2.8.16-2.52.24-4.53.69-5.43 1.23-.7.41-.76.86-.2 1.28.88.66 3.29 1.19 6.36 1.4a48.55 48.55 0 0 0 5.75.05c3.47-.19 6.24-.78 7.11-1.5.22-.19.3-.34.3-.53 0-.1 0-.12-.04-.22-.35-.69-2.32-1.3-5.25-1.63a41.09 41.09 0 0 0-5.8-.24Z',
     ],
   },
   solana: {
