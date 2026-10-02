@@ -684,11 +684,11 @@ const STEPS = [
   },
   {
     title: 'Your wallet checks the call.',
-    body: 'Is this agent allowed to pay? Does the price fit its limit? If either answer is no, the call stops here and nothing is paid.',
+    body: 'Is this agent allowed to perform the action? Does it fit the limits you set for that action? If either check fails, the call stops here.',
   },
   {
-    title: 'It pays, forwards, and logs.',
-    body: 'The wallet pays the provider and the result comes back through the same connection. The call, its cost, and what is left of the limit go in the activity log.',
+    title: 'It runs the action and logs the result.',
+    body: 'Approved calls read data, pay for services, or submit transactions. Paid calls settle from your wallet. Each action and its result go in the activity log, with costs recorded when applicable.',
   },
 ]
 

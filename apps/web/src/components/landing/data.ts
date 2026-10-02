@@ -1,6 +1,6 @@
 import type { AgentId } from './logos'
 
-export type Permission = 'read' | 'pay' | 'prepare'
+export type Permission = 'read' | 'pay' | 'prepare' | 'execute'
 
 export type Client = {
   id: AgentId
@@ -35,7 +35,7 @@ export const CLIENTS: Array<Client> = [
     kind: 'desktop · cloud',
     cap: 15,
     spent: 4.5,
-    can: ['read', 'pay'],
+    can: ['read', 'pay', 'prepare', 'execute'],
   },
   {
     id: 'grok',
@@ -43,7 +43,7 @@ export const CLIENTS: Array<Client> = [
     kind: 'agent',
     cap: 8,
     spent: 0.4,
-    can: ['read'],
+    can: ['read', 'prepare', 'execute'],
   },
   {
     id: 'others',
