@@ -17,7 +17,7 @@ function render(walletAddress: string | null) {
           getAccessToken: () => Promise.resolve(null),
         }}
       >
-        <WalletPage />
+        <WalletPage onViewActivity={() => {}} />
       </DashboardSessionProvider>
     </QueryClientProvider>,
   )
@@ -40,6 +40,13 @@ test('once the payment wallet exists, the page shows it for deposits', () => {
 test('connected clients are on the page with or without a wallet', () => {
   expect(render(null)).toContain('Connected clients')
   expect(render(embedded)).toContain('Connect a client')
+})
+
+test('the latest calls follow the clients that made them', () => {
+  const html = render(embedded)
+  expect(html.indexOf('Latest activity')).toBeGreaterThan(
+    html.indexOf('Connected clients'),
+  )
 })
 
 test('the account control names who is signed in', () => {

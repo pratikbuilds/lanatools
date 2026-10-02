@@ -42,7 +42,11 @@ function leftOf(client: McpClient) {
   )
 }
 
-export function ConnectedClients() {
+export function ConnectedClients({
+  onViewActivity,
+}: {
+  onViewActivity: (clientId: string) => void
+}) {
   const { userId, walletAddress, getAccessToken } = useDashboardSession()
   const queryClient = useQueryClient()
   // Keyed by user so another account signing in never sees these rows.
@@ -128,6 +132,7 @@ export function ConnectedClients() {
               limit.mutateAsync({ grantId: managing.grantId, limitUsd })
             }
             onRevoke={() => revoke.mutate(managing.grantId)}
+            onViewActivity={() => onViewActivity(managing.clientId)}
             onClose={() => setManagingId(undefined)}
           />
         )}
@@ -274,6 +279,7 @@ export function ClientDetail({
   revoking,
   onSetLimit,
   onRevoke,
+  onViewActivity,
   onClose,
   now = Date.now(),
 }: {
@@ -282,6 +288,7 @@ export function ClientDetail({
   revoking: boolean
   onSetLimit: (limitUsd: string) => Promise<void>
   onRevoke: () => void
+  onViewActivity: () => void
   onClose: () => void
   now?: number
 }) {
@@ -341,13 +348,22 @@ export function ClientDetail({
           </div>
         </div>
       ) : (
-        <button
-          type="button"
-          className="mt-6 text-[12.5px] font-semibold text-coral-ink underline underline-offset-[3px]"
-          onClick={() => setConfirming(true)}
-        >
-          Disconnect
-        </button>
+        <div className="mt-6 flex flex-wrap gap-x-5 gap-y-3 text-[12.5px] font-semibold">
+          <button
+            type="button"
+            className="underline underline-offset-[3px]"
+            onClick={onViewActivity}
+          >
+            View its activity
+          </button>
+          <button
+            type="button"
+            className="text-coral-ink underline underline-offset-[3px]"
+            onClick={() => setConfirming(true)}
+          >
+            Disconnect
+          </button>
+        </div>
       )}
     </>
   )

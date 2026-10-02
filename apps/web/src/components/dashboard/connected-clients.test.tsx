@@ -40,6 +40,7 @@ function detail(client: McpClient) {
       revoking={false}
       onSetLimit={async () => {}}
       onRevoke={() => {}}
+      onViewActivity={() => {}}
       onClose={() => {}}
       now={now}
     />,
@@ -102,6 +103,7 @@ test('managing a client shows what it can do, its limit, and a way to disconnect
   expect(html).toContain('3 days ago')
   expect(html).toContain('Spending limit')
   expect(html).toContain('Save limit')
+  expect(html).toContain('View its activity')
   expect(html).toContain('Disconnect')
 })
 

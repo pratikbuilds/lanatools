@@ -1,6 +1,6 @@
 # Dashboard: wallet, connected clients, and activity
 
-Status, October 2, 2026: design agreed; P1 (the activity API) is implemented, P2 to P4 are not. This fills in the "Activity and control" section of [agent-payments.md](agent-payments.md) for the web dashboard. The agreed design is the mockup at [mockups/dashboard-activity.html](mockups/dashboard-activity.html).
+Status, October 2, 2026: design agreed; P1 to P3 are implemented. P4, verification against devnet with a signed-in user, is not done. This fills in the "Activity and control" section of [agent-payments.md](agent-payments.md) for the web dashboard. The agreed design is the mockup at [mockups/dashboard-activity.html](mockups/dashboard-activity.html).
 
 ## Goal
 
@@ -97,13 +97,13 @@ Clicking a row, or an action that needs detail, opens a drawer from the right; t
 - **Client.** Name and host. The spending limit as a large rolling number with "left after spent" under it; the tick ruler; then the amount input and "Save limit". Choosing a limit below what is already spent warns that the client cannot pay until the limit is higher (the existing behaviour of `setClientLimit`, made visible). Then spent, what it can do, connected, last used, "View its activity" (opens Activity filtered to this client), and "Disconnect" with the existing confirmation.
 - **Call.** Host and path, client and time. The amount as the large number, the reason on a refused or failed call, then request method and URL, protocol and network, the endpoint's HTTP status, and for paid calls the transaction signature with "View on Solana Explorer" and copy.
 - **Deposit.** The address, Copy, the network, and the SOL balance for fees.
-- **Connect a client.** Pick the client first (Claude, ChatGPT, Claude Code, Codex, Cursor, Other), then two or three steps and one thing to copy: the MCP URL or a command. The steps and commands in the mockup are drafts and must be checked against each client before shipping.
+- **Connect a client.** Pick the client first, then one thing to copy. The clients and their setup are the landing page's own (`components/landing/copy-url.tsx`: Cursor, Claude, Codex, Grok, Cloud agent), so the two never disagree; the mockup's drafted steps are not used.
 
 ### Components
 
 - **AnimatedCounter** (Rare UI) for the balance and the limit. It ships through the shadcn CLI: `bunx shadcn@latest add swamimalode07/rare-ui/animated-counter`. The web app was scaffolded with the TanStack CLI and has the `@/*` alias shadcn expects but no `components.json`, so add a minimal `apps/web/components.json` by hand (aliases to `@/components` and `@/lib`, CSS at `src/styles.css`) rather than running `shadcn init`, which would rewrite `styles.css`. Then run the add command and review the diff: it should add `src/components/ui/animated-counter.tsx` and nothing else, since `motion` is already installed. Limits can have sub-cent digits, so the counter uses two decimals and widens only when the value needs more.
 - **Limit ruler.** Rare UI's demo drives the counter with a native range input laid invisibly over a row of tick marks: marks up to the position are dark, the position itself is a taller accent mark. Ours does the same in ink and Klein blue. The ruler runs from $0 to what the wallet can cover for that client: what the client has already spent plus the whole available balance. A limit is cumulative, so the balance alone would be too short for a client that has already spent more than the wallet now holds. The scale is straight and moves in cents. The input still takes any amount up to `MAX_CLIENT_LIMIT_MICRO_USD`; above the ruler's top it pins the ruler at the end and says the client can only pay what is in the wallet.
-- **Heatmap.** Try Rare UI's GitHub activity component with our per-day data and brand colours. If it cannot be made to match, use plain squares as in the mockup.
+- **Heatmap.** Plain squares, as in the mockup: one per day, darker for more calls. Rare UI's GitHub activity component was considered and left out; the squares need no dependency and no second imported component.
 
 ## API
 
@@ -127,7 +127,7 @@ Today the LanaTools signer is attached only when the user presses "Turn on" (`en
 
 - Attach the signer as part of wallet setup: right after the wallet is created, and on dashboard load for an existing wallet that has never had one (status `none`).
 - A wallet the user turned off (status `disabled`) stays off. Only the user turns it back on.
-- Attaching has to run in the user's signed-in browser session. To verify during the build: whether `addSigners` completes without a click or a Privy prompt. If it needs one, it folds into the "Create wallet" button and a one-time "Finish setup" step.
+- Attaching has to run in the user's signed-in browser session. It is attempted once per visit, without a click. Still to verify in P4: whether Privy's `addSigners` completes without a click or a prompt. If it needs one, it folds into the "Create wallet" button and a one-time "Finish setup" step.
 - The switch keeps its current behaviour as the "wallet-wide emergency stop" in agent-payments.md: off stops every client at once and removes the signer from the wallet.
 - If attaching fails, Settings says so and the switch retries it.
 

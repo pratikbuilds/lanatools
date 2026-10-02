@@ -1,9 +1,18 @@
+import { LatestActivity } from './activity'
 import { ConnectedClients } from './connected-clients'
 import { useDashboardSession } from './session'
 import { CreateWallet, WalletPanel } from './wallet-panel'
 
-/** The dashboard's home: the wallet, then the clients that draw from it. */
-export function WalletPage() {
+/**
+ * The dashboard's home, in the order the data nests: the wallet, the clients
+ * that draw from it, then the latest calls those clients made.
+ */
+export function WalletPage({
+  onViewActivity,
+}: {
+  /** Opens the Activity page, for one client or for all of them. */
+  onViewActivity: (clientId: string | undefined) => void
+}) {
   const { walletAddress } = useDashboardSession()
   return (
     <>
@@ -13,7 +22,8 @@ export function WalletPage() {
       ) : (
         <CreateWallet />
       )}
-      <ConnectedClients />
+      <ConnectedClients onViewActivity={onViewActivity} />
+      <LatestActivity onViewAll={() => onViewActivity(undefined)} />
     </>
   )
 }

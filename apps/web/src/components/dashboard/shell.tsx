@@ -6,6 +6,7 @@ import { BrandMark, Wordmark } from '#/components/landing/brand'
 // Navigation holds destinations only. Wallet data lives on the pages.
 const DESTINATIONS = [
   { to: '/dashboard', label: 'Wallet', exact: true },
+  { to: '/dashboard/activity', label: 'Activity', exact: false },
   { to: '/dashboard/settings', label: 'Settings', exact: false },
 ] as const
 
@@ -37,7 +38,8 @@ export function DashboardShell({
               <Link
                 key={to}
                 to={to}
-                activeOptions={{ exact }}
+                // A filtered Activity page is still the Activity page.
+                activeOptions={{ exact, includeSearch: false }}
                 className="flex h-8 items-center rounded-[6px] px-3 text-[13px] text-paper-2 hover:bg-white/10 hover:text-paper focus-visible:outline-lime aria-[current=page]:bg-paper aria-[current=page]:font-bold aria-[current=page]:text-ink"
               >
                 {label}
