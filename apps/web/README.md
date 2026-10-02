@@ -13,7 +13,9 @@ See the root README for checks and production routing requirements.
 The dashboard reads wallet balances from the network in `VITE_SOLANA_NETWORK`:
 `sandbox` (hosted Surfpool), `devnet`, or `mainnet`. Builds fail without it, so
 a deployment never shows one network's balances while users deposit on
-another; set it in the Cloudflare build environment. The dev server and tests
-use `sandbox`. `mainnet` also needs `VITE_SOLANA_RPC_URL`, because the public
+another. The hosted `master` branch is staging: set `VITE_SOLANA_NETWORK=devnet`
+in Cloudflare's build environment, matching the API's `SOLANA_NETWORK=devnet`.
+`bun run deploy:web` also builds for devnet. Sandbox is for local development
+and automated tests only. `mainnet` also needs `VITE_SOLANA_RPC_URL`, because the public
 mainnet RPC refuses token-balance queries. The page checks that the RPC serves
 the named network before showing balances.
