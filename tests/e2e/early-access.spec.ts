@@ -105,8 +105,20 @@ test('mobile signup confirms the persisted email', async ({ page }) => {
   await form.getByRole('button', { name: 'Get early access' }).click()
   await expect(page.getByText(joinedText)).toHaveCount(2)
   await expect(page.getByText(email).first()).toBeVisible()
-  await page
-    .getByRole('status')
-    .first()
-    .screenshot({ path: 'test-results/early-access-mobile.png' })
+  const ticket = page.getByRole('status').first()
+  await expect
+    .poll(() =>
+      ticket.evaluate((element) => {
+        let opacity = 1
+        for (
+          let parent: Element | null = element;
+          parent;
+          parent = parent.parentElement
+        )
+          opacity *= Number(getComputedStyle(parent).opacity)
+        return opacity
+      }),
+    )
+    .toBe(1)
+  await ticket.screenshot({ path: 'test-results/early-access-mobile.png' })
 })
