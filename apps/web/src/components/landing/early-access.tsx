@@ -6,76 +6,36 @@ import {
 } from 'motion/react'
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
 import type { FormEvent, ReactNode } from 'react'
+import { EarlyAccessEmail } from '@lanatools/contracts'
+import {
+  clearSignupError,
+  joinEarlyAccess,
+  resetSignup,
+  serverSignupSnapshot,
+  signupSnapshot,
+  subscribeSignup,
+} from '#/lib/early-access'
 import { EASE } from './reveal'
 
-const STORAGE_KEY = 'lanatools:early-access'
-
-// The joined email, shared by every form on the page so joining in the hero
-// also updates the closing section. Browser storage can be missing or
-// blocked, so memory is the source of truth and storage only restores it.
-let joinedEmail = readStored()
-const listeners = new Set<() => void>()
-
-function readStored() {
-  try {
-    return localStorage.getItem(STORAGE_KEY)
-  } catch {
-    return null
-  }
-}
-
-function setJoinedEmail(email: string | null) {
-  joinedEmail = email
-  try {
-    if (email) localStorage.setItem(STORAGE_KEY, email)
-    else localStorage.removeItem(STORAGE_KEY)
-  } catch {
-    // Storage is unavailable; the page still remembers until it reloads.
-  }
-  listeners.forEach((listener) => listener())
-}
-
-function subscribe(listener: () => void) {
-  const onStorage = (event: StorageEvent) => {
-    if (event.key !== STORAGE_KEY) return
-    joinedEmail = event.newValue
-    listener()
-  }
-  listeners.add(listener)
-  window.addEventListener('storage', onStorage)
-  return () => {
-    listeners.delete(listener)
-    window.removeEventListener('storage', onStorage)
-  }
-}
-
-function useJoinedEmail() {
+function useSignup() {
   return useSyncExternalStore(
-    subscribe,
-    () => joinedEmail,
-    () => null,
+    subscribeSignup,
+    signupSnapshot,
+    serverSignupSnapshot,
   )
 }
-
-// There is no waitlist API yet, so a signup is only remembered in this
-// browser. Replace the wait with the request once the waitlist is stored.
-async function requestAccess(_email: string) {
-  await wait(650)
-}
-
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 type Tone = 'blue' | 'paper'
 
 export function EarlyAccess({ tone, note }: { tone: Tone; note?: ReactNode }) {
-  const email = useJoinedEmail()
+  const signup = useSignup()
   return (
     // Size from the container, never the content: the ticket's single line
     // would otherwise stretch narrow layouts instead of truncating.
     <div className="w-full max-w-[34rem] [contain:inline-size]">
       <AnimatePresence mode="wait" initial={false}>
-        {email ? (
-          <Ticket key="ticket" email={email} tone={tone} />
+        {signup.phase === 'joined' ? (
+          <Ticket key="ticket" email={signup.email} tone={tone} />
         ) : (
           <JoinForm key="form" tone={tone} note={note} />
         )}
@@ -89,20 +49,24 @@ function JoinForm({ tone, note }: { tone: Tone; note?: ReactNode }) {
   const errorId = useId()
   const input = useRef<HTMLInputElement>(null)
   const shake = useAnimationControls()
-  const still = useReducedMotion()
-  const [error, setError] = useState('')
+  const signup = useSignup()
+  const [validationError, setError] = useState('')
+  const error =
+    signup.phase === 'edit'
+      ? validationError ||
+        (signup.failure?.formId === inputId ? signup.failure.message : '')
+      : ''
   const [focused, setFocused] = useState(false)
-  const [phase, setPhase] = useState<'edit' | 'busy' | 'done'>('edit')
-  const busy = phase !== 'edit'
+  const busy = signup.phase !== 'edit'
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const field = input.current
     if (!field || busy) return
-    const value = field.value.trim()
-    if (!value || !field.validity.valid) {
+    const value = EarlyAccessEmail(field.value)
+    if (typeof value !== 'string') {
       setError(
-        value
+        field.value.trim()
           ? 'That email doesn’t look right. Check it and try again.'
           : 'Enter your email to join the list.',
       )
@@ -114,18 +78,8 @@ function JoinForm({ tone, note }: { tone: Tone; note?: ReactNode }) {
       return
     }
     setError('')
-    setPhase('busy')
-    try {
-      await requestAccess(value)
-    } catch {
-      setError('We couldn’t add you just now. Try again.')
-      setPhase('edit')
-      return
-    }
-    // Let the packet line settle before the ticket replaces the form.
-    setPhase('done')
-    if (!still) await wait(480)
-    setJoinedEmail(value)
+    field.value = value
+    await joinEarlyAccess(value, inputId)
   }
 
   return (
@@ -133,6 +87,7 @@ function JoinForm({ tone, note }: { tone: Tone; note?: ReactNode }) {
       noValidate
       onSubmit={(event) => void submit(event)}
       aria-label="Join the early access list"
+      aria-busy={busy}
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -6, scale: 0.98 }}
@@ -159,20 +114,20 @@ function JoinForm({ tone, note }: { tone: Tone; note?: ReactNode }) {
             autoComplete="email"
             inputMode="email"
             spellCheck={false}
+            maxLength={254}
             placeholder="you@domain.com"
             disabled={busy}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? errorId : undefined}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            onChange={() => error && setError('')}
+            onChange={() => {
+              setError('')
+              clearSignupError(inputId)
+            }}
             className="h-12 w-full min-w-0 bg-transparent px-4 text-[15px] text-ink outline-none! placeholder:text-mute/70 disabled:opacity-60"
           />
-          <Packet
-            state={
-              phase === 'edit' ? (focused && !error ? 'live' : 'idle') : phase
-            }
-          />
+          <Packet state={busy ? 'busy' : focused && !error ? 'live' : 'idle'} />
         </div>
         <button
           type="submit"
@@ -181,8 +136,8 @@ function JoinForm({ tone, note }: { tone: Tone; note?: ReactNode }) {
         >
           {busy ? (
             <>
-              {phase === 'done' ? <span aria-hidden="true">✓</span> : <Dots />}
-              {phase === 'done' ? 'Joined' : 'Joining'}
+              <Dots />
+              Joining
             </>
           ) : (
             <>
@@ -227,20 +182,13 @@ function JoinForm({ tone, note }: { tone: Tone; note?: ReactNode }) {
 }
 
 // The footer's payment packet, running along the bottom of the field: it
-// cruises while you type, races while the request is out, then settles into
-// a solid line once you are in.
-function Packet({ state }: { state: 'idle' | 'live' | 'busy' | 'done' }) {
+// cruises while you type and races while the request is out.
+function Packet({ state }: { state: 'idle' | 'live' | 'busy' }) {
   return (
     <span
       aria-hidden="true"
       className="pointer-events-none absolute inset-x-0 bottom-0 h-[3px] overflow-hidden"
     >
-      <motion.span
-        className="absolute inset-0 origin-left bg-blue"
-        initial={false}
-        animate={{ scaleX: state === 'done' ? 1 : 0 }}
-        transition={{ duration: 0.45, ease: EASE }}
-      />
       {(state === 'live' || state === 'busy') && (
         <span
           className="field-packet"
@@ -373,7 +321,7 @@ function Ticket({ email, tone }: { email: string; tone: Tone }) {
         Waiting for the next batch. We’ll email you.{' '}
         <button
           type="button"
-          onClick={() => setJoinedEmail(null)}
+          onClick={resetSignup}
           className={`underline underline-offset-3 ${
             tone === 'blue' ? 'hover:text-paper' : 'hover:text-ink'
           }`}
