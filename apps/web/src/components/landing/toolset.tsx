@@ -15,7 +15,7 @@ const TOOLS: Array<{
     stage: 'available',
     title: 'Pay for services',
     icon: '/lanatools-icon-pay.png',
-    body: 'Paid endpoints, including ones found through the pay.sh catalog, settle from your wallet within that agent’s spending limit.',
+    body: 'Discover paid services in the catalog and let your agent pay for what it needs within the permissions and action limits you set.',
   },
   {
     stage: 'next',
@@ -25,16 +25,16 @@ const TOOLS: Array<{
   },
   {
     stage: 'planned',
-    title: 'Swaps you sign yourself',
+    title: 'Create and execute transactions',
     icon: '/lanatools-icon-prepare.png',
-    body: 'Swaps and transfers come back as a review link. You sign from a local wallet, a browser wallet, or the embedded wallet.',
+    body: 'Create Solana transactions and execute them through your embedded wallet within the permissions you grant, or sign with your own wallet and let LanaTools submit them.',
   },
   {
     stage: 'planned',
     title: 'Read Solana',
     icon: '/lanatools-icon-read.png',
     solana: true,
-    body: 'Accounts, transactions, markets, and analytics from Helius, Jupiter, and Dune, with provider credits shown next to your payments.',
+    body: 'Read onchain data, explore portfolios, and query activity through the same connection your agent uses to take action.',
   },
 ]
 

@@ -33,15 +33,15 @@ const SEED: Array<Entry> = [
     time: '12:03:58',
     client: 'codex',
     tone: 'ok',
-    what: 'pay.sh $0.10',
+    what: 'Paid API $0.10',
     outcome: '✓ $10.50 left',
   },
   {
     id: -2,
     time: '12:03:52',
-    client: 'cloud',
+    client: 'others',
     tone: 'deny',
-    what: 'pay.sh $0.40',
+    what: 'Paid API $0.40',
     outcome: '✕ over limit',
   },
   {
@@ -49,7 +49,7 @@ const SEED: Array<Entry> = [
     time: '12:03:40',
     client: 'cursor',
     tone: 'ok',
-    what: 'pay.sh $0.25',
+    what: 'Paid API $0.25',
     outcome: '✓ $18.37 left',
   },
 ]
@@ -198,7 +198,7 @@ export function Playground() {
     log({
       client: id,
       tone: denied ? 'deny' : 'ok',
-      what: `pay.sh ${usd.format(cost)}`,
+      what: `Paid API ${usd.format(cost)}`,
       outcome: denied
         ? `✕ ${denied}`
         : `✓ ${usd.format(Math.max(s.cap - spent, 0))} left`,

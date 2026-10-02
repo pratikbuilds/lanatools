@@ -2,11 +2,11 @@ import { motion, useInView, useReducedMotion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { AGENTS } from './logos'
 import { LogoGlyph } from './logo'
-import { PROVIDERS } from './data'
+import { CAPABILITIES } from './data'
 import { EASE } from './reveal'
 
 const AGENT_Y = AGENTS.map((_, i) => 34 + i * 54)
-const PROVIDER_Y = PROVIDERS.map((_, i) => 52 + i * 62)
+const PROVIDER_Y = CAPABILITIES.map((_, i) => 52 + i * 62)
 const AGENT_RIGHT = 118
 const PROVIDER_LEFT = 322
 const MID = { x: 220, y: 142 }
@@ -117,8 +117,12 @@ function Agents({ keys }: { keys: boolean }) {
               strokeWidth={1.5}
             />
             <LogoGlyph id={a.id} x={20} y={y - 7} size={14} />
-            <text x={40} y={y + 4.5} className="fill-ink text-[13px] font-bold">
-              {a.name === 'Cloud agent' ? 'Cloud' : a.name}
+            <text
+              x={40}
+              y={y + 4.5}
+              className={`fill-ink font-bold ${a.id === 'others' ? 'text-[10px]' : 'text-[13px]'}`}
+            >
+              {a.name}
             </text>
             {keys && (
               <g>
@@ -148,29 +152,37 @@ function Agents({ keys }: { keys: boolean }) {
   )
 }
 
-function Providers() {
+function Capabilities() {
   return (
     <>
-      {PROVIDERS.map((p, i) => {
+      {CAPABILITIES.map((p, i) => {
         const y = PROVIDER_Y[i] ?? 0
         return (
-          <g key={p}>
+          <g key={p.name}>
             <rect
               x={PROVIDER_LEFT}
               y={y - 17}
-              width={96}
+              width={114}
               height={34}
               rx={6}
               className="fill-card stroke-ink"
               strokeWidth={1.5}
             />
-            <text
-              x={PROVIDER_LEFT + 48}
-              y={y + 4.5}
-              textAnchor="middle"
-              className="fill-ink text-[13px] font-bold"
+            <image
+              href={p.icon}
+              x={PROVIDER_LEFT + 7}
+              y={y - 8}
+              width={16}
+              height={16}
             >
-              {p}
+              <title>{p.name}</title>
+            </image>
+            <text
+              x={PROVIDER_LEFT + 29}
+              y={y + 4.5}
+              className="fill-ink text-[10.5px] font-bold"
+            >
+              {p.name}
             </text>
           </g>
         )
@@ -214,7 +226,7 @@ function Panel({
         <span className="font-semibold">{label}</span>
       </div>
       <div className="px-3 py-4 sm:px-5">
-        <svg viewBox="0 0 430 300" className="h-auto w-full" aria-hidden="true">
+        <svg viewBox="0 0 448 300" className="h-auto w-full" aria-hidden="true">
           <g
             fill="none"
             className={after ? 'stroke-ink' : 'stroke-ink/45'}
@@ -241,7 +253,7 @@ function Panel({
             />
           )}
           <Agents keys={!after} />
-          <Providers />
+          <Capabilities />
           {after && (
             <motion.g
               initial={{ scale: 0.6, opacity: 0 }}
@@ -328,6 +340,10 @@ export function BeforeAfter() {
         label="with lanatools"
         body="Each agent connects once, with one URL and no keys in its config. Add a service and every agent can reach it."
       />
+      <p className="text-[12px] text-mute md:col-span-2">
+        Connect OpenClaw, Hermes, and other MCP-compatible clients and
+        harnesses.
+      </p>
     </div>
   )
 }

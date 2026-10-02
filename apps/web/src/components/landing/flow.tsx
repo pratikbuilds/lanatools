@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { MCP_HOST } from './copy-url'
+import { CAPABILITIES } from './data'
 import {
   CROSSING_MESSAGES,
   ENTRY,
@@ -13,7 +14,13 @@ import { AGENTS } from './logos'
 import type { AgentId } from './logos'
 
 type Box = { x: number; y: number; w: number; h: number }
-type Node = { name: string; note: string; box: Box; logo?: AgentId }
+type Node = {
+  name: string
+  note: string
+  box: Box
+  logo?: AgentId
+  icon?: string
+}
 type Provider = Node & { cost: string; paid: boolean; tag: Box }
 
 type Layout = {
@@ -34,13 +41,6 @@ type Layout = {
 
 const DENIED_BEGIN = 2.2
 
-const PROVIDERS = [
-  { name: 'pay.sh', note: 'paid endpoints', cost: '+ $0.25', paid: true },
-  { name: 'Helius', note: 'chain data', cost: '1 credit', paid: false },
-  { name: 'Jupiter', note: 'swaps', cost: 'free', paid: false },
-  { name: 'Dune', note: 'analytics', cost: '+ $0.10', paid: true },
-]
-
 const SOURCES = AGENTS.map((a) => ({ name: a.name, note: a.kind, logo: a.id }))
 
 const WIDE: Layout = {
@@ -49,7 +49,7 @@ const WIDE: Layout = {
     ...src,
     box: { x: 20, y: 20 + i * 72, w: 176, h: 44 },
   })),
-  providers: PROVIDERS.map((p, i) => ({
+  providers: CAPABILITIES.map((p, i) => ({
     ...p,
     box: { x: 844, y: 30 + i * 94, w: 176, h: 44 },
     tag: { x: 844, y: 6 + i * 94, w: 92, h: 20 },
@@ -106,7 +106,7 @@ const TALL: Layout = {
     ...src,
     box: { x: 14 + i * 75, y: 10, w: 68, h: 54 },
   })),
-  providers: PROVIDERS.map((p, i) => ({
+  providers: CAPABILITIES.map((p, i) => ({
     ...p,
     box: { x: 8 + i * 96, y: 548, w: 88, h: 48 },
     tag: { x: 10 + i * 96, y: 606, w: 84, h: 20 },
@@ -190,7 +190,7 @@ function NodeBox({ node, small }: { node: Node; small: boolean }) {
           textAnchor="middle"
           className="fill-ink text-[10px] font-bold"
         >
-          {node.name === 'Cloud agent' ? 'Cloud' : node.name}
+          {node.logo === 'others' ? 'Others' : node.name}
         </text>
       </g>
     )
@@ -233,22 +233,28 @@ function NodeBox({ node, small }: { node: Node; small: boolean }) {
         className="fill-card stroke-ink"
         strokeWidth={1.5}
       />
+      <image
+        href={node.icon}
+        x={small ? cx - 7 : x + 12}
+        y={small ? y + 7 : y + h / 2 - 10}
+        width={small ? 14 : 18}
+        height={small ? 14 : 18}
+      >
+        <title>{node.name}</title>
+      </image>
       <text
-        x={cx}
-        y={y + h / 2 - 3}
-        textAnchor="middle"
-        className={`fill-ink font-bold ${small ? 'text-[12px]' : 'text-[15px]'}`}
+        x={small ? cx : x + 40}
+        y={small ? y + h - 10 : y + h / 2 - 3}
+        textAnchor={small ? 'middle' : 'start'}
+        className={`fill-ink font-bold ${small ? 'text-[10px]' : 'text-[14px]'}`}
       >
         {node.name}
       </text>
-      <text
-        x={cx}
-        y={y + h / 2 + 13}
-        textAnchor="middle"
-        className={`fill-mute ${small ? 'text-[10px]' : 'text-[12px]'}`}
-      >
-        {node.note}
-      </text>
+      {!small && (
+        <text x={x + 40} y={y + h / 2 + 13} className="fill-mute text-[11px]">
+          {node.note}
+        </text>
+      )}
     </g>
   )
 }
@@ -413,7 +419,7 @@ function Diagram({ layout, still }: { layout: Layout; still: boolean }) {
       viewBox={layout.viewBox}
       className="h-auto w-full"
       role="img"
-      aria-label="Cursor, Claude, Codex, Grok, and a cloud agent connect through one URL to your wallet, which checks each call against that agent's limit and permissions, then forwards it to pay.sh, Helius, Jupiter, or Dune. A call over its limit is denied at the wallet."
+      aria-label="Cursor, Claude, Codex, Grok bot, and other agents such as OpenClaw and Hermes connect through one URL to your wallet, which checks each call against that agent's limit and permissions, then routes it to payments, onchain data, transactions, or analytics. A call over its limit is denied at the wallet."
     >
       <path
         d={layout.stem}
@@ -674,7 +680,7 @@ function useWideLayout() {
 const STEPS = [
   {
     title: 'Every agent connects once.',
-    body: `Cursor, Claude, Codex, Grok, and your cloud agents all use ${MCP_HOST}. No wallet keys live in their configs.`,
+    body: `Connect Cursor, Claude, Codex, Grok bot, and MCP-compatible harnesses such as OpenClaw and Hermes through ${MCP_HOST}. No wallet keys live in their configs.`,
   },
   {
     title: 'Your wallet checks the call.',

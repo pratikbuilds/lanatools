@@ -99,7 +99,7 @@ function Header() {
   )
 }
 
-const HEADLINE = ['Let', 'your', 'agents', 'pay.']
+const HEADLINE = ['Let', 'your', 'agents', 'work.']
 
 const CONNECT_STEPS = [
   'Create an account and fund the wallet.',
@@ -119,7 +119,7 @@ function Hero() {
             transition={{ duration: 0.4, ease: EASE }}
           >
             <Logo id="solana" size={12} />
-            the wallet for your agents · on Solana
+            the toolkit for your agents · on Solana
           </motion.span>
           {/* Real spaces between the words keep the text readable; the
               negative word-spacing keeps the gap tight like the design. */}
@@ -154,19 +154,23 @@ function Hero() {
                 animate={{ scaleX: 1 }}
                 transition={{ duration: 0.6, ease: EASE, delay: 0.7 }}
               />
-              <span className="relative text-ink">Within limits.</span>
+              <span className="relative text-ink">On Solana.</span>
             </motion.span>
           </h1>
-          <motion.p
-            className="mt-7 max-w-[54ch] text-[16px] text-paper-2"
+          <motion.div
+            className="mt-6 max-w-[60ch] text-[14px] leading-6 text-paper"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.6, delay: 0.6 }}
           >
-            Give Cursor, Claude, Codex, Grok, and your cloud agents one wallet
-            you own. They buy the APIs and data they need. You set what each one
-            can spend, and no keys ever sit in their configs.
-          </motion.p>
+            <p className="font-medium">
+              One connection for your agents to access onchain data, pay for
+              services, and execute transactions on Solana.
+            </p>
+            <p className="mt-2 text-paper/90">
+              You set the permissions and limits for each action.
+            </p>
+          </motion.div>
           <motion.div
             className="mt-8"
             initial={{ opacity: 0, y: 10 }}
@@ -250,9 +254,9 @@ function Home() {
               Connect once. It keeps getting <Sweep>more useful.</Sweep>
             </h2>
             <p className="mt-5 max-w-[62ch] text-[15.5px] text-paper-2">
-              Paid APIs come first. Routing, swaps you sign yourself, and Solana
-              data from Helius, Jupiter, and Dune follow, all through the URL
-              you already added.
+              Payments, onchain data, and transactions through one connection.
+              Give your agent the tools to act on Solana, with permissions and
+              limits for each action.
             </p>
           </Reveal>
           <div className="mt-12">

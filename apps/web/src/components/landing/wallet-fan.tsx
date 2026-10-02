@@ -6,7 +6,6 @@ import {
 } from 'motion/react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { MCP_HOST } from './copy-url'
-import { CLIENTS, usd, whole } from './data'
 import { Logo } from './logo'
 import type { AgentId } from './logos'
 import { EASE } from './reveal'
@@ -41,18 +40,63 @@ const COMPACT_FAN: Fan = {
   ],
 }
 
-type Outcome = { ok: boolean; label: string }
-type Event = { id: AgentId; cost: number }
+type ToolCard = {
+  agent: AgentId
+  name: string
+  tool: string
+  category: string
+  value: string
+  detail: string
+  result: string
+}
 
-// Illustrative: two calls that fit, one over the limit, one from a client
-// that may not pay.
-const EVENTS: Array<Event> = [
-  { id: 'cursor', cost: 0.25 },
-  { id: 'codex', cost: 0.1 },
-  { id: 'cloud', cost: 0.4 },
-  { id: 'cursor', cost: 0.4 },
-  { id: 'claude', cost: 1 },
-  { id: 'codex', cost: 0.25 },
+// Sample tasks shown by the hero animation, not live requests.
+const CARDS: Array<ToolCard> = [
+  {
+    agent: 'cursor',
+    name: 'Cursor',
+    tool: 'Payments',
+    category: 'x402 · MPP',
+    value: '0.25 USDC',
+    detail: 'pay for a result',
+    result: 'paid result + receipt',
+  },
+  {
+    agent: 'claude',
+    name: 'Claude',
+    tool: 'Onchain data',
+    category: 'read · explore',
+    value: '12.5 SOL',
+    detail: 'read onchain balances',
+    result: 'account data returned',
+  },
+  {
+    agent: 'codex',
+    name: 'Codex',
+    tool: 'Portfolio',
+    category: 'tokens · positions',
+    value: 'Holdings',
+    detail: 'tokens + positions',
+    result: 'portfolio returned',
+  },
+  {
+    agent: 'grok',
+    name: 'Grok bot',
+    tool: 'Transactions',
+    category: 'create · execute',
+    value: 'Any action',
+    detail: 'prepare, sign, send',
+    result: 'transaction confirmed',
+  },
+  {
+    agent: 'others',
+    name: 'Other agents',
+    tool: 'Analytics',
+    category: 'OpenClaw · Hermes',
+    value: 'Insights',
+    detail: 'query onchain activity',
+    result: 'analysis returned',
+  },
 ]
 
 const CYCLE_MS = 2700
@@ -78,18 +122,11 @@ export function WalletFan() {
   const { ref, fan, scale } = useFit()
   const inView = useInView(ref, { margin: '-10% 0px' })
   const reduced = useReducedMotion()
-  const [spent, setSpent] = useState<Record<string, number>>(() =>
-    Object.fromEntries(CLIENTS.map((c) => [c.id, c.spent])),
+  const [active, setActive] = useState<{ index: number; n: number } | null>(
+    null,
   )
-  const [active, setActive] = useState<{
-    id: AgentId
-    n: number
-    outcome: Outcome
-  } | null>(null)
   const [entered, setEntered] = useState(false)
   const n = useRef(0)
-  const latest = useRef(spent)
-  latest.current = spent
 
   useEffect(() => {
     const timer = setTimeout(() => setEntered(true), 1200)
@@ -100,25 +137,7 @@ export function WalletFan() {
     if (!inView || reduced) return
     const run = () => {
       const i = n.current++
-      const event = EVENTS[i % EVENTS.length] ?? EVENTS[0]!
-      const client = CLIENTS.find((c) => c.id === event.id)
-      if (!client) return
-      const have = latest.current[event.id] ?? 0
-      let outcome: Outcome
-      if (!client.can.includes('pay'))
-        outcome = { ok: false, label: 'denied · may not pay' }
-      else if (have + event.cost > client.cap + 1e-9)
-        outcome = { ok: false, label: 'denied · over limit' }
-      else {
-        outcome = { ok: true, label: `pay.sh −${usd.format(event.cost)}` }
-        // Keep the loop going: reset a client before it fills up.
-        const next =
-          have + event.cost > client.cap * 0.9
-            ? client.spent
-            : have + event.cost
-        setSpent((s) => ({ ...s, [event.id]: next }))
-      }
-      setActive({ id: event.id, n: i, outcome })
+      setActive({ index: i % CARDS.length, n: i })
     }
     let timer: ReturnType<typeof setTimeout>
     const loop = () => {
@@ -141,19 +160,15 @@ export function WalletFan() {
         className="absolute top-0 left-0 origin-top-left"
         style={{ width: fan.w, height: H, transform: `scale(${scale})` }}
         role="img"
-        aria-label="One wallet holds a card for each agent: Cursor, Claude, Codex, Grok, and a cloud agent. Each card has its own spending limit. Calls that fit are paid; calls over the limit, or from an agent that may not pay, are denied."
+        aria-label="A toolkit of example agent tasks: payments, onchain data, portfolios, transactions, and analytics. One MCP connection, with permissions for each action."
       >
-        {CLIENTS.map((c, i) => {
+        {CARDS.map((c, i) => {
           const pos = fan.cards[i] ?? fan.cards[2]!
-          const on = active?.id === c.id
-          const value = spent[c.id] ?? 0
-          const ratio = Math.min(value / c.cap, 1)
-          const full = ratio >= 1 - 1e-9
+          const on = active?.index === i
           const current = on ? active : null
-          const outcome = current?.outcome ?? null
           return (
             <motion.div
-              key={c.id}
+              key={c.tool}
               className="absolute"
               style={{
                 width: CARD.w,
@@ -176,54 +191,35 @@ export function WalletFan() {
                 delay: entered ? 0 : 0.25 + i * 0.07,
               }}
             >
-              <motion.div
-                animate={
-                  outcome && !outcome.ok
-                    ? { x: [0, -7, 7, -4, 4, 0] }
-                    : { x: 0 }
-                }
-                transition={{ duration: 0.45, delay: 0.35 }}
-                className={`flex h-full flex-col rounded-[12px] border-[1.5px] border-ink p-4 text-ink shadow-[5px_5px_0_0_var(--color-ink)] ${
-                  outcome && !outcome.ok
-                    ? 'bg-[#ffd9cf]'
-                    : on
-                      ? 'bg-card'
-                      : 'bg-paper'
-                }`}
+              <div
+                className={`flex h-full flex-col rounded-[12px] border-[1.5px] border-ink p-4 text-ink shadow-[5px_5px_0_0_var(--color-ink)] ${on ? 'bg-card' : 'bg-paper'}`}
               >
-                <span className="flex size-9 items-center justify-center rounded-[7px] border-[1.5px] border-ink bg-card">
-                  <Logo id={c.id} size={18} />
+                <span className="flex items-center gap-2">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-[7px] border-[1.5px] border-ink bg-card">
+                    <Logo id={c.agent} size={18} />
+                  </span>
+                  <span className="text-[10px] font-semibold text-mute">
+                    {c.name}
+                  </span>
                 </span>
                 <span className="mt-3 text-[14px] leading-tight font-bold">
-                  {c.name}
+                  {c.tool}
                 </span>
-                <span className="text-[11px] text-mute">
-                  {c.can.join(' · ')}
+                <span className="mt-1 text-[11px] text-mute">{c.category}</span>
+                <span className="mt-5 text-[20px] leading-none font-bold">
+                  {c.value}
                 </span>
-                <span
-                  className={`mt-4 text-[22px] leading-none font-bold ${full ? 'text-coral-ink' : ''}`}
-                >
-                  {usd.format(value)}
+                <span className="mt-2 text-[11px] text-mute">{c.detail}</span>
+                <span className="mt-4 border-t border-dashed border-ink/30 pt-2 text-[10px] font-semibold text-mute">
+                  your permissions apply
                 </span>
-                <span className="mt-1 text-[11px] text-mute">
-                  of {whole.format(c.cap)} limit
-                </span>
-                <span className="mt-3 block h-2 w-full overflow-hidden rounded-[3px] border border-ink bg-card">
-                  <motion.span
-                    className={`block h-full ${full ? 'bg-coral' : 'bg-blue'}`}
-                    animate={{ width: `${Math.max(ratio * 100, 3)}%` }}
-                    transition={{ duration: 0.6, ease: EASE, delay: 0.3 }}
-                  />
-                </span>
-              </motion.div>
+              </div>
 
               <AnimatePresence>
-                {current && outcome && (
+                {current && (
                   <motion.span
                     key={current.n}
-                    className={`absolute -top-11 left-1/2 flex h-8 items-center gap-1.5 rounded-[6px] border-[1.5px] border-ink px-2.5 text-[12px] font-bold whitespace-nowrap text-ink shadow-[3px_3px_0_0_var(--color-ink)] ${
-                      outcome.ok ? 'bg-lime' : 'bg-coral'
-                    }`}
+                    className="absolute -top-11 left-1/2 flex h-8 items-center gap-1.5 rounded-[6px] border-[1.5px] border-ink bg-lime px-2.5 text-[12px] font-bold whitespace-nowrap text-ink shadow-[3px_3px_0_0_var(--color-ink)]"
                     initial={{ opacity: 0, y: 12, x: '-50%', scale: 0.8 }}
                     animate={{ opacity: 1, y: 0, x: '-50%', scale: 1 }}
                     exit={{ opacity: 0, y: -10, x: '-50%' }}
@@ -234,7 +230,7 @@ export function WalletFan() {
                       delay: 0.25,
                     }}
                   >
-                    {outcome.ok ? '✓' : '✕'} {outcome.label}
+                    ✓ {c.result}
                   </motion.span>
                 )}
               </AnimatePresence>
@@ -242,7 +238,6 @@ export function WalletFan() {
           )
         })}
 
-        {/* the wallet the cards sit in */}
         <motion.div
           className="absolute inset-x-5 bottom-2 z-20 rounded-[14px] border-[1.5px] border-ink bg-lime px-6 pt-7 pb-5 text-ink shadow-[6px_6px_0_0_var(--color-ink)]"
           style={{ height: 150 }}
@@ -254,10 +249,10 @@ export function WalletFan() {
           <div className="flex items-end justify-between gap-4">
             <div>
               <p className="text-[12px] font-semibold text-ink/70">
-                one embedded wallet
+                one MCP connection
               </p>
-              <p className="mt-1 text-[26px] leading-none font-bold tracking-tight">
-                your wallet
+              <p className="mt-1 text-[24px] leading-none font-bold tracking-tight">
+                your toolkit
               </p>
             </div>
             <span className="rounded-[6px] border-[1.5px] border-ink bg-card px-2 py-1 text-[11.5px] font-bold">
@@ -265,7 +260,7 @@ export function WalletFan() {
             </span>
           </div>
           <div className="mt-4 flex items-center justify-between border-t-[1.5px] border-dashed border-ink/40 pt-3 text-[12px] font-semibold">
-            <span>5 agents · 5 limits · 1 activity log</span>
+            <span>read · pay · execute · one activity log</span>
           </div>
         </motion.div>
       </div>
