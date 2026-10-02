@@ -36,7 +36,7 @@ The first product is a simple way for agents to pay for useful endpoints and ret
 4. Our server checks the price and payment details, pays from the embedded wallet within that client's cap, and returns the result.
 5. The user sees the call, cost, result, and remaining cap in the app.
 
-We start with a small list of allowed endpoints. A failed or unclear payment must not cause a second charge without checking what happened to the first one.
+The full pay.sh catalog is discoverable; each payment form becomes callable only after its live terms and signing path are proven. A failed or unclear payment must not cause a second charge without checking what happened to the first one.
 
 ## 2. Jev payment URL router
 
