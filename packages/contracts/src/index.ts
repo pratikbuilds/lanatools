@@ -3,6 +3,17 @@ import { type } from 'arktype'
 export const HealthResponse = type({ status: "'ok'" })
 export type HealthResponse = typeof HealthResponse.infer
 
+export const EarlyAccessEmail = type('string')
+  .pipe((email) => email.trim().toLowerCase())
+  .to('string.email <= 254')
+
+export const EarlyAccessRequest = type({ email: EarlyAccessEmail })
+export const EarlyAccessResponse = type({
+  status: "'saved' | 'already-present'",
+  email: 'string.email <= 254',
+})
+export type EarlyAccessResponse = typeof EarlyAccessResponse.infer
+
 /** OAuth scopes the LanaTools MCP server grants. */
 export const MCP_SCOPES = ['account:read', 'payments:pay'] as const
 export type McpScope = (typeof MCP_SCOPES)[number]

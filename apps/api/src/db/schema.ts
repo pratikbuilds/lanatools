@@ -10,6 +10,11 @@ export const dbSmoke = sqliteTable('db_smoke', {
   id: text('id').primaryKey(),
 })
 
+export const earlyAccessSignup = sqliteTable('early_access_signup', {
+  email: text('email').primaryKey(),
+  createdAt: integer('created_at').notNull(),
+})
+
 export const mcpConsent = sqliteTable('mcp_consent', {
   handle: text('handle').primaryKey(),
   clientId: text('client_id').notNull(),

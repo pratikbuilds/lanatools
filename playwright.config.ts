@@ -7,10 +7,18 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: 0,
   use: { baseURL: 'http://127.0.0.1:4173', trace: 'retain-on-failure' },
-  webServer: {
-    command: 'bun run --cwd apps/web preview --host 127.0.0.1',
-    url: 'http://127.0.0.1:4173',
-    env: { API_PROXY_TARGET: 'http://127.0.0.1:3101' },
-    reuseExistingServer: false,
-  },
+  webServer: [
+    {
+      command:
+        'bun run --cwd apps/api db:migrate:local && bunx wrangler dev -c apps/api/wrangler.local.jsonc --port 3101 --local',
+      url: 'http://127.0.0.1:3101/api/health',
+      reuseExistingServer: false,
+    },
+    {
+      command: 'bun run --cwd apps/web preview --host 127.0.0.1',
+      url: 'http://127.0.0.1:4173',
+      env: { API_PROXY_TARGET: 'http://127.0.0.1:3101' },
+      reuseExistingServer: false,
+    },
+  ],
 })
