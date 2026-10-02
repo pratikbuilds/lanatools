@@ -1,3 +1,5 @@
+import { createSolanaRpc } from '@solana/kit'
+
 const MAINNET_GENESIS = '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d'
 const MAINNET_USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
 
@@ -55,4 +57,23 @@ export function checkNetworkEnv(env: Record<string, string | undefined>) {
     throw new Error(`Set VITE_SOLANA_RPC_URL for ${NETWORKS[id].label}`)
   }
   return { id, rpcURL }
+}
+
+/**
+ * Confirms that an RPC serves the named network, so an RPC for another
+ * network cannot show its balances under this label.
+ */
+export async function checkRpcNetwork(rpcURL: string, id: NetworkId) {
+  const rpc = createSolanaRpc(rpcURL)
+  const [genesisHash, version] = await Promise.all([
+    rpc.getGenesisHash().send(),
+    rpc.getVersion().send(),
+  ])
+  const surfpool = 'surfnet-version' in version
+  if (
+    genesisHash !== NETWORKS[id].genesisHash ||
+    surfpool !== NETWORKS[id].surfpool
+  ) {
+    throw new Error(`${rpcURL} does not serve ${NETWORKS[id].label}`)
+  }
 }

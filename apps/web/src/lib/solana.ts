@@ -1,6 +1,6 @@
 import { address, createSolanaRpc } from '@solana/kit'
 import type { Address } from '@solana/kit'
-import { NETWORKS, checkNetworkEnv } from './networks'
+import { NETWORKS, checkNetworkEnv, checkRpcNetwork } from './networks'
 
 function lookupNetwork() {
   // Builds must name a network (see vite.config.ts); dev servers and tests
@@ -28,15 +28,7 @@ let networkCheck: Promise<void> | undefined
  * override for another network cannot show its balances under this label.
  */
 function verifyNetwork() {
-  networkCheck ??= Promise.all([
-    rpc.getGenesisHash().send(),
-    rpc.getVersion().send(),
-  ]).then(([genesisHash, version]) => {
-    const surfpool = 'surfnet-version' in version
-    if (genesisHash !== NETWORK.genesisHash || surfpool !== NETWORK.surfpool) {
-      throw new Error(`${NETWORK.rpcURL} does not serve ${NETWORK.label}`)
-    }
-  })
+  networkCheck ??= checkRpcNetwork(NETWORK.rpcURL, NETWORK.id)
   // Let a failed check run again on the next balance read.
   networkCheck.catch(() => {
     networkCheck = undefined
