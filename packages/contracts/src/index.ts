@@ -81,6 +81,66 @@ export type McpClientList = typeof McpClientList.infer
 export const ClientLimitUpdate = type({ limitUsd: 'string' })
 export type ClientLimitUpdate = typeof ClientLimitUpdate.infer
 
+/**
+ * One call as the dashboard shows it. A call is listed once it has ended:
+ * paid for, free because the endpoint asked for nothing, refused by
+ * LanaTools before anything was signed, or failed because the endpoint
+ * could not be reached.
+ */
+export const ActivityItem = type({
+  id: 'string',
+  clientId: 'string',
+  clientName: 'string | null',
+  /** False once the user has disconnected the client. */
+  connected: 'boolean',
+  method: 'string',
+  origin: 'string',
+  path: 'string',
+  protocol: "'mpp' | 'x402' | null",
+  outcome: "'paid' | 'free' | 'refused' | 'failed'",
+  network: 'string | null',
+  /** What a paid call settled for; null on every other call. */
+  amountMicroUsd: 'number | null',
+  signature: 'string | null',
+  httpStatus: 'number | null',
+  /** Why a call was refused or failed, as recorded when it happened. */
+  reason: 'string | null',
+  createdAt: 'number',
+})
+export type ActivityItem = typeof ActivityItem.infer
+
+export const ActivityQuery = type({
+  'client?': 'string',
+  'outcome?': "'paid' | 'free' | 'refused' | 'failed'",
+  'before?': 'string',
+})
+export type ActivityQuery = typeof ActivityQuery.infer
+
+export const ActivityPage = type({
+  items: ActivityItem.array(),
+  /** Pass as `before` to read the next, older page; null on the last page. */
+  nextCursor: 'string | null',
+  /** Over every call the filters select, not only this page. */
+  totals: {
+    calls: 'number',
+    spentMicroUsd: 'number',
+  },
+})
+export type ActivityPage = typeof ActivityPage.infer
+
+/** How many days back the dashboard charts calls per day: twelve weeks. */
+export const ACTIVITY_CHART_DAYS = 84
+
+export const ActivityDays = type({
+  days: type({
+    /** A UTC date, `YYYY-MM-DD`. Days without calls are left out. */
+    day: 'string',
+    calls: 'number',
+    spentMicroUsd: 'number',
+  }).array(),
+})
+export type ActivityDays = typeof ActivityDays.infer
+
 /** Whether LanaTools may sign agent payments from the user's wallet. */
 export const PaymentSignerStatus = type({
   status: "'none' | 'pending' | 'enabled' | 'disabled'",

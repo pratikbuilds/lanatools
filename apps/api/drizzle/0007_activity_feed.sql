@@ -1,0 +1,1 @@
+CREATE INDEX `payment_activity_user_time` ON `payment_activity` (`privy_user_id`,`created_at`,`id`);
