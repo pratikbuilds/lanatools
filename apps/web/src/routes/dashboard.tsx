@@ -1,9 +1,12 @@
 import { usePrivy } from '@privy-io/react-auth'
-import { Navigate, createFileRoute } from '@tanstack/react-router'
+import { Navigate, Outlet, createFileRoute } from '@tanstack/react-router'
 import { MotionConfig } from 'motion/react'
 import { useState } from 'react'
-import { DashboardView } from '#/components/dashboard/dashboard-view'
+import { useAttachPaymentSigner } from '#/components/dashboard/agent-payments'
+import { DashboardSessionProvider } from '#/components/dashboard/session'
+import { DashboardShell } from '#/components/dashboard/shell'
 import { BrandMark } from '#/components/landing/brand'
+import { getEmbeddedPayer } from '#/lib/payer'
 
 export const Route = createFileRoute('/dashboard')({
   component: DashboardRoute,
@@ -44,13 +47,29 @@ function Dashboard() {
   }
 
   return (
-    <DashboardView
-      user={user}
-      onSignOut={() => void signOut()}
-      signOutFailed={signOutFailed}
-      getAccessToken={getAccessToken}
-    />
+    <DashboardSessionProvider
+      value={{
+        userId: user.id,
+        walletAddress: getEmbeddedPayer(user)?.address ?? null,
+        getAccessToken,
+      }}
+    >
+      <PaymentSetup />
+      <DashboardShell
+        account={user.google?.name || user.google?.email || user.email?.address}
+        onSignOut={() => void signOut()}
+        signOutFailed={signOutFailed}
+      >
+        <Outlet />
+      </DashboardShell>
+    </DashboardSessionProvider>
   )
+}
+
+/** Runs the one-time payment setup for whichever dashboard page is open. */
+function PaymentSetup() {
+  useAttachPaymentSigner()
+  return null
 }
 
 function Loading() {
