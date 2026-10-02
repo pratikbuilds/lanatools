@@ -1,12 +1,56 @@
-import { AnimatePresence, motion, useAnimationControls } from 'motion/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  AnimatePresence,
+  motion,
+  useInView,
+  useReducedMotion,
+} from 'motion/react'
+import { useEffect, useRef, useState } from 'react'
 import { CLIENTS, usd, whole } from './data'
 import type { Client } from './data'
 import { Logo } from './logo'
 import type { AgentId } from './logos'
 import { EASE } from './reveal'
 
-type State = Record<AgentId, { spent: number; cap: number; revoked: boolean }>
+// What an agent may do, named like the cards in the hero.
+type Tool = 'read' | 'pay' | 'send'
+
+const TOOLS: Array<{
+  id: Tool
+  icon: string
+  title: string
+  body: string
+  what: string
+}> = [
+  {
+    id: 'read',
+    icon: '/icons/onchain-data.svg',
+    title: 'Read data',
+    body: 'balances, tokens, onchain activity',
+    what: 'read · account balance',
+  },
+  {
+    id: 'pay',
+    icon: '/icons/payments.svg',
+    title: 'Pay for services',
+    body: '',
+    what: 'pay',
+  },
+  {
+    id: 'send',
+    icon: '/icons/transactions.svg',
+    title: 'Send transactions',
+    body: 'prepare, sign, and send',
+    what: 'send · SOL → USDC',
+  },
+]
+
+type AgentState = {
+  can: Array<Tool>
+  spent: number
+  cap: number
+  revoked: boolean
+}
+type State = Record<AgentId, AgentState>
 
 type Entry = {
   id: number
@@ -19,12 +63,35 @@ type Entry = {
 
 const COSTS = [0.25, 0.1, 0.4, 0.25, 0.15]
 const MAX_ENTRIES = 6
+const FEED_MS = 2600
+
+function tools(client: Client): Array<Tool> {
+  const send = client.can.includes('prepare') || client.can.includes('execute')
+  return TOOLS.map((t) => t.id).filter((t) =>
+    t === 'send' ? send : client.can.includes(t),
+  )
+}
 
 function initial(): State {
   return Object.fromEntries(
-    CLIENTS.map((c) => [c.id, { spent: c.spent, cap: c.cap, revoked: false }]),
+    CLIENTS.map((c) => [
+      c.id,
+      { can: tools(c), spent: c.spent, cap: c.cap, revoked: false },
+    ]),
   ) as State
 }
+
+// Sample calls that keep arriving while the section is on screen.
+const FEED: Array<[AgentId, Tool]> = [
+  ['claude', 'read'],
+  ['cursor', 'pay'],
+  ['codex', 'send'],
+  ['others', 'pay'],
+  ['grok', 'send'],
+  ['cursor', 'read'],
+  ['claude', 'pay'],
+  ['codex', 'pay'],
+]
 
 // Illustrative history so the activity log is never empty.
 const SEED: Array<Entry> = [
@@ -33,15 +100,15 @@ const SEED: Array<Entry> = [
     time: '12:03:58',
     client: 'codex',
     tone: 'ok',
-    what: 'Paid API $0.10',
-    outcome: '✓ $10.50 left',
+    what: 'send · SOL → USDC',
+    outcome: '✓ confirmed',
   },
   {
     id: -2,
     time: '12:03:52',
     client: 'others',
     tone: 'deny',
-    what: 'Paid API $0.40',
+    what: 'pay · $0.40',
     outcome: '✕ over limit',
   },
   {
@@ -49,7 +116,7 @@ const SEED: Array<Entry> = [
     time: '12:03:40',
     client: 'cursor',
     tone: 'ok',
-    what: 'Paid API $0.25',
+    what: 'pay · $0.25',
     outcome: '✓ $18.37 left',
   },
 ]
@@ -60,151 +127,62 @@ function clock(seconds: number) {
   return `${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`
 }
 
-function ClientRow({
-  client,
-  state,
-  selected,
-  onSelect,
-  pulse,
+// What a call does for an agent in a given state. Illustrative: it follows
+// the same order as the flow diagram, permissions first, then the limit.
+function resolve(agent: AgentState, tool: Tool, cost: number) {
+  const deny = (why: string) => ({ ok: false, spent: agent.spent, why })
+  if (agent.revoked) return deny('revoked')
+  if (!agent.can.includes(tool)) return deny(`may not ${tool}`)
+  if (tool === 'read') return { ok: true, spent: agent.spent, why: 'returned' }
+  if (tool === 'send') return { ok: true, spent: agent.spent, why: 'confirmed' }
+  if (agent.spent + cost > agent.cap + 1e-9) return deny('over limit')
+  const spent = agent.spent + cost
+  return {
+    ok: true,
+    spent,
+    why: `${usd.format(Math.max(agent.cap - spent, 0))} left`,
+  }
+}
+
+function Switch({
+  on,
+  label,
+  disabled,
+  onChange,
 }: {
-  client: Client
-  state: State[AgentId]
-  selected: boolean
-  onSelect: () => void
-  pulse: { n: number; ok: boolean } | undefined
+  on: boolean
+  label: string
+  disabled: boolean
+  onChange: () => void
 }) {
-  const controls = useAnimationControls()
-  const ratio = Math.min(state.spent / state.cap, 1)
-  const full = ratio >= 1 - 1e-9
-
-  useEffect(() => {
-    if (!pulse) return
-    void controls.start(
-      pulse.ok
-        ? { scale: [1, 1.012, 1], transition: { duration: 0.3 } }
-        : { x: [0, -6, 6, -3, 3, 0], transition: { duration: 0.4 } },
-    )
-  }, [pulse, controls])
-
   return (
-    <motion.li animate={controls}>
-      <button
-        type="button"
-        onClick={onSelect}
-        aria-pressed={selected}
-        // A button flattens its contents for screen readers, so the name
-        // carries what the row shows: spend, limit, and state.
-        aria-label={`${client.name}: ${usd.format(state.spent)} spent of ${whole.format(state.cap)} limit${
-          state.revoked ? ', revoked' : full ? ', limit reached' : ''
-        }`}
-        className={`grid w-full grid-cols-2 gap-x-3 gap-y-2 border-b border-rule px-4 py-3.5 text-left transition-colors sm:grid-cols-[minmax(0,1.9fr)_5.5rem_4rem_minmax(7rem,1fr)] sm:items-center sm:gap-4 ${
-          selected ? 'bg-lime/30' : 'bg-card hover:bg-paper'
-        } ${state.revoked ? 'opacity-55' : ''}`}
-      >
-        <span className="col-span-2 flex items-center gap-3 sm:col-span-1">
-          <span
-            className={`flex size-9 items-center justify-center rounded-[6px] border border-ink ${
-              selected ? 'bg-lime' : 'bg-card'
-            }`}
-          >
-            <Logo id={client.id} size={18} />
-          </span>
-          <span className="min-w-0">
-            <span className="block text-[15px] font-bold">
-              {client.name}
-              {state.revoked && (
-                <span className="chip chip-coral ml-2 h-5 align-[2px] text-[10.5px]">
-                  revoked
-                </span>
-              )}
-            </span>
-            <span className="block text-[12px] text-mute">
-              {client.kind} · {client.can.join(' · ')}
-            </span>
-          </span>
-        </span>
-        <span
-          className={`font-bold sm:text-right ${full ? 'text-coral-ink' : ''}`}
-        >
-          <span className="mr-2 text-[11px] font-semibold tracking-wide text-mute uppercase sm:hidden">
-            Spent
-          </span>
-          <motion.span
-            key={state.spent}
-            initial={{ y: -6, opacity: 0.4 }}
-            animate={{ y: 0, opacity: 1 }}
-            className="inline-block"
-          >
-            {usd.format(state.spent)}
-          </motion.span>
-        </span>
-        <span className="text-mute sm:text-right">
-          <span className="mr-2 text-[11px] font-semibold tracking-wide text-mute uppercase sm:hidden">
-            Limit
-          </span>
-          {whole.format(state.cap)}
-        </span>
-        <span className="col-span-2 block sm:col-span-1">
-          <span
-            aria-hidden="true"
-            className="block h-2.5 w-full overflow-hidden rounded-[3px] border border-ink bg-card"
-          >
-            <motion.span
-              className={`block h-full ${full ? 'bg-coral' : 'bg-blue'}`}
-              initial={{ width: '0%' }}
-              whileInView={{ width: `${Math.max(ratio * 100, 2)}%` }}
-              animate={{ width: `${Math.max(ratio * 100, 2)}%` }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.8, ease: EASE }}
-            />
-          </span>
-          {full && (
-            <span className="mt-1.5 block text-[12px] font-semibold text-coral-ink">
-              limit reached · paid calls denied
-            </span>
-          )}
-        </span>
-      </button>
-    </motion.li>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onChange}
+      className={`relative h-6 w-11 shrink-0 rounded-full border-[1.5px] border-ink transition-colors duration-200 disabled:opacity-50 ${on ? 'bg-lime' : 'bg-card'}`}
+    >
+      <span
+        className={`absolute top-[2.5px] left-[2.5px] size-4 rounded-full bg-ink transition-transform duration-200 ${on ? 'translate-x-5' : ''}`}
+      />
+    </button>
   )
 }
 
 export function Playground() {
   const ref = useRef<HTMLDivElement>(null)
+  const inView = useInView(ref, { margin: '-15% 0px' })
+  const reduced = useReducedMotion()
   const [state, setState] = useState<State>(initial)
   const [selected, setSelected] = useState<AgentId>('cursor')
   const [entries, setEntries] = useState<Array<Entry>>(SEED)
-  const [pulses, setPulses] = useState<
-    Partial<Record<AgentId, { n: number; ok: boolean }>>
-  >({})
   const tick = useRef(0)
+  const step = useRef(0)
   const latest = useRef(state)
   latest.current = state
-
-  const call = useCallback((id: AgentId) => {
-    const client = CLIENTS.find((c) => c.id === id)
-    if (!client) return
-    const n = tick.current++
-    const cost = COSTS[n % COSTS.length] ?? 0.25
-    const s = latest.current[id]
-    let denied: string | null = null
-    if (s.revoked) denied = 'revoked'
-    else if (!client.can.includes('pay')) denied = 'may not pay'
-    else if (s.spent + cost > s.cap + 1e-9) denied = 'over limit'
-    const spent = denied ? s.spent : s.spent + cost
-    const next = { ...latest.current, [id]: { ...s, spent } }
-    latest.current = next
-    setState(next)
-    log({
-      client: id,
-      tone: denied ? 'deny' : 'ok',
-      what: `Paid API ${usd.format(cost)}`,
-      outcome: denied
-        ? `✕ ${denied}`
-        : `✓ ${usd.format(Math.max(s.cap - spent, 0))} left`,
-    })
-    setPulses((p) => ({ ...p, [id]: { n, ok: !denied } }))
-  }, [])
 
   function log(entry: Omit<Entry, 'id' | 'time'>) {
     const n = tick.current++
@@ -216,98 +194,201 @@ export function Playground() {
     )
   }
 
+  function call(id: AgentId, tool: Tool) {
+    const cost = COSTS[tick.current % COSTS.length] ?? 0.25
+    const agent = latest.current[id]
+    const result = resolve(agent, tool, cost)
+    const next = { ...latest.current, [id]: { ...agent, spent: result.spent } }
+    latest.current = next
+    setState(next)
+    const what = TOOLS.find((t) => t.id === tool)?.what ?? tool
+    log({
+      client: id,
+      tone: result.ok ? 'ok' : 'deny',
+      what: tool === 'pay' ? `pay · ${usd.format(cost)}` : what,
+      outcome: `${result.ok ? '✓' : '✕'} ${result.why}`,
+    })
+  }
+
+  // A change is logged, then the agent tries that tool so the effect shows.
+  const followUp = useRef<ReturnType<typeof setTimeout>>(undefined)
   function update(
-    change: Partial<State[AgentId]>,
+    change: Partial<AgentState>,
     what: string,
     outcome: string,
+    tool: Tool,
   ) {
+    const id = selected
     const next = {
       ...latest.current,
-      [selected]: { ...latest.current[selected], ...change },
+      [id]: { ...latest.current[id], ...change },
     }
     latest.current = next
     setState(next)
-    log({ client: selected, tone: 'change', what, outcome })
+    log({ client: id, tone: 'change', what, outcome })
+    clearTimeout(followUp.current)
+    followUp.current = setTimeout(() => call(id, tool), 700)
   }
+
+  useEffect(() => {
+    if (!inView || reduced) return
+    const timer = setInterval(() => {
+      const [id, tool] = FEED[step.current++ % FEED.length] ?? FEED[0]!
+      call(id, tool)
+    }, FEED_MS)
+    return () => clearInterval(timer)
+    // `call` reads state through refs, so the feed never needs restarting.
+  }, [inView, reduced])
+
+  useEffect(() => () => clearTimeout(followUp.current), [])
 
   const current = state[selected]
   const client = CLIENTS.find((c) => c.id === selected)
+  const ratio = Math.min(current.spent / current.cap, 1)
+  const full = ratio >= 1 - 1e-9
 
   return (
     <div
       ref={ref}
-      className="grid gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] lg:gap-8"
+      className="grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] lg:gap-8"
     >
-      <div className="box box-lg overflow-hidden">
-        <div className="hidden grid-cols-[minmax(0,1.9fr)_5.5rem_4rem_minmax(7rem,1fr)] gap-4 border-b border-rule bg-paper px-4 py-2 text-[11px] font-semibold tracking-wide text-mute uppercase sm:grid">
-          <span>Agent</span>
-          <span className="text-right">Spent</span>
-          <span className="text-right">Limit</span>
-          <span>Used</span>
+      <div className="box box-lg flex flex-col overflow-hidden">
+        <div
+          role="group"
+          aria-label="Pick an agent"
+          className="grid grid-cols-5 border-b-[1.5px] border-ink bg-paper"
+        >
+          {CLIENTS.map((c) => {
+            const on = c.id === selected
+            return (
+              <button
+                key={c.id}
+                type="button"
+                aria-pressed={on}
+                aria-label={c.name}
+                onClick={() => setSelected(c.id)}
+                className={`flex items-center justify-center gap-2 border-rule px-2 py-3 text-[12.5px] font-bold transition-colors not-last:border-r ${
+                  on ? 'bg-lime' : 'text-mute hover:bg-card hover:text-ink'
+                } ${state[c.id].revoked ? 'line-through decoration-coral-ink decoration-2' : ''}`}
+              >
+                <Logo id={c.id} size={15} />
+                <span className="hidden sm:inline">
+                  {c.id === 'others' ? 'Others' : c.name}
+                </span>
+              </button>
+            )
+          })}
         </div>
-        <ul>
-          {CLIENTS.map((c) => (
-            <ClientRow
-              key={c.id}
-              client={c}
-              state={state[c.id]}
-              selected={c.id === selected}
-              pulse={pulses[c.id]}
-              onSelect={() => {
-                setSelected(c.id)
-              }}
-            />
-          ))}
-        </ul>
-        <div className="flex flex-wrap items-center gap-2.5 border-t-[1.5px] border-ink bg-paper px-4 py-3">
-          <span className="mr-1 flex items-center gap-2 text-[13px] font-bold">
-            <Logo id={selected} size={14} />
-            {client?.name}
-          </span>
-          <button
-            type="button"
-            className="btn btn-sm btn-primary"
-            onClick={() => {
-              call(selected)
-            }}
+
+        <div className="flex items-center justify-between gap-3 px-4 pt-4 pb-1">
+          <p className="text-[15px] font-bold">
+            {client?.name} <span className="font-medium text-mute">may</span>
+          </p>
+          <span
+            className={`chip h-5 text-[10.5px] ${current.revoked ? 'chip-coral' : ''}`}
           >
-            Send a paid call
-          </button>
-          <span className="inline-flex items-center overflow-hidden rounded-[6px] border-[1.5px] border-ink bg-card text-[12px] font-semibold shadow-[2px_2px_0_0_var(--color-ink)]">
-            <button
-              type="button"
-              aria-label="Lower limit"
-              className="h-[27px] w-9 hover:bg-paper disabled:opacity-40"
-              disabled={current.cap <= 5}
-              onClick={() => {
-                update(
-                  { cap: current.cap - 5 },
-                  'limit lowered',
-                  `→ ${whole.format(current.cap - 5)}`,
-                )
-              }}
-            >
-              −
-            </button>
-            <span className="border-x border-rule px-2 leading-[27px]">
-              limit {whole.format(current.cap)}
-            </span>
-            <button
-              type="button"
-              aria-label="Raise limit"
-              className="h-[27px] w-9 hover:bg-paper disabled:opacity-40"
-              disabled={current.cap >= 50}
-              onClick={() => {
-                update(
-                  { cap: current.cap + 5 },
-                  'limit raised',
-                  `→ ${whole.format(current.cap + 5)}`,
-                )
-              }}
-            >
-              +
-            </button>
+            {current.revoked ? 'revoked' : client?.kind}
           </span>
+        </div>
+
+        <ul className={current.revoked ? 'opacity-50' : ''}>
+          {TOOLS.map((t) => {
+            const on = current.can.includes(t.id)
+            return (
+              <li
+                key={t.id}
+                className="grid grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-3 border-b border-rule px-4 py-3.5"
+              >
+                <span
+                  className={`flex size-9 items-center justify-center rounded-[7px] border-[1.5px] border-ink transition-colors duration-200 ${on ? 'bg-lime' : 'bg-card'}`}
+                >
+                  <img src={t.icon} alt="" width={18} height={18} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[14.5px] leading-snug font-bold">
+                    {t.title}
+                  </span>
+                  {t.id === 'pay' ? (
+                    <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-mute">
+                      <span className={full ? 'font-bold text-coral-ink' : ''}>
+                        {usd.format(current.spent)} of
+                      </span>
+                      <span className="inline-flex items-center overflow-hidden rounded-[5px] border border-ink bg-card font-semibold text-ink">
+                        <button
+                          type="button"
+                          aria-label="Lower limit"
+                          className="h-[22px] w-6 hover:bg-paper disabled:opacity-40"
+                          disabled={current.cap <= 5 || current.revoked}
+                          onClick={() => {
+                            update(
+                              { cap: current.cap - 5 },
+                              'limit lowered',
+                              `→ ${whole.format(current.cap - 5)}`,
+                              'pay',
+                            )
+                          }}
+                        >
+                          −
+                        </button>
+                        <span className="border-x border-rule px-1.5 leading-[22px]">
+                          {whole.format(current.cap)}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label="Raise limit"
+                          className="h-[22px] w-6 hover:bg-paper disabled:opacity-40"
+                          disabled={current.cap >= 50 || current.revoked}
+                          onClick={() => {
+                            update(
+                              { cap: current.cap + 5 },
+                              'limit raised',
+                              `→ ${whole.format(current.cap + 5)}`,
+                              'pay',
+                            )
+                          }}
+                        >
+                          +
+                        </button>
+                      </span>
+                      <span
+                        aria-hidden="true"
+                        className="h-2 w-24 overflow-hidden rounded-[3px] border border-ink bg-card"
+                      >
+                        <span
+                          className={`block h-full transition-[width] duration-500 ${full ? 'bg-coral' : 'bg-blue'}`}
+                          style={{ width: `${Math.max(ratio * 100, 3)}%` }}
+                        />
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="block text-[12px] text-mute">
+                      {t.body}
+                    </span>
+                  )}
+                </span>
+                <Switch
+                  on={on}
+                  label={`${client?.name} may ${t.title.toLowerCase()}`}
+                  disabled={current.revoked}
+                  onChange={() => {
+                    update(
+                      {
+                        can: on
+                          ? current.can.filter((x) => x !== t.id)
+                          : [...current.can, t.id],
+                      },
+                      `${t.id} switched ${on ? 'off' : 'on'}`,
+                      'from next call',
+                      t.id,
+                    )
+                  }}
+                />
+              </li>
+            )
+          })}
+        </ul>
+
+        <div className="mt-auto flex items-center justify-between gap-3 bg-paper px-4 py-3">
           <button
             type="button"
             className="btn btn-sm"
@@ -316,14 +397,15 @@ export function Playground() {
                 { revoked: !current.revoked },
                 current.revoked ? 'restored' : 'revoked',
                 current.revoked ? 'can call again' : 'calls stop',
+                'read',
               )
             }}
           >
-            {current.revoked ? 'Restore' : 'Revoke'}
+            {current.revoked ? 'Restore' : 'Revoke'} {client?.name}
           </button>
           <button
             type="button"
-            className="-mr-2 ml-auto h-[30px] px-2 text-[12px] font-semibold text-mute underline-offset-2 hover:text-ink hover:underline"
+            className="-mr-2 h-[30px] px-2 text-[12px] font-semibold text-mute underline-offset-2 hover:text-ink hover:underline"
             onClick={() => {
               const fresh = initial()
               latest.current = fresh
@@ -342,8 +424,8 @@ export function Playground() {
           <span className="text-mute">calls and your changes</span>
         </div>
         <ul
-          className="flex-1 space-y-1.5 px-3 py-3 text-[12px]"
-          aria-live="polite"
+          className="h-[15.5rem] space-y-1.5 overflow-hidden px-3 py-3 text-[12px]"
+          aria-live="off"
         >
           <AnimatePresence initial={false}>
             {entries.map((e) => {
@@ -375,7 +457,7 @@ export function Playground() {
             })}
           </AnimatePresence>
         </ul>
-        <p className="border-t border-rule px-4 py-2.5 text-[11.5px] text-mute">
+        <p className="mt-auto border-t border-rule px-4 py-2.5 text-[11.5px] text-mute">
           Changes take effect on the next call.
         </p>
       </div>

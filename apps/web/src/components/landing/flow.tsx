@@ -9,6 +9,7 @@ import {
   PHASE,
   STAGGER,
 } from './crossing'
+import { PORT, PROMPT } from './brand'
 import { LogoGlyph } from './logo'
 import { AGENTS } from './logos'
 import type { AgentId } from './logos'
@@ -430,7 +431,7 @@ function Diagram({ layout, still }: { layout: Layout; still: boolean }) {
       viewBox={layout.viewBox}
       className="h-auto w-full"
       role="img"
-      aria-label="Cursor, Claude, Codex, Grok bot, and other agents such as OpenClaw and Hermes connect through one URL to your wallet, which checks each call against that agent's limit and permissions, then routes it to payments, onchain data, transactions, or analytics. A call over its limit is denied at the wallet."
+      aria-label="Cursor, Claude, Codex, Grok bot, and other agents such as OpenClaw and Hermes connect through one URL to your toolkit, which checks each call against that agent's permissions and limit, then runs it: payments, onchain data, transactions, or analytics. A call over its limit is denied before it runs."
     >
       <path
         d={layout.stem}
@@ -548,20 +549,35 @@ function Diagram({ layout, still }: { layout: Layout; still: boolean }) {
           className="fill-lime stroke-ink"
           strokeWidth={1.5}
         />
-        <g>
-          <LogoGlyph
-            id="solana"
-            x={g.x + 62}
-            y={g.y + g.h / 2 - 25}
-            size={20}
+        <g
+          transform={`translate(${g.x + 54} ${g.y + g.h / 2 - 28}) scale(0.375)`}
+          className="text-ink"
+          aria-hidden="true"
+        >
+          <path d={PORT} fill="currentColor" />
+          <path
+            d={PROMPT}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={4.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <rect
+            x={35}
+            y={41}
+            width={15}
+            height={5}
+            rx={2.5}
+            fill="currentColor"
           />
         </g>
         <text
-          x={g.x + 90}
+          x={g.x + 86}
           y={g.y + g.h / 2 - 8}
           className="fill-ink text-[16px] font-bold"
         >
-          your wallet
+          your toolkit
         </text>
         {!still &&
           layout.routes.map((route, i) => (
@@ -695,11 +711,11 @@ function useWideLayout() {
 const STEPS = [
   {
     title: 'Every agent connects once.',
-    body: `Connect Cursor, Claude, Codex, Grok bot, and MCP-compatible harnesses such as OpenClaw and Hermes through ${MCP_HOST}. No wallet keys live in their configs.`,
+    body: `Connect Cursor, Claude, Codex, Grok bot, and MCP-compatible harnesses such as OpenClaw and Hermes through ${MCP_HOST}. No keys live in their configs.`,
   },
   {
-    title: 'Your wallet checks the call.',
-    body: 'Is this agent allowed to perform the action? Does it fit the limits you set for that action? If either check fails, the call stops here.',
+    title: 'Every call is checked first.',
+    body: 'Is this agent allowed to perform the action? Does it fit the limit you set for that agent? If either check fails, the call stops here.',
   },
   {
     title: 'It runs the action and logs the result.',
@@ -727,7 +743,7 @@ export function Flow() {
               aria-hidden="true"
               className="inline-block size-2.5 rounded-[2px] border border-ink bg-coral"
             />
-            stopped at the limit
+            stopped by your rules
           </span>
         </span>
       </figcaption>

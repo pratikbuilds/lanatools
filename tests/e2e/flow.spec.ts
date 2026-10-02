@@ -5,7 +5,7 @@ import {
   PHASE,
 } from '../../apps/web/src/components/landing/crossing'
 
-test('wallet checks coincide with every crossing on desktop and mobile', async ({
+test('toolkit checks coincide with every crossing on desktop and mobile', async ({
   page,
 }) => {
   await page.goto('/')
@@ -21,9 +21,9 @@ test('wallet checks coincide with every crossing on desktop and mobile', async (
         if (!(svg instanceof SVGSVGElement)) throw new Error('Missing diagram')
         svg.pauseAnimations()
         const packets = [...svg.querySelectorAll('animateMotion')].slice(0, 4)
-        const wallet = svg.querySelector('rect[width="260"]')
-        if (!wallet) throw new Error('Missing wallet')
-        const box = wallet.getBoundingClientRect()
+        const toolkit = svg.querySelector('rect[width="260"]')
+        if (!toolkit) throw new Error('Missing toolkit')
+        const box = toolkit.getBoundingClientRect()
         const crossingsMatch = packets.every((motion, route) => {
           const period = Number.parseFloat(motion.getAttribute('dur') ?? '')
           const begin = Number.parseFloat(motion.getAttribute('begin') ?? '')
@@ -95,5 +95,5 @@ test('wallet checks coincide with every crossing on desktop and mobile', async (
   }
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect(diagram.locator('animate, animateMotion')).toHaveCount(0)
-  await expect(diagram.getByText('your wallet', { exact: true })).toBeVisible()
+  await expect(diagram.getByText('your toolkit', { exact: true })).toBeVisible()
 })

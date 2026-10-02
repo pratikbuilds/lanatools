@@ -15,7 +15,7 @@ const TOOLS: Array<{
     stage: 'available',
     title: 'Pay for services',
     icon: '/lanatools-icon-pay.png',
-    body: 'Discover paid services in the catalog and let your agent pay for what it needs within the permissions and action limits you set.',
+    body: 'Discover paid services in the catalog and let your agent pay for what it needs within the permissions and limit you set for that agent.',
   },
   {
     stage: 'next',
