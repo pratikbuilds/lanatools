@@ -40,6 +40,7 @@ type Layout = {
 }
 
 const DENIED_BEGIN = 2.2
+const DENIED_FADE = 0.57
 
 const SOURCES = AGENTS.map((a) => ({ name: a.name, note: a.kind, logo: a.id }))
 
@@ -290,7 +291,7 @@ function Tag({
   box: Box
   text: string
   tone: 'lime' | 'card' | 'coral'
-  appear?: { begin: number; from: number } | undefined
+  appear?: { begin: number; from: number; until?: number } | undefined
 }) {
   const fill =
     tone === 'lime'
@@ -317,7 +318,7 @@ function Tag({
       >
         {text}
       </text>
-      {appear && <Appear begin={appear.begin} from={appear.from} />}
+      {appear && <Appear {...appear} />}
     </g>
   )
 }
@@ -360,7 +361,9 @@ function Packet({
         attributeName="opacity"
         values={denied ? '0;1;1;1;0;0' : '0;1;1;0;0'}
         keyTimes={
-          denied ? `0;0.02;${end};0.8;0.85;1` : `0;0.02;${end - 0.02};${end};1`
+          denied
+            ? `0;0.02;${end};${DENIED_FADE};${DENIED_FADE + 0.05};1`
+            : `0;0.02;${end - 0.02};${end};1`
         }
         dur={`${PERIOD}s`}
         begin={`${begin}s`}
@@ -380,12 +383,20 @@ function Packet({
   )
 }
 
-function Appear({ begin, from }: { begin: number; from: number }) {
+function Appear({
+  begin,
+  from,
+  until = 0.88,
+}: {
+  begin: number
+  from: number
+  until?: number
+}) {
   return (
     <animate
       attributeName="opacity"
       values="0;0;1;1;0;0"
-      keyTimes={`0;${from};${from + 0.02};0.88;0.93;1`}
+      keyTimes={`0;${from};${from + 0.02};${until};${until + 0.05};1`}
       dur={`${PERIOD}s`}
       begin={`${begin}s`}
       repeatCount="indefinite"
@@ -483,7 +494,11 @@ function Diagram({ layout, still }: { layout: Layout; still: boolean }) {
         box={layout.denied.tag}
         text="denied · over limit"
         tone="coral"
-        appear={still ? undefined : { begin: DENIED_BEGIN, from: 0.45 }}
+        appear={
+          still
+            ? undefined
+            : { begin: DENIED_BEGIN, from: 0.45, until: DENIED_FADE }
+        }
       />
 
       {still ? (

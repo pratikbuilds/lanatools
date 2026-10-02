@@ -68,6 +68,30 @@ test('wallet checks coincide with every crossing on desktop and mobile', async (
       },
     )
     expect(synchronized).toBe(true)
+    const denialClears = await diagram.evaluate((svg) => {
+      if (!(svg instanceof SVGSVGElement)) throw new Error('Missing diagram')
+      const motion = [...svg.querySelectorAll('animateMotion')].at(-1)
+      const packet = motion?.parentElement
+      const label = [...svg.querySelectorAll('text')].find(
+        (el) => el.textContent === 'denied · over limit',
+      )?.parentElement
+      if (!motion || !packet || !label) throw new Error('Missing denial')
+      const begin = Number.parseFloat(motion.getAttribute('begin') ?? '')
+      const period = Number.parseFloat(motion.getAttribute('dur') ?? '')
+      const arrival = begin + period * 0.45
+      svg.setCurrentTime(arrival + 0.3)
+      const visible = [packet, label].every(
+        (el) => Number(getComputedStyle(el).opacity) > 0.9,
+      )
+      svg.setCurrentTime(arrival + 1.6)
+      return (
+        visible &&
+        [packet, label].every(
+          (el) => Number(getComputedStyle(el).opacity) === 0,
+        )
+      )
+    })
+    expect(denialClears).toBe(true)
   }
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect(diagram.locator('animate, animateMotion')).toHaveCount(0)
