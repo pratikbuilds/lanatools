@@ -120,5 +120,12 @@ export const paymentActivity = sqliteTable(
       table.clientId,
       table.status,
     ),
+    // The dashboard reads a user's calls newest first; read backwards, this
+    // index is that order, with the ID breaking ties within a millisecond.
+    index('payment_activity_user_time').on(
+      table.privyUserId,
+      table.createdAt,
+      table.id,
+    ),
   ],
 )

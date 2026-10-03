@@ -7,7 +7,7 @@ export const MCP_HOST = new URL(MCP_URL).host
 
 type ClientConfig = { tab: string; file: string; lines: Array<string> }
 
-const CLIENT_IDS: Array<AgentId> = [
+export const CLIENT_IDS: Array<AgentId> = [
   'cursor',
   'claude',
   'codex',
@@ -15,7 +15,7 @@ const CLIENT_IDS: Array<AgentId> = [
   'others',
 ]
 
-const CLIENTS: Record<AgentId, ClientConfig> = {
+export const CLIENTS: Record<AgentId, ClientConfig> = {
   cursor: {
     tab: 'Cursor',
     file: '~/.cursor/mcp.json',

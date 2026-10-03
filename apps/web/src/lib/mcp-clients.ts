@@ -1,8 +1,6 @@
 import { McpClientList } from '@lanatools/contracts'
 import type { McpClient } from '@lanatools/contracts'
 
-export const MCP_SERVER_URL = 'https://mcp.lanatools.sh/mcp'
-
 export type GetAccessToken = () => Promise<string | null>
 
 export async function authorized(getAccessToken: GetAccessToken) {

@@ -186,3 +186,10 @@ MIT notices are retained in `licenses/`.
 - <https://github.com/TanStack/cli>
 
 Interchange informed the backend organization; no Interchange source was copied.
+
+## Component credits
+
+The dashboard's animated counter (`apps/web/src/components/ui/animated-counter.tsx`)
+is from [Rare UI](https://www.rareui.com), imported on October 2, 2026 from
+<https://www.rareui.com/components/animatedcounter> and used under its license,
+MIT with the Commons Clause and an attribution requirement.
