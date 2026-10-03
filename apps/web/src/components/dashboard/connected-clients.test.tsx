@@ -32,12 +32,13 @@ function table(clients: McpClient[]) {
   )
 }
 
-function detail(client: McpClient) {
+function detail(client: McpClient, revokeFailed = false) {
   return renderToString(
     <ClientDetail
       client={client}
       balanceMicroUsd={4_520_000}
       revoking={false}
+      revokeFailed={revokeFailed}
       onSetLimit={async () => {}}
       onRevoke={() => {}}
       onViewActivity={() => {}}
@@ -105,6 +106,11 @@ test('managing a client shows what it can do, its limit, and a way to disconnect
   expect(html).toContain('Save limit')
   expect(html).toContain('View its activity')
   expect(html).toContain('Disconnect')
+})
+
+test('a failed disconnect is reported in the drawer, where it was asked for', () => {
+  expect(detail(paying, true)).toContain('Could not disconnect the client')
+  expect(detail(paying)).not.toContain('Could not disconnect the client')
 })
 
 test('a client that cannot pay has no limit to change', () => {

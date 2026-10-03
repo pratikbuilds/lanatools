@@ -77,6 +77,14 @@ export function ConnectedClients({
   })
   const managing = clients.data?.find((c) => c.grantId === managingId)
 
+  // Opens or closes the client drawer, leaving behind any failure from the
+  // client that was open before.
+  function manage(grantId: string | undefined) {
+    revoke.reset()
+    limit.reset()
+    setManagingId(grantId)
+  }
+
   return (
     <section className="mt-10">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pb-3">
@@ -103,20 +111,13 @@ export function ConnectedClients({
       ) : (
         <ClientTable
           clients={clients.data}
-          onManage={(client) => setManagingId(client.grantId)}
+          onManage={(client) => manage(client.grantId)}
         />
       )}
-      <p role="alert" className="mt-3 text-[13px] text-coral-ink empty:hidden">
-        {revoke.isError
-          ? 'Could not disconnect the client. Try again.'
-          : limit.isError
-            ? 'Could not change the limit. Try again.'
-            : ''}
-      </p>
 
       <Drawer
         open={managing !== undefined}
-        onClose={() => setManagingId(undefined)}
+        onClose={() => manage(undefined)}
         label={managing ? `Manage ${clientName(managing)}` : 'Manage client'}
       >
         {managing && (
@@ -128,12 +129,13 @@ export function ConnectedClients({
               balances.data ? Number(balances.data.usdc) : undefined
             }
             revoking={revoke.isPending}
+            revokeFailed={revoke.isError}
             onSetLimit={(limitUsd) =>
               limit.mutateAsync({ grantId: managing.grantId, limitUsd })
             }
             onRevoke={() => revoke.mutate(managing.grantId)}
             onViewActivity={() => onViewActivity(managing.clientId)}
-            onClose={() => setManagingId(undefined)}
+            onClose={() => manage(undefined)}
           />
         )}
       </Drawer>
@@ -277,6 +279,7 @@ export function ClientDetail({
   client,
   balanceMicroUsd,
   revoking,
+  revokeFailed,
   onSetLimit,
   onRevoke,
   onViewActivity,
@@ -286,6 +289,7 @@ export function ClientDetail({
   client: McpClient
   balanceMicroUsd: number | undefined
   revoking: boolean
+  revokeFailed: boolean
   onSetLimit: (limitUsd: string) => Promise<void>
   onRevoke: () => void
   onViewActivity: () => void
@@ -322,6 +326,11 @@ export function ClientDetail({
         />
       )}
       <DrawerFacts facts={facts} />
+      {/* The page behind an open drawer cannot be reached, so a failure is
+          reported here, where the action was taken. */}
+      <p role="alert" className="mt-5 text-[13px] text-coral-ink empty:hidden">
+        {revokeFailed ? 'Could not disconnect the client. Try again.' : ''}
+      </p>
       {confirming ? (
         <div className="mt-6 rounded-[8px] border-[1.5px] border-ink bg-paper px-3.5 py-3">
           <p className="text-[13px]">

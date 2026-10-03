@@ -45,6 +45,7 @@ export function LimitEditor({
 }) {
   const [draft, setDraft] = useState(() => fieldValue(client.limitMicroUsd))
   const [saving, setSaving] = useState(false)
+  const [failed, setFailed] = useState(false)
   const typed = parseClientLimit(draft)
   // An amount that cannot be a limit leaves the figure on the saved one.
   const limit = typed ?? client.limitMicroUsd
@@ -55,13 +56,20 @@ export function LimitEditor({
       ? undefined
       : Math.min(MAX_CLIENT_LIMIT_MICRO_USD, used + balanceMicroUsd)
 
+  function edit(value: string) {
+    setFailed(false)
+    setDraft(value)
+  }
+
   async function save() {
     if (typed === null) return
     setSaving(true)
+    setFailed(false)
     try {
       await onSave(draft)
     } catch {
-      // The clients list shows the error; keep the draft so it can be retried.
+      // Keep the draft so the same amount can be saved again.
+      setFailed(true)
     } finally {
       setSaving(false)
     }
@@ -90,7 +98,7 @@ export function LimitEditor({
           limit={limit}
           top={top}
           disabled={saving}
-          onChange={(next) => setDraft(fieldValue(next))}
+          onChange={(next) => edit(fieldValue(next))}
         />
       )}
 
@@ -104,7 +112,7 @@ export function LimitEditor({
             aria-invalid={typed === null}
             value={draft}
             disabled={saving}
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => edit(event.target.value)}
           />
         </label>
         <button
@@ -120,9 +128,11 @@ export function LimitEditor({
         >
           {typed === null
             ? `Enter an amount up to ${formatUsd(MAX_CLIENT_LIMIT_MICRO_USD)}.`
-            : typed < used
-              ? `${name} has already used ${formatUsd(used)}. It cannot pay until the limit is higher.`
-              : ''}
+            : failed
+              ? 'Could not change the limit. Try again.'
+              : typed < used
+                ? `${name} has already used ${formatUsd(used)}. It cannot pay until the limit is higher.`
+                : ''}
         </p>
         <p className="w-full text-[12px] text-mute empty:hidden">
           {typed !== null &&
