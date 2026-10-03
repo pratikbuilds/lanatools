@@ -12,7 +12,7 @@ export const CLIENT_IDS: Array<AgentId> = [
   'claude',
   'codex',
   'grok',
-  'cloud',
+  'others',
 ]
 
 export const CLIENTS: Record<AgentId, ClientConfig> = {
@@ -40,12 +40,12 @@ export const CLIENTS: Record<AgentId, ClientConfig> = {
     lines: ['[mcp_servers.lanatools]', `url = "${MCP_URL}"`],
   },
   grok: {
-    tab: 'Grok',
+    tab: 'Grok bot',
     file: 'MCP settings',
     lines: [MCP_URL],
   },
-  cloud: {
-    tab: 'Cloud agent',
+  others: {
+    tab: 'Other agents',
     file: 'MCP server URL',
     lines: [MCP_URL],
   },

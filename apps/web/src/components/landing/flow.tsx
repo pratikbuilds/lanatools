@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { MCP_HOST } from './copy-url'
+import { CAPABILITIES } from './data'
 import {
   CROSSING_MESSAGES,
   ENTRY,
@@ -8,12 +9,19 @@ import {
   PHASE,
   STAGGER,
 } from './crossing'
+import { PORT, PROMPT } from './brand'
 import { LogoGlyph } from './logo'
 import { AGENTS } from './logos'
 import type { AgentId } from './logos'
 
 type Box = { x: number; y: number; w: number; h: number }
-type Node = { name: string; note: string; box: Box; logo?: AgentId }
+type Node = {
+  name: string
+  note: string
+  box: Box
+  logo?: AgentId
+  icon?: string
+}
 type Provider = Node & { cost: string; paid: boolean; tag: Box }
 
 type Layout = {
@@ -33,13 +41,7 @@ type Layout = {
 }
 
 const DENIED_BEGIN = 2.2
-
-const PROVIDERS = [
-  { name: 'pay.sh', note: 'paid endpoints', cost: '+ $0.25', paid: true },
-  { name: 'Helius', note: 'chain data', cost: '1 credit', paid: false },
-  { name: 'Jupiter', note: 'swaps', cost: 'free', paid: false },
-  { name: 'Dune', note: 'analytics', cost: '+ $0.10', paid: true },
-]
+const DENIED_FADE = 0.57
 
 const SOURCES = AGENTS.map((a) => ({ name: a.name, note: a.kind, logo: a.id }))
 
@@ -49,7 +51,7 @@ const WIDE: Layout = {
     ...src,
     box: { x: 20, y: 20 + i * 72, w: 176, h: 44 },
   })),
-  providers: PROVIDERS.map((p, i) => ({
+  providers: CAPABILITIES.map((p, i) => ({
     ...p,
     box: { x: 844, y: 30 + i * 94, w: 176, h: 44 },
     tag: { x: 844, y: 6 + i * 94, w: 92, h: 20 },
@@ -106,7 +108,7 @@ const TALL: Layout = {
     ...src,
     box: { x: 14 + i * 75, y: 10, w: 68, h: 54 },
   })),
-  providers: PROVIDERS.map((p, i) => ({
+  providers: CAPABILITIES.map((p, i) => ({
     ...p,
     box: { x: 8 + i * 96, y: 548, w: 88, h: 48 },
     tag: { x: 10 + i * 96, y: 606, w: 84, h: 20 },
@@ -190,7 +192,7 @@ function NodeBox({ node, small }: { node: Node; small: boolean }) {
           textAnchor="middle"
           className="fill-ink text-[10px] font-bold"
         >
-          {node.name === 'Cloud agent' ? 'Cloud' : node.name}
+          {node.logo === 'others' ? 'Others' : node.name}
         </text>
       </g>
     )
@@ -233,22 +235,28 @@ function NodeBox({ node, small }: { node: Node; small: boolean }) {
         className="fill-card stroke-ink"
         strokeWidth={1.5}
       />
+      <image
+        href={node.icon}
+        x={small ? cx - 7 : x + 12}
+        y={small ? y + 7 : y + h / 2 - 10}
+        width={small ? 14 : 18}
+        height={small ? 14 : 18}
+      >
+        <title>{node.name}</title>
+      </image>
       <text
-        x={cx}
-        y={y + h / 2 - 3}
-        textAnchor="middle"
-        className={`fill-ink font-bold ${small ? 'text-[12px]' : 'text-[15px]'}`}
+        x={small ? cx : x + 40}
+        y={small ? y + h - 10 : y + h / 2 - 3}
+        textAnchor={small ? 'middle' : 'start'}
+        className={`fill-ink font-bold ${small ? 'text-[10px]' : 'text-[14px]'}`}
       >
         {node.name}
       </text>
-      <text
-        x={cx}
-        y={y + h / 2 + 13}
-        textAnchor="middle"
-        className={`fill-mute ${small ? 'text-[10px]' : 'text-[12px]'}`}
-      >
-        {node.note}
-      </text>
+      {!small && (
+        <text x={x + 40} y={y + h / 2 + 13} className="fill-mute text-[11px]">
+          {node.note}
+        </text>
+      )}
     </g>
   )
 }
@@ -284,7 +292,7 @@ function Tag({
   box: Box
   text: string
   tone: 'lime' | 'card' | 'coral'
-  appear?: { begin: number; from: number } | undefined
+  appear?: { begin: number; from: number; until?: number } | undefined
 }) {
   const fill =
     tone === 'lime'
@@ -311,7 +319,7 @@ function Tag({
       >
         {text}
       </text>
-      {appear && <Appear begin={appear.begin} from={appear.from} />}
+      {appear && <Appear {...appear} />}
     </g>
   )
 }
@@ -354,7 +362,9 @@ function Packet({
         attributeName="opacity"
         values={denied ? '0;1;1;1;0;0' : '0;1;1;0;0'}
         keyTimes={
-          denied ? `0;0.02;${end};0.8;0.85;1` : `0;0.02;${end - 0.02};${end};1`
+          denied
+            ? `0;0.02;${end};${DENIED_FADE};${DENIED_FADE + 0.05};1`
+            : `0;0.02;${end - 0.02};${end};1`
         }
         dur={`${PERIOD}s`}
         begin={`${begin}s`}
@@ -374,12 +384,20 @@ function Packet({
   )
 }
 
-function Appear({ begin, from }: { begin: number; from: number }) {
+function Appear({
+  begin,
+  from,
+  until = 0.88,
+}: {
+  begin: number
+  from: number
+  until?: number
+}) {
   return (
     <animate
       attributeName="opacity"
       values="0;0;1;1;0;0"
-      keyTimes={`0;${from};${from + 0.02};0.88;0.93;1`}
+      keyTimes={`0;${from};${from + 0.02};${until};${until + 0.05};1`}
       dur={`${PERIOD}s`}
       begin={`${begin}s`}
       repeatCount="indefinite"
@@ -413,7 +431,7 @@ function Diagram({ layout, still }: { layout: Layout; still: boolean }) {
       viewBox={layout.viewBox}
       className="h-auto w-full"
       role="img"
-      aria-label="Cursor, Claude, Codex, Grok, and a cloud agent connect through one URL to your wallet, which checks each call against that agent's limit and permissions, then forwards it to pay.sh, Helius, Jupiter, or Dune. A call over its limit is denied at the wallet."
+      aria-label="Cursor, Claude, Codex, Grok bot, and other agents such as OpenClaw and Hermes connect through one URL to your toolkit, which checks each call against that agent's permissions and limit, then runs it: payments, onchain data, transactions, or analytics. A call over its limit is denied before it runs."
     >
       <path
         d={layout.stem}
@@ -477,7 +495,11 @@ function Diagram({ layout, still }: { layout: Layout; still: boolean }) {
         box={layout.denied.tag}
         text="denied · over limit"
         tone="coral"
-        appear={still ? undefined : { begin: DENIED_BEGIN, from: 0.45 }}
+        appear={
+          still
+            ? undefined
+            : { begin: DENIED_BEGIN, from: 0.45, until: DENIED_FADE }
+        }
       />
 
       {still ? (
@@ -527,20 +549,35 @@ function Diagram({ layout, still }: { layout: Layout; still: boolean }) {
           className="fill-lime stroke-ink"
           strokeWidth={1.5}
         />
-        <g>
-          <LogoGlyph
-            id="solana"
-            x={g.x + 62}
-            y={g.y + g.h / 2 - 25}
-            size={20}
+        <g
+          transform={`translate(${g.x + 54} ${g.y + g.h / 2 - 28}) scale(0.375)`}
+          className="text-ink"
+          aria-hidden="true"
+        >
+          <path d={PORT} fill="currentColor" />
+          <path
+            d={PROMPT}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={4.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <rect
+            x={35}
+            y={41}
+            width={15}
+            height={5}
+            rx={2.5}
+            fill="currentColor"
           />
         </g>
         <text
-          x={g.x + 90}
+          x={g.x + 86}
           y={g.y + g.h / 2 - 8}
           className="fill-ink text-[16px] font-bold"
         >
-          your wallet
+          your toolkit
         </text>
         {!still &&
           layout.routes.map((route, i) => (
@@ -674,15 +711,15 @@ function useWideLayout() {
 const STEPS = [
   {
     title: 'Every agent connects once.',
-    body: `Cursor, Claude, Codex, Grok, and your cloud agents all use ${MCP_HOST}. No wallet keys live in their configs.`,
+    body: `Connect Cursor, Claude, Codex, Grok bot, and MCP-compatible harnesses such as OpenClaw and Hermes through ${MCP_HOST}. No API keys live in their configs.`,
   },
   {
-    title: 'Your wallet checks the call.',
-    body: 'Is this agent allowed to pay? Does the price fit its limit? If either answer is no, the call stops here and nothing is paid.',
+    title: 'Every call is checked first.',
+    body: 'Is this agent allowed to perform the action? Does it fit the limit you set for that agent? If either check fails, the call stops here.',
   },
   {
-    title: 'It pays, forwards, and logs.',
-    body: 'The wallet pays the provider and the result comes back through the same connection. The call, its cost, and what is left of the limit go in the activity log.',
+    title: 'It runs the action and logs the result.',
+    body: 'Approved calls read data, pay for services, or submit transactions. Paid calls settle from your wallet. Each action and its result go in the activity log, with costs recorded when applicable.',
   },
 ]
 
@@ -706,7 +743,7 @@ export function Flow() {
               aria-hidden="true"
               className="inline-block size-2.5 rounded-[2px] border border-ink bg-coral"
             />
-            stopped at the limit
+            stopped by your rules
           </span>
         </span>
       </figcaption>

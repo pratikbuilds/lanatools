@@ -99,7 +99,7 @@ function Header() {
   )
 }
 
-const HEADLINE = ['Let', 'your', 'agents', 'pay.']
+const HEADLINE = ['Let', 'your', 'agents', 'work.']
 
 const CONNECT_STEPS = [
   'Create an account and fund the wallet.',
@@ -119,7 +119,7 @@ function Hero() {
             transition={{ duration: 0.4, ease: EASE }}
           >
             <Logo id="solana" size={12} />
-            the wallet for your agents · on Solana
+            the toolkit for your agents · on Solana
           </motion.span>
           {/* Real spaces between the words keep the text readable; the
               negative word-spacing keeps the gap tight like the design. */}
@@ -154,19 +154,23 @@ function Hero() {
                 animate={{ scaleX: 1 }}
                 transition={{ duration: 0.6, ease: EASE, delay: 0.7 }}
               />
-              <span className="relative text-ink">Within limits.</span>
+              <span className="relative text-ink">On Solana.</span>
             </motion.span>
           </h1>
-          <motion.p
-            className="mt-7 max-w-[54ch] text-[16px] text-paper-2"
+          <motion.div
+            className="mt-6 max-w-[60ch] text-[14px] leading-6 text-paper"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.6, delay: 0.6 }}
           >
-            Give Cursor, Claude, Codex, Grok, and your cloud agents one wallet
-            you own. They buy the APIs and data they need. You set what each one
-            can spend, and no keys ever sit in their configs.
-          </motion.p>
+            <p className="font-medium">
+              One connection for your agents to access onchain data, pay for
+              services, and execute transactions on Solana.
+            </p>
+            <p className="mt-2 text-paper/90">
+              You set the permissions and one limit for each agent.
+            </p>
+          </motion.div>
           <motion.div
             className="mt-8"
             initial={{ opacity: 0, y: 10 }}
@@ -197,13 +201,16 @@ function Home() {
             <Reveal>
               <p className="eyebrow text-mute">why</p>
               <h2 className="title mt-3 max-w-[30ch] text-[clamp(1.6rem,3vw,2.25rem)]">
-                Stop pasting keys into <Sweep tone="blue">every agent.</Sweep>
+                Stop wiring every tool into{' '}
+                <Sweep tone="blue">every agent.</Sweep>
               </h2>
               <p className="mt-5 max-w-[62ch] text-[15.5px] text-mute">
-                Today, each agent needs its own key and its own setup for every
-                paid service, and every copy is a key that can leak. With
-                LanaTools, each agent connects once and your keys stay in your
-                wallet.
+                Today, every tool an agent uses on Solana needs its own server,
+                API key, and payment setup, repeated for each agent. Every copy
+                is a key that can leak, and no single place shows what your
+                agents did. With LanaTools, each agent connects once to one
+                toolkit, with no API keys in its config and every call in one
+                log.
               </p>
             </Reveal>
             <div className="mt-12">
@@ -216,7 +223,7 @@ function Home() {
           <Reveal>
             <p className="eyebrow text-paper-2">how it works</p>
             <h2 className="title mt-3 max-w-[32ch] text-[clamp(1.6rem,3vw,2.25rem)]">
-              Money moves only <Sweep>inside the rules you set.</Sweep>
+              Every call runs <Sweep>inside the rules you set.</Sweep>
             </h2>
           </Reveal>
           <Reveal className="mt-10" delay={0.1}>
@@ -229,12 +236,12 @@ function Home() {
             <Reveal>
               <p className="eyebrow text-mute">control</p>
               <h2 className="title mt-3 text-[clamp(1.6rem,3vw,2.25rem)]">
-                Cut off any agent <Sweep tone="blue">in one click.</Sweep>
+                You decide what <Sweep tone="blue">each agent can do.</Sweep>
               </h2>
               <p className="mt-5 max-w-[62ch] text-[15.5px] text-mute">
-                Try it. Pick an agent, then raise its limit, revoke it, or send
-                a test call. Every change shows up in the activity log next to
-                the calls it affects. The numbers here are samples.
+                Try it. Pick an agent and switch off what it shouldn&rsquo;t do.
+                Sample calls keep arriving in the activity log, so you can see
+                which ones still get through.
               </p>
             </Reveal>
             <Reveal className="mt-10" delay={0.1}>
@@ -250,9 +257,9 @@ function Home() {
               Connect once. It keeps getting <Sweep>more useful.</Sweep>
             </h2>
             <p className="mt-5 max-w-[62ch] text-[15.5px] text-paper-2">
-              Paid APIs come first. Routing, swaps you sign yourself, and Solana
-              data from Helius, Jupiter, and Dune follow, all through the URL
-              you already added.
+              Payments, onchain data, and transactions through one connection.
+              Give your agents the tools to act on Solana, with permissions and
+              one limit for each agent.
             </p>
           </Reveal>
           <div className="mt-12">
@@ -292,7 +299,7 @@ function Home() {
               <div id="early-access" className="scroll-mt-24">
                 <p className="eyebrow text-mute">early access</p>
                 <h3 className="title mt-3 text-[clamp(1.3rem,2.4vw,1.7rem)]">
-                  Be first to give your agents a wallet.
+                  Be first to put your agents to work on Solana.
                 </h3>
                 <div className="mt-6">
                   <EarlyAccess tone="paper" />
