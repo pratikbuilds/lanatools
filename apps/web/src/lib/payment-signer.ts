@@ -50,10 +50,23 @@ export async function enablePaymentSigner(
       body: JSON.stringify({ walletAddress }),
     }),
   )
-  await addSigners({ address: walletAddress, signers: [grant] })
-  return PaymentSignerStatus.assert(
-    await call(getAccessToken, '/confirm', { method: 'POST' }),
-  )
+  const confirm = async () =>
+    PaymentSignerStatus.assert(
+      await call(getAccessToken, '/confirm', { method: 'POST' }),
+    )
+  try {
+    await addSigners({ address: walletAddress, signers: [grant] })
+  } catch (error) {
+    // Privy refuses a signer that is already on the wallet, as after another
+    // tab or an attempt that stopped before the check below. The server's
+    // check decides; if it disagrees, Privy's refusal is the failure.
+    try {
+      return await confirm()
+    } catch {
+      throw error
+    }
+  }
+  return confirm()
 }
 
 /**

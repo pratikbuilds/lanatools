@@ -4,7 +4,10 @@ import { AgentPaymentsView } from './agent-payments'
 
 const wallet = 'F8ypHfv7gs9JiHVnb51g7aVA2tmmC9ZpF5FdpChYjpV3'
 
-function render(status: Parameters<typeof AgentPaymentsView>[0]['status']) {
+function render(
+  status: Parameters<typeof AgentPaymentsView>[0]['status'],
+  props: Partial<Parameters<typeof AgentPaymentsView>[0]> = {},
+) {
   return renderToString(
     <AgentPaymentsView
       status={status}
@@ -13,20 +16,21 @@ function render(status: Parameters<typeof AgentPaymentsView>[0]['status']) {
       error={undefined}
       walletAddress={wallet}
       onChange={() => {}}
+      {...props}
     />,
   )
 }
 
 test('payments that were never set up show as off and can be turned on', () => {
   const html = render({ status: 'none', walletAddress: null })
-  expect(html).toContain('Agent payments are off')
+  expect(html).toContain('>Off<')
   expect(html).toContain('No client can pay')
   expect(html).toContain('aria-checked="false"')
 })
 
 test('enabled payments can be stopped for every client', () => {
   const html = render({ status: 'enabled', walletAddress: wallet })
-  expect(html).toContain('Agent payments are on')
+  expect(html).toContain('>On<')
   expect(html).toContain('stop every client at once')
   expect(html).toContain('aria-checked="true"')
 })
@@ -37,6 +41,33 @@ test('a signer on a different wallet does not count as on', () => {
   )
 })
 
-test('the switch waits for the saved state before it can be used', () => {
-  expect(render(undefined)).not.toContain('role="switch"')
+test('the switch waits for the saved state, and nothing is called off before it', () => {
+  const html = render(undefined)
+  expect(html).not.toContain('role="switch"')
+  expect(html).not.toContain('>Off<')
+  expect(html).not.toContain('No client can pay')
+  expect(html).toContain('Checking your wallet')
+})
+
+test('a load failure is reported instead of a state', () => {
+  const html = render(undefined, { loadFailed: true })
+  expect(html).toContain('Could not load payment settings.')
+  expect(html).not.toContain('Checking your wallet')
+})
+
+test('the switch cannot start a second change while one is running', () => {
+  const html = render(
+    { status: 'pending', walletAddress: wallet },
+    { busy: true },
+  )
+  expect(html).toContain('Turning agent payments on…')
+  expect(html).toMatch(
+    /<button[^>]*disabled=""[^>]*role="switch"|<button[^>]*role="switch"[^>]*disabled=""/,
+  )
+})
+
+test('the signing rules name the wallet they apply to', () => {
+  const html = render({ status: 'enabled', walletAddress: wallet })
+  expect(html).toContain('USDC only')
+  expect(html).toContain(wallet)
 })
