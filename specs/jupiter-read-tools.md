@@ -143,7 +143,7 @@ Live results included seven Earn assets, 82 main and one ethena Borrow vaults, s
 
 Integration found and fixed Cloudflare's unsupported `redirect: error` mode: manual handling now rejects redirects. The legacy DCA request requires `includeFailedTx` despite omission in guide examples, so it defaults to false; live records arrive under `time` and normalize to `orders`. The initially failing DCA case passed after these corrections. Earn earnings were confirmed as an array; the documented object shape is also supported. Rates remain in upstream units. Production key configuration and deployed browser OAuth remain unverified.
 
-The implementation is tracked in PR #36. Remaining rollout work is configuring the production Worker key and verifying the deployed OAuth/service-binding path.
+The implementation is tracked in PR #36. After incorporating the already-merged catalog PR #35, the full `bun run check` passed: formatting, lint, typechecks, application builds, 171 unit/integration tests, local D1 smoke and 12 browser tests. Remaining rollout work is configuring the production Worker key and verifying the deployed OAuth/service-binding path.
 
 ## Contract references
 

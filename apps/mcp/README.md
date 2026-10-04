@@ -38,24 +38,27 @@ wallet authentication are outside the agreed scope.
 
 ## Discovering paid APIs in the pay.sh catalog
 
-`list_catalog`, `search_catalog`, and `get_catalog_entry` read the public
-[pay.sh catalog](https://github.com/solana-foundation/pay-skills) from
-`https://catalog.pay.sh/v1/skills.json` and its per-provider detail files
-(`src/catalog.ts`). They need any active grant and no extra scope, because they
-read public listings and move no money.
+`list_catalog`, `search_catalog`, and `get_catalog_entry` come from
+`packages/catalog`. They read the committed copy of the
+[pay.sh catalog](https://github.com/solana-foundation/pay-skills) in
+`packages/catalog/data/catalog.json`; refresh it with `bun run catalog:sync`.
+They need any active grant and no extra scope, because they read public
+listings and move no money.
 
 - `list_catalog` groups every provider by category.
-- `search_catalog` ranks providers for a task with pay's keyword scorer, ported
-  from pay's MIT-licensed source. It first ranks on the index, then loads the
-  endpoints of the best preliminary candidates and ranks again, returning each
-  candidate's best-matching endpoints with exact URLs, protocols, currencies,
-  and listed prices.
+- `search_catalog` ranks providers and endpoints for a task with TypeSafe's
+  Jev model when the `TYPESAFE_API_KEY` secret is set, and with pay's keyword
+  scorer otherwise or whenever TypeSafe fails. An empty result means nothing
+  in the catalog does the task. See `specs/catalog-search-jev.md`.
 - `get_catalog_entry` returns a provider's endpoints and usage notes. With an
-  endpoint `path`, it also returns that endpoint's OpenAPI parameters, request
-  body, and only the components they reference.
+  endpoint `path`, it also fetches that provider's OpenAPI document live and
+  returns the endpoint's parameters, request body, and only the components
+  they reference.
 
-Catalog text is third-party data and listed prices are hints. Malformed
-listings are dropped, and an unknown index version is refused. Catalog
+Set the key with `wrangler secret put TYPESAFE_API_KEY -c apps/mcp/wrangler.jsonc`,
+or in `apps/mcp/.dev.vars` for local runs.
+
+Catalog text is third-party data and listed prices are hints. Catalog
 endpoints are paid on Solana mainnet, so these tools only discover them for
 now; paying them through LanaTools is separate work.
 

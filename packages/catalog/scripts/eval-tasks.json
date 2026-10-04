@@ -1,0 +1,227 @@
+[
+  {
+    "kind": "synonym",
+    "task": "make a picture of a cat astronaut from a text prompt",
+    "providers": [
+      "paysponge/fal",
+      "venice/ai",
+      "solana-foundation/alibaba/aigen"
+    ]
+  },
+  {
+    "kind": "synonym",
+    "task": "text my friend at +1 555 0100 that I'm running late",
+    "providers": ["paysponge/textbelt"],
+    "endpoints": { "paysponge/textbelt": ["POST text"] }
+  },
+  {
+    "kind": "synonym",
+    "task": "find coffee shops near Union Square in San Francisco",
+    "providers": ["solana-foundation/google/places", "paysponge/tripadvisor"],
+    "endpoints": {
+      "solana-foundation/google/places": [
+        "POST v1/places:searchNearby",
+        "POST v1/places:searchText"
+      ],
+      "paysponge/tripadvisor": [
+        "GET api/v1/location/nearby_search",
+        "GET api/v1/location/search"
+      ]
+    }
+  },
+  {
+    "kind": "synonym",
+    "task": "what's the EUR to USD exchange rate right now",
+    "providers": ["blocksize/market-data"],
+    "endpoints": { "blocksize/market-data": ["GET v1/fx/EURUSD"] }
+  },
+  {
+    "kind": "synonym",
+    "task": "current price of gold per ounce",
+    "providers": ["blocksize/market-data"],
+    "endpoints": { "blocksize/market-data": ["GET v1/metal/XAUUSD"] }
+  },
+  {
+    "kind": "synonym",
+    "task": "is the air safe to breathe in Delhi today?",
+    "providers": ["solana-foundation/google/airquality"]
+  },
+  {
+    "kind": "synonym",
+    "task": "grab an image of how https://example.com looks in a browser",
+    "providers": ["paysponge/screenshotone"],
+    "endpoints": { "paysponge/screenshotone": ["GET take", "POST take"] }
+  },
+  {
+    "kind": "synonym",
+    "task": "find flights from Lisbon to New York next Friday",
+    "providers": ["brij/travel"],
+    "endpoints": { "brij/travel": ["POST air/search"] }
+  },
+  {
+    "kind": "synonym",
+    "task": "check whether 1600 Amphitheatre Pkwy, Mountain View is a real deliverable mailing address",
+    "providers": ["solana-foundation/google/addressvalidation"]
+  },
+  {
+    "kind": "synonym",
+    "task": "give my agent its own email address so it can receive replies",
+    "providers": ["agentmail/email"],
+    "endpoints": { "agentmail/email": ["POST v0/inboxes"] }
+  },
+  {
+    "kind": "synonym",
+    "task": "translate this paragraph into Japanese",
+    "providers": [
+      "solana-foundation/google/translate",
+      "solana-foundation/alibaba/translate",
+      "solana-foundation/alibaba/machinetranslation",
+      "solana-foundation/alibaba/anytrans"
+    ]
+  },
+  {
+    "kind": "synonym",
+    "task": "turn this audio recording of a meeting into text",
+    "providers": [
+      "solana-foundation/google/speech",
+      "solana-foundation/alibaba/speech",
+      "solana-foundation/alibaba/intelligentspeechinteraction",
+      "dtelecom/voice"
+    ]
+  },
+  {
+    "kind": "synonym",
+    "task": "read this paragraph out loud and give me an mp3",
+    "providers": [
+      "solana-foundation/google/texttospeech",
+      "solana-foundation/alibaba/texttospeech",
+      "dtelecom/voice",
+      "venice/ai"
+    ]
+  },
+  {
+    "kind": "synonym",
+    "task": "pull the line items out of this scanned invoice PDF",
+    "providers": [
+      "solana-foundation/google/documentai",
+      "paysponge/reducto",
+      "solana-foundation/alibaba/ocr"
+    ]
+  },
+  {
+    "kind": "synonym",
+    "task": "who are the top holders of the BONK token on Solana",
+    "providers": [
+      "vybenetwork/solana-analytics",
+      "birdeye/data",
+      "arkham/api",
+      "nansen-ai/nansen-api"
+    ]
+  },
+  {
+    "kind": "synonym",
+    "task": "get past the hCaptcha on this signup page",
+    "providers": ["paysponge/2captcha"]
+  },
+  {
+    "kind": "synonym",
+    "task": "find Instagram fitness influencers in Brazil with over 50k followers",
+    "providers": ["socialintel/influencer-search"]
+  },
+  {
+    "kind": "synonym",
+    "task": "estimate the monthly rent for a 2 bedroom apartment in Austin, TX",
+    "providers": ["paysponge/rentcast"]
+  },
+  {
+    "kind": "synonym",
+    "task": "buy a $25 Steam gift card",
+    "providers": ["cryptorefills/shopping"]
+  },
+  {
+    "kind": "synonym",
+    "task": "get us a table for two at a hard-to-book restaurant in NYC on Friday",
+    "providers": ["agentres/reservations"]
+  },
+  {
+    "kind": "synonym",
+    "task": "send a getBalance JSON-RPC call to Solana mainnet",
+    "providers": ["quicknode/rpc"],
+    "endpoints": { "quicknode/rpc": ["POST solana-mainnet/"] }
+  },
+  {
+    "kind": "named",
+    "task": "use exa to search for recent papers on diffusion models",
+    "providers": ["exa/search"],
+    "endpoints": { "exa/search": ["POST search"] }
+  },
+  {
+    "kind": "named",
+    "task": "use Perplexity to answer who won the 2024 Champions League, with citations",
+    "providers": ["paysponge/perplexity"]
+  },
+  {
+    "kind": "named",
+    "task": "ask Qwen to write a haiku about the sea",
+    "providers": ["solana-foundation/alibaba/modelstudio", "blockrun/blockrun"]
+  },
+  {
+    "kind": "named",
+    "task": "tip @toly 1 USDC on X",
+    "providers": ["clustly/tipping"]
+  },
+  {
+    "kind": "lookalike",
+    "task": "hotel reviews and photos for the Ritz in Paris",
+    "providers": ["paysponge/tripadvisor", "solana-foundation/google/places"]
+  },
+  {
+    "kind": "lookalike",
+    "task": "detect faces and landmarks in this photo",
+    "providers": [
+      "solana-foundation/google/vision",
+      "solana-foundation/alibaba/facebody",
+      "solana-foundation/alibaba/imagerecog"
+    ]
+  },
+  {
+    "kind": "lookalike",
+    "task": "has anyone fact-checked the claim that 5G towers spread viruses?",
+    "providers": ["solana-foundation/google/factchecktools"]
+  },
+  {
+    "kind": "lookalike",
+    "task": "who is the US congressional representative for 350 Fifth Avenue, New York",
+    "providers": ["solana-foundation/google/civicinfo"]
+  },
+  {
+    "kind": "lookalike",
+    "task": "compare prices for a Dyson V15 vacuum at Walmart and Costco",
+    "providers": ["syntalic/pricing"]
+  },
+  {
+    "kind": "uncovered",
+    "task": "post this announcement to my Mastodon account",
+    "providers": []
+  },
+  {
+    "kind": "uncovered",
+    "task": "book an Uber ride to the airport",
+    "providers": []
+  },
+  {
+    "kind": "uncovered",
+    "task": "order a large pepperoni pizza for delivery from Domino's",
+    "providers": []
+  },
+  {
+    "kind": "uncovered",
+    "task": "send a fax to my doctor's office",
+    "providers": []
+  },
+  {
+    "kind": "uncovered",
+    "task": "renew my car registration with the DMV",
+    "providers": []
+  }
+]
