@@ -51,7 +51,10 @@ export function formatJupiterResult(outcome: JupiterOutcome): CallToolResult {
   if (warnings.length) summary += ` ${warnings.join(' ')}`
   return {
     structuredContent: outcome.result,
-    content: [{ type: 'text', text: summary }],
+    content: [
+      { type: 'text', text: summary },
+      { type: 'text', text: JSON.stringify(outcome.result) },
+    ],
   }
 }
 

@@ -35,8 +35,11 @@ test('MCP discovers nine read-only schemas and calls them through the executor',
         })
       if (path.includes('getTriggerOrders'))
         return Response.json({ orders: [], hasMoreData: false })
-      if (path === '/price/v3' || path === '/swap/v2/program-id-to-label')
-        return Response.json({})
+      if (path === '/price/v3')
+        return Response.json({
+          So11111111111111111111111111111111111111112: { usdPrice: 143.25 },
+        })
+      if (path === '/swap/v2/program-id-to-label') return Response.json({})
       return Response.json([])
     },
   })
@@ -80,6 +83,7 @@ test('MCP discovers nine read-only schemas and calls them through the executor',
         type: 'text',
         text: expect.stringContaining('Returned 0 token records'),
       },
+      { type: 'text', text: JSON.stringify(result.structuredContent) },
     ])
     const ranked = await client.callTool({
       name: 'jupiter_discover_tokens',
@@ -92,7 +96,17 @@ test('MCP discovers nine read-only schemas and calls them through the executor',
       name: 'jupiter_get_prices',
       arguments: { mints: ['So11111111111111111111111111111111111111112'] },
     })
-    expect(price.structuredContent).toMatchObject({ data: { prices: {} } })
+    expect(price.structuredContent).toMatchObject({
+      data: {
+        prices: {
+          So11111111111111111111111111111111111111112: { usdPrice: 143.25 },
+        },
+      },
+    })
+    expect(price.content).toContainEqual({
+      type: 'text',
+      text: JSON.stringify(price.structuredContent),
+    })
     const sol = 'So11111111111111111111111111111111111111112'
     const usdc = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
     const remaining = [
@@ -125,6 +139,10 @@ test('MCP discovers nine read-only schemas and calls them through the executor',
       expect(response.structuredContent).toMatchObject({
         source: 'jupiter',
         network: 'mainnet-beta',
+      })
+      expect(response.content).toContainEqual({
+        type: 'text',
+        text: JSON.stringify(response.structuredContent),
       })
     }
   } finally {
