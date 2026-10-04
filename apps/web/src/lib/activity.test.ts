@@ -1,5 +1,11 @@
 import { expect, test } from 'bun:test'
-import { callHost, dayLabel, explorerURL, formatTime } from './activity'
+import {
+  callHost,
+  dayLabel,
+  explorerURL,
+  formatTime,
+  formatCredits,
+} from './activity'
 
 // Local times, because the dashboard shows the viewer's own clock.
 const at = (day: number, hour: number, minute = 0, year = 2026) =>
@@ -38,4 +44,10 @@ test('a call is named by its host, without the scheme', () => {
   expect(callHost({ origin: 'https://weather.example' })).toBe(
     'weather.example',
   )
+})
+
+test('credit labels always identify estimates and handle zero and singular', () => {
+  expect(formatCredits(0)).toBe('0 estimated credits')
+  expect(formatCredits(1)).toBe('1 estimated credit')
+  expect(formatCredits(12_345)).toBe('12,345 estimated credits')
 })

@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test'
 import type { D1Database } from '@cloudflare/workers-types'
+import { drizzle } from 'drizzle-orm/d1'
+import { paymentActivity, toolActivity } from './db/schema'
 import {
   activateGrant,
   listClients,
@@ -58,6 +60,7 @@ test('an approved client is listed with its name and redirect host', async () =>
       limitMicroUsd: 0,
       spentMicroUsd: 0,
       reservedMicroUsd: 0,
+      estimatedCredits: 0,
     },
   ])
   expect(await listClients(db, 'someone-else')).toEqual([])
@@ -198,4 +201,111 @@ test('older MCP callers can approve read-only access without a spending limit', 
     'Set a spending limit',
   )
   expect(await useActiveGrant(db, paymentGrant)).toBe(false)
+})
+
+for (const scopes of [
+  ['chain:read'],
+  ['account:read', 'chain:read'],
+  ['payments:pay', 'chain:read'],
+]) {
+  test(`chain access consent activates ${scopes.join(' + ')}`, async () => {
+    const clientId = crypto.randomUUID()
+    const userId = crypto.randomUUID()
+    const handle = await startConsent(clientId, undefined, scopes)
+    expect((await pendingConsent(db, handle))?.scopes).toEqual(scopes)
+    const { grantId } = await prepareGrant(db, handle, clientId, userId)
+    const identity = { grantId, userId, clientId }
+    expect(await useActiveGrant(db, identity)).toBe(false)
+    const limit = scopes.includes('payments:pay') ? 1_000_000 : null
+    await activateGrant(db, handle, identity, limit)
+    expect(await useActiveGrant(db, identity)).toBe(true)
+    expect((await listClients(db, userId))[0]).toMatchObject({
+      scopes,
+      limitMicroUsd: limit ?? 0,
+    })
+  })
+}
+
+test('client credits stay isolated, survive reconnects, and do not multiply payment totals', async () => {
+  const userId = 'user-credit-totals'
+  const clientId = 'client-credit-totals'
+  const grant = await connect(userId, clientId)
+  const untouched = await connect(userId, 'client-no-tools')
+  await connect('other-credit-user', clientId)
+  for (const [index, status, credits] of [
+    [0, 'ok', 1],
+    [1, 'failed', 10],
+  ] as const) {
+    await drizzle(db)
+      .insert(toolActivity)
+      .values({
+        id: `tool-total-${index}`,
+        privyUserId: userId,
+        clientId,
+        grantId: grant.grantId,
+        provider: 'helius',
+        tool: 'get_balance',
+        status,
+        credits,
+        durationMs: 20,
+        createdAt: Date.now(),
+      })
+  }
+  await drizzle(db).insert(toolActivity).values({
+    id: 'tool-total-private',
+    privyUserId: 'other-credit-user',
+    clientId,
+    grantId: 'other-grant',
+    provider: 'helius',
+    tool: 'get_balance',
+    status: 'ok',
+    credits: 999,
+    durationMs: 20,
+    createdAt: Date.now(),
+  })
+  for (const [index, status, settledAtomic, reservedAtomic] of [
+    [0, 'paid', 10_000, 10_000],
+    [1, 'paid', 20_000, 20_000],
+    [2, 'reserved', null, 5_000],
+  ] as const) {
+    await drizzle(db)
+      .insert(paymentActivity)
+      .values({
+        id: `payment-total-${index}`,
+        privyUserId: userId,
+        clientId,
+        grantId: grant.grantId,
+        method: 'GET',
+        origin: 'https://merchant.example',
+        path: '/',
+        status,
+        settledAtomic,
+        reservedAtomic,
+        createdAt: Date.now(),
+      })
+  }
+  const clients = await listClients(db, userId)
+  expect(clients.find((client) => client.clientId === clientId)).toMatchObject({
+    estimatedCredits: 11,
+    spentMicroUsd: 30_000,
+    reservedMicroUsd: 5_000,
+  })
+  expect(
+    clients.find((client) => client.grantId === untouched.grantId)
+      ?.estimatedCredits,
+  ).toBe(0)
+  expect(
+    (await listClients(db, 'other-credit-user'))[0]?.estimatedCredits,
+  ).toBe(999)
+  await revokeGrant(db, userId, grant.grantId)
+  await connect(userId, clientId)
+  expect(
+    (await listClients(db, userId)).find(
+      (client) => client.clientId === clientId,
+    ),
+  ).toMatchObject({
+    estimatedCredits: 11,
+    spentMicroUsd: 30_000,
+    reservedMicroUsd: 5_000,
+  })
 })

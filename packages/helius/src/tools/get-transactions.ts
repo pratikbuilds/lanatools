@@ -5,6 +5,7 @@ import { signatureInput } from '../input'
 import { HeliusError } from '../errors'
 import { record } from '../format'
 import { transactionSummary } from '../transactions'
+import { parsedTransactions } from '../parsed-events'
 
 export const getTransactions = defineTool({
   name: 'get_transactions',
@@ -18,6 +19,20 @@ export const getTransactions = defineTool({
     })
     .strict(),
   async run(ctx, input) {
+    if (ctx.cluster === 'mainnet') {
+      const result = await ctx.parsedEvents('transactions', {
+        transactions: input.signatures,
+        commitment: 'confirmed',
+        includeRawTransaction: true,
+      })
+      return {
+        transactions: parsedTransactions(
+          result,
+          input.signatures,
+          input.detail === 'full',
+        ),
+      }
+    }
     const signatures = input.signatures.map(signature)
     const statuses = await ctx.rpc
       .getSignatureStatuses(signatures, { searchTransactionHistory: true })

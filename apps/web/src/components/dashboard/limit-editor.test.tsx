@@ -14,6 +14,7 @@ const codex: McpClient = {
   limitMicroUsd: 1_000_000,
   spentMicroUsd: 340_000,
   reservedMicroUsd: 0,
+  estimatedCredits: 0,
 }
 
 function render(client: McpClient, balanceMicroUsd: number | undefined) {

@@ -129,3 +129,31 @@ export const paymentActivity = sqliteTable(
     ),
   ],
 )
+
+/** One row per authorized tool invocation; inputs and results are never stored. */
+export const toolActivity = sqliteTable(
+  'tool_activity',
+  {
+    id: text('id').primaryKey(),
+    privyUserId: text('privy_user_id').notNull(),
+    clientId: text('client_id').notNull(),
+    grantId: text('grant_id').notNull(),
+    provider: text('provider').notNull(),
+    tool: text('tool').notNull(),
+    // Null when network verification failed; never copy an unverified label.
+    network: text('network', { enum: ['devnet', 'mainnet'] }),
+    status: text('status', { enum: ['ok', 'failed'] }).notNull(),
+    credits: integer('credits').notNull().default(0),
+    errorCode: text('error_code'),
+    durationMs: integer('duration_ms').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [
+    index('tool_activity_user_time').on(
+      table.privyUserId,
+      table.createdAt,
+      table.id,
+    ),
+    index('tool_activity_user_client').on(table.privyUserId, table.clientId),
+  ],
+)

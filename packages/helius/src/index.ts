@@ -5,11 +5,20 @@ import type { HeliusErrorCode } from './errors'
 import { jsonSafe } from './format'
 import { getAccounts } from './tools/get-accounts'
 import { getTransactions } from './tools/get-transactions'
+import { getWalletHoldings } from './tools/get-wallet-holdings'
+import { getTokenInfo } from './tools/get-token-info'
+import { getTransactionHistory } from './tools/get-transaction-history'
 
 export { defineTool } from './tool'
 export type { HeliusTool } from './tool'
 export type { HeliusOptions } from './client'
-export const heliusTools = [getAccounts, getTransactions] as const
+export const heliusTools = [
+  getAccounts,
+  getTransactions,
+  getWalletHoldings,
+  getTokenInfo,
+  getTransactionHistory,
+] as const
 export type HeliusOutcome =
   | { ok: true; result: Record<string, unknown>; credits: number }
   | {

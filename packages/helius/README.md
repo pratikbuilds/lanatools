@@ -11,7 +11,7 @@ const outcome = await runHeliusTool(
 // { ok: true, result, credits } or { ok: false, error: { code, message }, credits }
 ```
 
-The caller supplies `rpcUrl`; agents cannot choose a network or URL through tool input. API keys never enter output, exceptions, or tool descriptions. This package defines the two tools but is not yet called or registered by the API or MCP apps.
+The server supplies its existing `SOLANA_RPC_URL`; agents cannot choose a network or URL. Read tools trust the server's network configuration without a genesis-hash probe; payments independently verify that their RPC serves devnet. API keys never enter output, exceptions, or tool descriptions.
 
 ## Read order
 
@@ -27,7 +27,7 @@ Adding a tool means exporting it in `heliusTools`; `runHeliusTool` handles valid
 
 Amounts are decimal strings, avoiding floating-point rounding. Known parsed token account data is returned; unknown accounts expose byte size only. Transactions include `found:false` when RPC returns no confirmed transaction; this is not proof a submitted signature will never land. `detail:full` adds instructions. Version 0 is the current explicit transaction-version ceiling.
 
-Credits are estimates, not a provider invoice: each successful RPC request adds 1. A failed request adds zero, but earlier successful calls in a partially failed tool run remain counted. There are no read quotas or payment charges in this package. Requests are not automatically retried, and transaction batches are sequential to avoid bursts on the shared plan.
+Credits are estimates, not a provider invoice: each successful standard RPC request adds 1. A failed request adds zero, but earlier successful calls in a partially failed tool run remain counted. The API records credits in its activity ledger and omits them from tool responses. There are no read quotas or payment charges in this package. Requests are not automatically retried, and transaction batches are sequential to avoid bursts on the shared plan.
 
 ## Verify
 

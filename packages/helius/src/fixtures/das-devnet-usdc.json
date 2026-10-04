@@ -1,0 +1,16 @@
+{
+  "jsonrpc": "2.0",
+  "id": "lanatools",
+  "result": {
+    "id": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+    "interface": "FungibleToken",
+    "mutable": true,
+    "token_info": {
+      "decimals": 6,
+      "supply": 100000000000000001,
+      "token_program": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "mint_authority": "11111111111111111111111111111111",
+      "freeze_authority": null
+    }
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "jsonrpc": "2.0",
+  "id": "lanatools",
+  "result": {
+    "total": 4,
+    "limit": 20,
+    "cursor": "upstream-next-page",
+    "nativeBalance": {
+      "lamports": 2500000000,
+      "price_per_sol": 100,
+      "total_price": 250
+    },
+    "items": [
+      {
+        "id": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "interface": "FungibleToken",
+        "content": { "metadata": { "name": "USD Coin", "symbol": "USDC" } },
+        "token_info": {
+          "balance": 12345678,
+          "decimals": 6,
+          "token_program": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "price_info": {
+            "price_per_token": 1,
+            "total_price": 12.345678,
+            "currency": "USDC"
+          }
+        }
+      },
+      {
+        "id": "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+        "interface": "FungibleAsset",
+        "content": {
+          "metadata": {
+            "name": "Synthetic Token-2022 Fixture",
+            "symbol": "FIX"
+          }
+        },
+        "token_info": {
+          "balance": 9007199254740993,
+          "supply": 18446744073709551615,
+          "decimals": 9,
+          "token_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        }
+      },
+      {
+        "id": "F9Lw3ki3hJ7PF9HQXsBzoY8GyE6sPoEZZdXJBsTTD2rk",
+        "interface": "ProgrammableNFT",
+        "content": { "metadata": { "name": "Fixture NFT", "symbol": "NFT" } },
+        "compression": { "compressed": true },
+        "grouping": [
+          {
+            "group_key": "collection",
+            "group_value": "J1S9H3QjnRtBbbuD4HjPV6RpRhwuk4zKbxsnCHuTgh9w",
+            "verified": true
+          }
+        ],
+        "creators": [
+          {
+            "address": "11111111111111111111111111111111",
+            "share": 100,
+            "verified": true
+          }
+        ],
+        "mutable": false,
+        "token_info": { "supply": 1, "decimals": 0 }
+      },
+      {
+        "id": "So11111111111111111111111111111111111111112",
+        "interface": "FungibleToken",
+        "token_info": {
+          "balance": 0,
+          "decimals": 9,
+          "token_program": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      }
+    ]
+  }
+}

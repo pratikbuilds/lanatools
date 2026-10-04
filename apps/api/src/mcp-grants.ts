@@ -3,7 +3,12 @@ import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
 import { isClientLimit, isMcpScope } from '@lanatools/contracts'
 import type { McpClient, McpScope } from '@lanatools/contracts'
-import { mcpConsent, mcpGrant, paymentActivity } from './db/schema'
+import {
+  mcpConsent,
+  mcpGrant,
+  paymentActivity,
+  toolActivity,
+} from './db/schema'
 
 export type ConsentInput = {
   handle: string
@@ -256,6 +261,19 @@ export async function listClients(
     .where(eq(paymentActivity.privyUserId, userId))
     .groupBy(paymentActivity.clientId)
     .as('totals')
+  // Aggregate each ledger before joining to avoid multiplying payment spend
+  // by the number of tool calls. Credit history also survives reconnects.
+  const toolTotals = db
+    .select({
+      clientId: toolActivity.clientId,
+      estimatedCredits: sql<
+        number | null
+      >`coalesce(sum(${toolActivity.credits}), 0)`.as('estimated_credits'),
+    })
+    .from(toolActivity)
+    .where(eq(toolActivity.privyUserId, userId))
+    .groupBy(toolActivity.clientId)
+    .as('tool_totals')
   const rows = await db
     .select({
       grantId: mcpGrant.id,
@@ -266,12 +284,14 @@ export async function listClients(
       limitMicroUsd: mcpGrant.limitMicroUsd,
       spent: totals.spent,
       reserved: totals.reserved,
+      estimatedCredits: toolTotals.estimatedCredits,
       createdAt: mcpGrant.createdAt,
       activatedAt: mcpGrant.activatedAt,
       lastUsedAt: mcpGrant.lastUsedAt,
     })
     .from(mcpGrant)
     .leftJoin(totals, eq(totals.clientId, mcpGrant.clientId))
+    .leftJoin(toolTotals, eq(toolTotals.clientId, mcpGrant.clientId))
     .where(and(eq(mcpGrant.privyUserId, userId), eq(mcpGrant.status, 'active')))
     .orderBy(desc(mcpGrant.createdAt))
   return rows.map((row) => ({
@@ -285,6 +305,7 @@ export async function listClients(
     limitMicroUsd: row.limitMicroUsd,
     spentMicroUsd: row.spent ?? 0,
     reservedMicroUsd: row.reserved ?? 0,
+    estimatedCredits: row.estimatedCredits ?? 0,
   }))
 }
 

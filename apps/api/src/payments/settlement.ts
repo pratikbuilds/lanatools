@@ -7,7 +7,7 @@ import {
 import type { Signature } from '@solana/kit'
 import { Receipt } from 'mppx'
 import type { FixedCharge } from './challenge'
-import { RPC_TIMEOUT_MS } from './network'
+import { RPC_TIMEOUT_MS } from '../solana/network'
 
 const SIGNATURE = /^[1-9A-HJ-NP-Za-km-z]{64,88}$/
 

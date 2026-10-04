@@ -19,6 +19,7 @@ export const MCP_SCOPES = [
   'account:read',
   'payments:pay',
   'jupiter:read',
+  'chain:read',
 ] as const
 export type McpScope = (typeof MCP_SCOPES)[number]
 
@@ -76,6 +77,8 @@ export const McpClient = type({
   limitMicroUsd: 'number',
   spentMicroUsd: 'number',
   reservedMicroUsd: 'number',
+  /** Estimated provider credits across this client's tool calls. */
+  estimatedCredits: 'number',
 })
 export type McpClient = typeof McpClient.infer
 
@@ -85,37 +88,51 @@ export type McpClientList = typeof McpClientList.infer
 export const ClientLimitUpdate = type({ limitUsd: 'string' })
 export type ClientLimitUpdate = typeof ClientLimitUpdate.infer
 
-/**
- * One call as the dashboard shows it. A call is listed once it has ended:
- * paid for, free because the endpoint asked for nothing, refused by
- * LanaTools before anything was signed, or failed because the endpoint
- * could not be reached.
- */
-export const ActivityItem = type({
+/** Fields shared by payment requests and provider tool calls. */
+const ActivityIdentity = type({
   id: 'string',
   clientId: 'string',
   clientName: 'string | null',
   /** False once the user has disconnected the client. */
   connected: 'boolean',
+  network: 'string | null',
+  /** A recorded failure reason or a safe provider error code. */
+  reason: 'string | null',
+  createdAt: 'number',
+})
+
+/** A completed payment request; unsettled reservations stay out of the feed. */
+export const PaymentActivityItem = ActivityIdentity.and({
+  kind: "'payment'",
   method: 'string',
   origin: 'string',
   path: 'string',
   protocol: "'mpp' | 'x402' | null",
   outcome: "'paid' | 'free' | 'refused' | 'failed'",
-  network: 'string | null',
   /** What a paid call settled for; null on every other call. */
   amountMicroUsd: 'number | null',
   signature: 'string | null',
   httpStatus: 'number | null',
-  /** Why a call was refused or failed, as recorded when it happened. */
-  reason: 'string | null',
-  createdAt: 'number',
 })
+export type PaymentActivityItem = typeof PaymentActivityItem.infer
+
+/** A provider tool call. Credits are estimates, never a wallet charge. */
+export const ToolActivityItem = ActivityIdentity.and({
+  kind: "'tool'",
+  tool: 'string',
+  provider: 'string',
+  outcome: "'ok' | 'failed'",
+  estimatedCredits: 'number',
+  durationMs: 'number',
+})
+export type ToolActivityItem = typeof ToolActivityItem.infer
+
+export const ActivityItem = PaymentActivityItem.or(ToolActivityItem)
 export type ActivityItem = typeof ActivityItem.infer
 
 export const ActivityQuery = type({
   'client?': 'string',
-  'outcome?': "'paid' | 'free' | 'refused' | 'failed'",
+  'outcome?': "'paid' | 'free' | 'refused' | 'failed' | 'ok'",
   'before?': 'string',
 })
 export type ActivityQuery = typeof ActivityQuery.infer
@@ -128,6 +145,7 @@ export const ActivityPage = type({
   totals: {
     calls: 'number',
     spentMicroUsd: 'number',
+    estimatedCredits: 'number',
   },
 })
 export type ActivityPage = typeof ActivityPage.infer
