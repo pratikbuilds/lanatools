@@ -1,6 +1,8 @@
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import { PrivyClient } from '@privy-io/node'
 import type { D1Database } from '@cloudflare/workers-types'
+import type { JupiterRequest } from '@lanatools/jupiter'
+import { readJupiter } from './jupiter'
 import { PayHttpError, payHttp, payKitPayer } from './payments/pay-http'
 import type { PayHttpInput, PayHttpResult } from './payments/pay-http'
 import { paymentConfig } from './payments/network'
@@ -26,6 +28,8 @@ export type McpTokenRevoker = {
 }
 
 export type McpEnv = PaymentEnv & {
+  /** Server-managed Jupiter REST key; never exposed to MCP clients. */
+  JUPITER_API_KEY?: string
   DB: D1Database
   PRIVY_APP_ID: string
   PRIVY_APP_SECRET: string
@@ -79,6 +83,20 @@ export async function revokeClient(
 }
 
 export class McpAccessService extends WorkerEntrypoint<McpEnv> {
+  async readJupiter(
+    grantId: string,
+    userId: string,
+    clientId: string,
+    request: JupiterRequest,
+  ) {
+    return readJupiter(
+      this.env.DB,
+      { grantId, userId, clientId },
+      request,
+      this.env.JUPITER_API_KEY,
+    )
+  }
+
   async recordConsent(input: ConsentInput) {
     await recordConsent(this.env.DB, input)
   }

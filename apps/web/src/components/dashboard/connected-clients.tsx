@@ -18,6 +18,7 @@ import { useWalletBalances } from './wallet-panel'
 const SCOPE_LABELS: Record<string, string> = {
   'account:read': 'See your LanaTools account ID',
   'payments:pay': 'Pay from your wallet within its limit',
+  'jupiter:read': 'Read Jupiter token information and prices',
 }
 
 const ROW =

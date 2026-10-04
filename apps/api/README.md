@@ -22,6 +22,15 @@ uses `lanatools-production` through `wrangler.jsonc`. Apply new migrations with
 smoke routes to the local Worker only. `src/index.ts` still serves the API on Bun
 for the existing health test and manual startup; it does not have D1.
 
+## Jupiter reads
+
+`McpAccessService.readJupiter` executes the token-research tools through
+`@lanatools/jupiter`. It verifies the current grant's account, client, active
+status and `jupiter:read` scope before any provider call. Supply `JUPITER_API_KEY`
+as an API Worker secret (ignored `.dev.vars` locally). A missing server key
+returns a configuration error without asking the user for credentials.
+This adds no database migration or wallet-authentication flow.
+
 ## Early-access list
 
 `POST /api/early-access` accepts `{ "email": "you@example.com" }`. The shared

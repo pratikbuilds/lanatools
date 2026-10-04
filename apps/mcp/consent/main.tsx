@@ -140,6 +140,15 @@ function Connect() {
                 {pending.scopes.includes('account:read') && (
                   <strong>Read account identity</strong>
                 )}
+                {pending.scopes.includes('jupiter:read') && (
+                  <>
+                    <strong>Jupiter access</strong>
+                    <span>
+                      Read token information, discovery lists and reference
+                      prices.
+                    </span>
+                  </>
+                )}
                 {payments ? (
                   <>
                     <strong>Pay for requests from your wallet</strong>
