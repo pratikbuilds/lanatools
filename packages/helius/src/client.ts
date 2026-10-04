@@ -5,6 +5,7 @@ import {
   stringifyJsonWithBigInts,
 } from '@solana/rpc-spec-types'
 import { HeliusError } from './errors'
+import { createCursorCodec } from './cursor'
 import { record } from './format'
 
 export type HeliusOptions = { rpcUrl: string; fetch?: typeof fetch }
@@ -18,6 +19,12 @@ export function createHeliusClient(options: HeliusOptions) {
   }
   if (!['https:', 'http:'].includes(url.protocol))
     throw new HeliusError('upstream_error')
+  const cluster =
+    url.hostname === 'mainnet.helius-rpc.com'
+      ? 'mainnet'
+      : url.hostname === 'devnet.helius-rpc.com'
+        ? 'devnet'
+        : 'unknown'
   const request = options.fetch ?? fetch
   let credits = 0
   async function post(
@@ -85,6 +92,15 @@ export function createHeliusClient(options: HeliusOptions) {
     )
     return record(result).result
   }
+  async function parsedEvents(
+    endpoint: 'transactions' | 'transaction-history',
+    input: unknown,
+  ) {
+    if (cluster !== 'mainnet') throw new HeliusError('upstream_error')
+    const target = new URL(`/v1/parsed-events/${endpoint}`, url.origin)
+    target.search = url.search
+    return post(target, input, 10, false)
+  }
   /** Strip both the URL and key even if a hostile provider echoes them in a result. */
   function redact(value: unknown): unknown {
     if (typeof value === 'string') {
@@ -106,8 +122,11 @@ export function createHeliusClient(options: HeliusOptions) {
     return value
   }
   return {
+    cursor: createCursorCodec(options.rpcUrl),
     rpc,
     jsonRpc,
+    parsedEvents,
+    cluster,
     redact,
     get credits() {
       return credits

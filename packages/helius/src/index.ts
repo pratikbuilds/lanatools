@@ -7,6 +7,7 @@ import { getAccounts } from './tools/get-accounts'
 import { getTransactions } from './tools/get-transactions'
 import { getWalletHoldings } from './tools/get-wallet-holdings'
 import { getTokenInfo } from './tools/get-token-info'
+import { getTransactionHistory } from './tools/get-transaction-history'
 
 export { defineTool } from './tool'
 export type { HeliusTool } from './tool'
@@ -16,6 +17,7 @@ export const heliusTools = [
   getTransactions,
   getWalletHoldings,
   getTokenInfo,
+  getTransactionHistory,
 ] as const
 export type HeliusOutcome =
   | { ok: true; result: Record<string, unknown>; credits: number }
