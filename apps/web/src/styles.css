@@ -384,6 +384,13 @@ body {
   --d-heat-4: #d9ff4a;
   color-scheme: dark;
 }
+/* The page behind the frame, seen when it overscrolls. */
+body:has(.dash) {
+  background: #f3efe6;
+}
+body:has(.dash[data-theme='dark']) {
+  background: #08090c;
+}
 .dash :focus-visible {
   outline-color: var(--d-focus);
 }
