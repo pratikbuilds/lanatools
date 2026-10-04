@@ -1,6 +1,10 @@
+import { NETWORK } from '#/lib/solana'
 import { LatestActivity } from './activity'
+import { ConnectClientButton } from './connect-client'
 import { ConnectedClients } from './connected-clients'
+import { PageHead } from './page-head'
 import { useDashboardSession } from './session'
+import { SolanaMark } from './solana-mark'
 import { CreateWallet, WalletPanel } from './wallet-panel'
 
 /**
@@ -16,7 +20,15 @@ export function WalletPage({
   const { walletAddress } = useDashboardSession()
   return (
     <>
-      <h1 className="pt-9 text-[22px] font-bold tracking-[-0.03em]">Wallet</h1>
+      <PageHead title="Wallet">
+        <span className="d-chip">
+          <SolanaMark />
+          {NETWORK.label}
+        </span>
+        <div className="sm:ml-auto">
+          <ConnectClientButton />
+        </div>
+      </PageHead>
       {walletAddress ? (
         <WalletPanel walletAddress={walletAddress} />
       ) : (

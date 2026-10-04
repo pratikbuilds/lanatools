@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { BrandMark, Wordmark } from '#/components/landing/brand'
+import { Frame } from './frame'
 
 // Navigation holds destinations only. Wallet data lives on the pages.
 const DESTINATIONS = [
@@ -11,52 +11,52 @@ const DESTINATIONS = [
 ] as const
 
 export function DashboardShell({
-  account,
-  onSignOut,
-  signOutFailed,
+  session,
+  status,
   children,
 }: {
-  account: string | undefined
-  onSignOut: () => void
-  signOutFailed: boolean
+  /** Who is signed in; left out while that is still being checked. */
+  session?: {
+    account: string | undefined
+    onSignOut: () => void
+    signOutFailed: boolean
+  }
+  /** The status bar's cells. */
+  status: { start: ReactNode; end?: ReactNode }
   children: ReactNode
 }) {
   return (
-    <div className="on-paper min-h-screen bg-paper text-[13.5px] text-ink">
-      <header className="bg-blue text-paper">
-        <div className="mx-auto flex h-[60px] w-full max-w-[66rem] items-center gap-3 px-4 sm:gap-7 sm:px-7">
-          <a href="/" aria-label="lanatools home">
-            <span className="hidden sm:block">
-              <Wordmark size={24} />
-            </span>
-            <span className="sm:hidden">
-              <BrandMark size={24} />
-            </span>
-          </a>
-          <nav aria-label="Main" className="flex gap-1">
-            {DESTINATIONS.map(({ to, label, exact }) => (
-              <Link
-                key={to}
-                to={to}
-                // A filtered Activity page is still the Activity page.
-                activeOptions={{ exact, includeSearch: false }}
-                className="flex h-8 items-center rounded-[6px] px-3 text-[13px] text-paper-2 hover:bg-white/10 hover:text-paper focus-visible:outline-lime aria-[current=page]:bg-paper aria-[current=page]:font-bold aria-[current=page]:text-ink"
-              >
-                {label}
-              </Link>
-            ))}
-          </nav>
-          <AccountMenu
-            account={account}
-            onSignOut={onSignOut}
-            signOutFailed={signOutFailed}
+    <Frame
+      status={status}
+      mainClassName="pt-5 pb-12 sm:pt-7"
+      nav={
+        <nav aria-label="Main" className="flex self-stretch sm:gap-1.5">
+          {DESTINATIONS.map(({ to, label, exact }) => (
+            <Link
+              key={to}
+              to={to}
+              // A filtered Activity page is still the Activity page.
+              activeOptions={{ exact, includeSearch: false }}
+              className="relative flex items-center px-2 font-mono text-[13px] font-medium text-hdr-dim transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-[3px] after:scale-x-0 after:rounded-t-[3px] after:bg-paper after:transition-transform hover:text-paper focus-visible:outline-lime aria-[current=page]:font-semibold aria-[current=page]:text-paper aria-[current=page]:after:scale-x-100 sm:px-3 sm:after:inset-x-3"
+            >
+              {label}
+            </Link>
+          ))}
+        </nav>
+      }
+      actions={
+        session ? (
+          <AccountMenu {...session} />
+        ) : (
+          <span
+            aria-hidden="true"
+            className="d-hdr-pill w-[34px] animate-pulse opacity-60 sm:w-[150px]"
           />
-        </div>
-      </header>
-      <main className="mx-auto w-full max-w-[66rem] px-4 pb-24 sm:px-7">
-        {children}
-      </main>
-    </div>
+        )
+      }
+    >
+      {children}
+    </Frame>
   )
 }
 
@@ -93,14 +93,14 @@ export function AccountMenu({
   }, [open])
 
   return (
-    <div ref={root} className="relative ml-auto">
+    <div ref={root} className="relative">
       <button
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={account ? `Account, ${account}` : 'Account'}
         onClick={() => setOpen(!open)}
-        className="flex h-[34px] items-center gap-2 rounded-full border-[1.5px] border-paper-2/50 pr-2 pl-1 text-[12.5px] text-paper hover:border-paper focus-visible:outline-lime aria-expanded:border-paper sm:pr-3"
+        className="d-hdr-pill pr-2 pl-1 focus-visible:outline-lime sm:pr-3"
       >
         <span
           aria-hidden="true"
@@ -121,26 +121,23 @@ export function AccountMenu({
       {open && (
         <div
           role="menu"
-          className="absolute top-[42px] right-0 z-10 min-w-64 rounded-[10px] border-[1.5px] border-ink bg-card px-4 pt-3.5 pb-4 text-ink shadow-[4px_4px_0_0_var(--color-ink)]"
+          className="absolute top-[42px] right-0 z-10 min-w-64 rounded-[10px] border border-line bg-panel px-4 pt-3.5 pb-4 text-fg shadow-(--d-shadow)"
         >
           {account && (
             <>
-              <p className="text-[12px] text-mute">Signed in as</p>
-              <p className="mb-3.5 font-bold break-words">{account}</p>
+              <p className="d-label">Signed in as</p>
+              <p className="mt-1 mb-3.5 font-semibold break-words">{account}</p>
             </>
           )}
           <button
             type="button"
             role="menuitem"
-            className="btn btn-flat"
+            className="d-btn d-btn-sm"
             onClick={onSignOut}
           >
             Sign out
           </button>
-          <p
-            role="alert"
-            className="mt-2 text-[12.5px] text-coral-ink empty:hidden"
-          >
+          <p role="alert" className="mt-2 text-[12.5px] text-bad empty:hidden">
             {signOutFailed ? 'Sign-out failed. Try again.' : ''}
           </p>
         </div>

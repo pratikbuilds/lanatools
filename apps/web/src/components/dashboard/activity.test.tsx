@@ -159,7 +159,7 @@ test('the chart has a square for each charted day, darkest for the busiest', () 
   expect(html.match(/<span title=/g)).toHaveLength(84)
   expect(html).toContain('Oct 2: 8 calls, $0.04 spent')
   expect(html).toContain('Oct 1: 1 call, $0.00 spent')
-  expect(html.match(/bg-rule/g)).toHaveLength(82)
+  expect(html.match(/bg-panel-2/g)).toHaveLength(82)
 })
 
 const tool: ActivityItem = {

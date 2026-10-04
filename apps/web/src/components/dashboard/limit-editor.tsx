@@ -82,14 +82,14 @@ export function LimitEditor({
         void save()
       }}
     >
-      <p className="text-[12px] text-mute">Spending limit</p>
+      <p className="d-label">Spending limit</p>
       <AnimatedCounter
         value={limit / 1_000_000}
         decimals={decimalsFor(limit)}
         prefix="$"
-        className="mt-1.5 mb-1 text-[3.2rem] leading-none font-bold tracking-[-0.05em]"
+        className="mt-3 mb-2 font-mono text-[3rem] leading-none font-semibold tracking-[-0.05em]"
       />
-      <p className="text-[12px] text-mute">
+      <p className="font-mono text-[12px] text-fg-3">
         {formatUsd(Math.max(0, limit - used))} left after {formatUsd(used)} used
       </p>
 
@@ -102,11 +102,11 @@ export function LimitEditor({
         />
       )}
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-1.5 font-semibold">
-          $
+      <div className="mt-5 flex flex-wrap items-center gap-2">
+        <label className="flex h-[34px] items-center gap-1 rounded-[9px] border border-line-2 bg-surface pl-3 font-mono font-semibold has-aria-invalid:border-bad has-focus-visible:border-accent">
+          <span className="text-fg-3">$</span>
           <input
-            className="h-[34px] w-32 rounded-[6px] border-[1.5px] border-ink bg-white px-2.5 font-semibold aria-invalid:border-coral-ink"
+            className="h-full w-28 rounded-r-[9px] bg-transparent pr-2.5 font-mono font-semibold outline-none"
             inputMode="decimal"
             aria-label="New spending limit in USD"
             aria-invalid={typed === null}
@@ -117,15 +117,12 @@ export function LimitEditor({
         </label>
         <button
           type="submit"
-          className="btn btn-flat btn-primary disabled:cursor-not-allowed disabled:opacity-50"
+          className="d-btn d-btn-primary"
           disabled={typed === null || saving}
         >
           {saving ? 'Saving…' : 'Save limit'}
         </button>
-        <p
-          role="alert"
-          className="w-full text-[12px] text-coral-ink empty:hidden"
-        >
+        <p role="alert" className="w-full text-[12px] text-bad empty:hidden">
           {typed === null
             ? `Enter an amount up to ${formatUsd(MAX_CLIENT_LIMIT_MICRO_USD)}.`
             : failed
@@ -134,7 +131,7 @@ export function LimitEditor({
                 ? `${name} has already used ${formatUsd(used)}. It cannot pay until the limit is higher.`
                 : ''}
         </p>
-        <p className="w-full text-[12px] text-mute empty:hidden">
+        <p className="w-full text-[12px] text-fg-3 empty:hidden">
           {typed !== null &&
           top !== undefined &&
           balanceMicroUsd !== undefined &&
@@ -171,7 +168,7 @@ function LimitRuler({
 
   return (
     <>
-      <div className="relative mt-5 h-[34px] rounded-[8px] has-focus-visible:outline-2 has-focus-visible:outline-offset-[5px] has-focus-visible:outline-blue">
+      <div className="relative mt-5 h-[46px] rounded-[9px] border border-line bg-surface px-3 pt-1.5 pb-2 has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-accent">
         <div
           aria-hidden="true"
           className="flex h-full items-end justify-between"
@@ -181,8 +178,8 @@ function LimitRuler({
               key={tick}
               className={`rounded-[1px] transition-[height,background-color] duration-200 motion-reduce:transition-none ${
                 tick === at
-                  ? '-mx-[0.5px] h-[30px] w-[3px] bg-blue'
-                  : `h-[18px] w-[2px] ${tick < at ? 'bg-ink' : 'bg-rule'}`
+                  ? '-mx-[0.5px] h-[30px] w-[3px] bg-fg'
+                  : `h-[18px] w-[2px] ${tick < at ? 'bg-tick' : 'bg-line-2'}`
               }`}
             />
           ))}
@@ -207,7 +204,7 @@ function LimitRuler({
           className="absolute inset-0 m-0 size-full cursor-ew-resize opacity-0"
         />
       </div>
-      <div className="mt-1.5 flex justify-between text-[12px] text-mute">
+      <div className="mt-2 flex justify-between font-mono text-[11.5px] text-fg-3">
         <span>$0</span>
         <span>
           {formatUsd(top)}

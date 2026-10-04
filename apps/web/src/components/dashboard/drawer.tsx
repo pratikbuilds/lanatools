@@ -36,7 +36,7 @@ export function Drawer({
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose()
       }}
-      className="m-0 ml-auto h-dvh max-h-none w-[min(28rem,100vw)] max-w-none border-l-[1.5px] border-ink bg-card p-0 text-ink backdrop:bg-ink/30"
+      className="m-0 ml-auto h-dvh max-h-none w-[min(28rem,100vw)] max-w-none border-l border-line bg-panel p-0 text-fg backdrop:bg-(--d-scrim)"
     >
       {open && (
         <div className="min-h-full px-6 pt-5 pb-8 sm:px-7">{children}</div>
@@ -55,18 +55,16 @@ export function DrawerHeader({
   onClose: () => void
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 pb-5">
+    <div className="-mx-6 mb-6 flex items-start justify-between gap-4 border-b border-dashed border-line-2 px-6 pb-5 sm:-mx-7 sm:px-7">
       <div className="min-w-0">
-        <p className="text-[12px] text-mute">{detail}</p>
-        <h2 className="text-[18px] font-bold tracking-tight break-words">
+        <p className="font-mono text-[11.5px] break-words text-fg-3">
+          {detail}
+        </p>
+        <h2 className="mt-1 font-mono text-[17px] font-semibold tracking-tight break-words">
           {title}
         </h2>
       </div>
-      <button
-        type="button"
-        className="text-[12.5px] font-semibold underline underline-offset-[3px]"
-        onClick={onClose}
-      >
+      <button type="button" className="d-btn d-btn-sm" onClick={onClose}>
         Close
       </button>
     </div>
@@ -80,13 +78,16 @@ export function DrawerFacts({
   facts: Array<[label: string, value: ReactNode]>
 }) {
   return (
-    <dl className="mt-5 grid grid-cols-[8.5rem_minmax(0,1fr)] border-t border-rule text-[13.5px]">
+    <dl className="mt-6 grid grid-cols-[8.5rem_minmax(0,1fr)] overflow-hidden rounded-[10px] border border-line text-[13.5px]">
       {facts.map(([label, value]) => (
-        <div key={label} className="col-span-2 grid grid-cols-subgrid">
-          <dt className="border-b border-rule py-2.5 text-[12px] text-mute">
+        <div
+          key={label}
+          className="col-span-2 grid grid-cols-subgrid border-b border-line last:border-b-0"
+        >
+          <dt className="d-th d-label flex items-center px-3.5 py-2.5">
             {label}
           </dt>
-          <dd className="border-b border-rule py-2.5 break-words">{value}</dd>
+          <dd className="px-3.5 py-2.5 break-words">{value}</dd>
         </div>
       ))}
     </dl>
