@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "id": "lanatools",
+  "result": {
+    "total": 0,
+    "limit": 20,
+    "cursor": "",
+    "nativeBalance": { "lamports": 0 },
+    "items": []
+  }
+}
