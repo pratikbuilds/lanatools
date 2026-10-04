@@ -13,6 +13,7 @@
     "@lanatools/catalog": "workspace:*",
     "@lanatools/contracts": "workspace:*",
     "@lanatools/jupiter": "workspace:*",
+    "@lanatools/phoenix": "workspace:*",
     "@modelcontextprotocol/server": "2.0.0",
     "@privy-io/react-auth": "^3.45.0",
     "agents": "0.24.0",
