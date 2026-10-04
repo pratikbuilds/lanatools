@@ -37,6 +37,7 @@
       "name": "@lanatools/mcp",
       "dependencies": {
         "@cloudflare/workers-oauth-provider": "1.1.0",
+        "@lanatools/catalog": "workspace:*",
         "@lanatools/contracts": "workspace:*",
         "@modelcontextprotocol/server": "2.0.0",
         "@privy-io/react-auth": "^3.45.0",
@@ -92,6 +93,12 @@
         "@types/react-dom": "19.3.0",
         "@vitejs/plugin-react": "6.1.1",
         "vite": "8.3.0",
+      },
+    },
+    "packages/catalog": {
+      "name": "@lanatools/catalog",
+      "dependencies": {
+        "zod": "4.4.3",
       },
     },
     "packages/contracts": {
@@ -414,6 +421,8 @@
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.9", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.0.3", "@jridgewell/sourcemap-codec": "^1.4.10" } }, "sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ=="],
 
     "@lanatools/api": ["@lanatools/api@workspace:apps/api"],
+
+    "@lanatools/catalog": ["@lanatools/catalog@workspace:packages/catalog"],
 
     "@lanatools/contracts": ["@lanatools/contracts@workspace:packages/contracts"],
 

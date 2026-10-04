@@ -8,5 +8,6 @@ playwright-report/
 test-results/
 licenses/
 specs/
+packages/catalog/data/
 docs/design/dashboard-concepts/*.html
 docs/design/dashboard-concepts/*.js
