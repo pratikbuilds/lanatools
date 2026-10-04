@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "1.1.0",
+    "@lanatools/catalog": "workspace:*",
     "@lanatools/contracts": "workspace:*",
     "@modelcontextprotocol/server": "2.0.0",
     "@privy-io/react-auth": "^3.45.0",

@@ -1,6 +1,6 @@
 # Catalog package with Jev search
 
-Status, October 4, 2026: step 1 (the package, run locally) is built. Step 2 (connecting it to the MCP server) is not started.
+Status, October 4, 2026: built. The MCP catalog tools use the package; `search_catalog` uses Jev when `TYPESAFE_API_KEY` is set, with a 3 s timeout per TypeSafe request.
 
 ## Goal
 

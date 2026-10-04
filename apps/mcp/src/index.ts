@@ -16,24 +16,38 @@ import {
   parseClientLimit,
   parseUsd,
 } from '@lanatools/contracts'
+import {
+  CatalogError,
+  getCatalogEntry,
+  listCatalog,
+  localCatalog,
+  searchCatalog,
+} from '@lanatools/catalog'
 import { WorkerEntrypoint, env as bindings } from 'cloudflare:workers'
 import type {
   McpAccessService,
   McpTokenRevoker,
 } from '../../api/src/mcp-service'
-import {
-  CatalogError,
-  getCatalogEntry,
-  listCatalog,
-  searchCatalog,
-} from './catalog'
 import { completeApproval } from './complete-approval'
 import { revokeClientTokens } from './revoke-tokens'
 
 type McpEnv = Env & {
   OAUTH_PROVIDER: OAuthHelpers
   API: Service<typeof McpAccessService>
+  // A secret; without it, search_catalog ranks by keyword only.
+  TYPESAFE_API_KEY?: string
 }
+
+// Per TypeSafe request; a search makes two. Local runs measured a median of
+// 847 ms and a p95 of 1.1 s per whole search, so this only cuts off a stuck
+// request, after which search falls back to keyword ranking.
+const JEV_TIMEOUT_MS = 3000
+
+// get_catalog_entry reads an OpenAPI document live. The catalog is served
+// with `cache-control: max-age=60`; caching .json subrequests at the edge
+// needs cacheEverything.
+const cachedFetch = (url: string, init?: RequestInit) =>
+  fetch(url, { ...init, cf: { cacheEverything: true } })
 
 const Identity = z.object({
   grantId: z.uuid(),
@@ -132,7 +146,7 @@ function createServer(
       ].join(' '),
       annotations: catalogAnnotations,
     },
-    () => fromCatalog(() => listCatalog(fetch)),
+    () => fromCatalog(async () => listCatalog(localCatalog())),
   )
   server.registerTool(
     'search_catalog',
@@ -140,7 +154,8 @@ function createServer(
       title: 'Search the paid API catalog',
       description: [
         "Finds pay.sh catalog providers and endpoints for the user's task, such as web search, scraping, market data, image generation, or maps.",
-        'Describe the actual task, not just a category. Results are ranked by keyword match, with each provider’s best-matching endpoints and their exact URLs.',
+        'Describe the actual task, not just a category. Returns the providers that can do it, best first, each with its best-matching endpoints and their exact URLs.',
+        'An empty providers list means nothing in the catalog does this task: say so rather than retrying with looser words.',
         'Use a candidate only when its provider and endpoint clearly fit the task; call get_catalog_entry for the request shape before calling an endpoint.',
         untrusted,
       ].join(' '),
@@ -162,11 +177,17 @@ function createServer(
     },
     (input) =>
       fromCatalog(() =>
-        searchCatalog(fetch, {
-          query: input.query,
-          category: input.category,
-          maxResults: input.max_results,
-        }),
+        searchCatalog(
+          localCatalog(),
+          {
+            query: input.query,
+            category: input.category,
+            maxResults: input.max_results,
+          },
+          env.TYPESAFE_API_KEY
+            ? { apiKey: env.TYPESAFE_API_KEY, timeoutMs: JEV_TIMEOUT_MS }
+            : null,
+        ),
       ),
   )
   server.registerTool(
@@ -195,7 +216,7 @@ function createServer(
     },
     (input) =>
       fromCatalog(async () => {
-        const entry = await getCatalogEntry(fetch, input)
+        const entry = await getCatalogEntry(localCatalog(), cachedFetch, input)
         if (!entry)
           throw new CatalogError(
             `No catalog provider named ${input.fqn}; use search_catalog to find one`,
