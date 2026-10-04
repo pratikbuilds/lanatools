@@ -78,7 +78,8 @@ export class ReadContext {
             'x-api-key': this.options.apiKey,
             Accept: 'application/json',
           },
-          redirect: 'error',
+          // Workers support follow/manual only. Never forward the key on redirects.
+          redirect: 'manual',
           signal: controller.signal,
         })
         if (response.ok) {
@@ -89,8 +90,28 @@ export class ReadContext {
             throw unavailable()
           }
         }
-        // Never expose provider bodies: errors can contain credentials or HTML.
-        await response.body?.cancel()
+        // Recognize the documented no-route error without exposing provider text.
+        if (path === '/swap/v2/order' && response.status === 400) {
+          let body: unknown
+          try {
+            body = await response.json()
+          } catch {
+            /* Sanitized below. */
+          }
+          if (
+            isRecord(body) &&
+            typeof body.error === 'string' &&
+            /^(no routes? found|could not find any route)$/i.test(body.error)
+          )
+            throw new JupiterReadError({
+              code: 'no_route',
+              message: 'Jupiter found no route for this quote',
+              retryable: false,
+            })
+        } else {
+          // Never expose provider bodies: errors can contain credentials or HTML.
+          await response.body?.cancel()
+        }
         const seconds = retryAfter(response.headers.get('Retry-After'))
         const limited = response.status === 429
         failure = {
@@ -125,13 +146,17 @@ export class ReadContext {
     throw unavailable()
   }
 
-  tokens(value: unknown) {
+  records(value: unknown) {
     if (!Array.isArray(value)) throw unavailable()
     const records = value.filter(isRecord)
     if (records.length !== value.length)
       this.warnings.push(
-        'Jupiter returned non-object token entries; usable records were retained.',
+        'Jupiter returned non-object entries; usable records were retained.',
       )
     return records
+  }
+
+  tokens(value: unknown) {
+    return this.records(value)
   }
 }

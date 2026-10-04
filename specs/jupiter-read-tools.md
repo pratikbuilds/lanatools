@@ -2,7 +2,7 @@
 
 Issue: [ADI-217](<https://linear.app/0xpratik/issue/ADI-217/finalize-jupiter-mcp-read-tool-spec>)
 
-Status: first implementation slice is implemented: package foundation, token search/discovery/prices, grant checks and MCP registration. The other six tools remain follow-up slices. Authenticated live checks passed for all six implemented REST route templates through an in-memory MCP client; production configuration and deployed OAuth integration remain unverified. Pratik requested lighter validation and a dedicated package. This plan replaces the earlier validation-heavy approach. The proposed wallet-connect helper and browser wallet-authentication flow have been removed at Pratik’s request. The scope is nine tool names and 18 public-address/API-key read operations. Private Trigger V2 endpoints are removed from this issue.
+Status: all nine read tools are implemented in the dedicated `@lanatools/jupiter` package and registered through the existing grant/API/MCP path. All 18 REST route templates are covered by focused tests. Authenticated live checks passed for all 18 routes through a local MCP/Worker service-binding harness, covering 20 cases including both Borrow markets. Production configuration and deployed OAuth integration remain unverified. Validation is lightweight: documented caps and essential relationships only; wallet authentication and private Trigger V2 reads remain excluded.
 
 ## Package and application boundaries
 
@@ -115,7 +115,7 @@ Confirm all nine names are discoverable and the 18 enabled endpoints match the c
 
 Wire the new package into root `typecheck` and `test` scripts: the current scripts enumerate projects/test paths and will not automatically cover it. Add `workspace:*` imports to API/MCP and generate Worker binding types as needed.
 
-Run affected package and existing grant tests during each stage. At final integration, run the repository’s `bun run check`; record failures or unavailable checks. Live managed-key verification is separate from deterministic fixture tests. The first three tools passed authenticated live checks; the remaining six tools require their own verification as implemented. No paid or transaction smoke tests are part of this plan.
+Run affected package and existing grant tests during each stage. At final integration, run the repository’s `bun run check`; record failures or unavailable checks. Live managed-key verification is separate from deterministic fixture tests. All nine tools have focused route/behavior tests; live integration evidence is recorded below. No paid or transaction smoke tests are part of this plan.
 
 ## Focused verification
 
@@ -131,15 +131,19 @@ Use official examples as provisional fixtures and label them as such. Replace/ad
 
 ## Decisions and remaining evidence
 
-The dedicated package and lighter-validation approach are user-directed. All nine tools are planned here; the order tool supports only its two public legacy views. Private Trigger V2 reads and wallet authentication are outside this issue’s scope. Individual contract review remains one card at a time.
+The dedicated package and lighter-validation approach are user-directed. All nine tools are planned here; the order tool supports only its two public legacy views. Private Trigger V2 reads and wallet authentication are outside this issue’s scope. All nine tools share the existing Jupiter read grant.
 
-Before contract freeze, settle shared transport defaults and review the existing proposed 20-item operating caps for portfolio/lending inputs. Prefer documented upstream limits; do not silently present local caps as provider limits.
+Before contract freeze, settle shared transport defaults and use documented upstream limits for portfolio/lending inputs. The implementation removes the provisional 20-item caps; it does not expose custom RPC URLs.
 
 Provider discrepancies to record/resolve: portfolio fetcher status enum/example; Earn earnings object/array; Earn rate units; legacy order record shapes; quote-only live response and optional fields. Preserve uncertainty instead of adding strict validators to hide it.
 
-Current evidence includes retrieved schemas, deterministic package/API grant tests, MCP discovery/calls and authenticated live reads. With a locally configured server key, query search returned 20 candidates, exact SOL lookup and eligibility succeeded, ranked/tag/recent discovery each returned the requested three records, and SOL/USDC prices returned both mints with no missing prices. All six live cases passed through an in-memory MCP client. The production Worker secret and deployed OAuth/service-binding path were not tested by these live checks; the remaining six tools are follow-up work.
+Current evidence includes official schemas, focused route/behavior tests, API grant tests for every tool, MCP discovery/calls and authenticated live integration. All nine names were discovered; 20 live cases covering all 18 routes passed through package MCP registration → local Worker RPC service binding → actual API Worker/D1 grant enforcement → Jupiter. A host fetch bridge supplied outbound networking in this cloud harness. Missing scope and revoked grants were denied.
 
-Create implementation child tickets from these stages after contract sign-off, with dependencies and the completion criteria above. ADI-217 remains the planning issue.
+Live results included seven Earn assets, 82 main and one ethena Borrow vaults, seven Earn positions, 84 main and five ethena Borrow positions, one earnings record, both legacy order views, an exact USDC-to-SOL quote with satisfied constraints and no transaction, and the full 107-label venue mapping. Empty portfolio/order/staking data were valid for the public example wallet; populated portfolio fetcher statuses remain fixture-tested rather than live-confirmed.
+
+Integration found and fixed Cloudflare's unsupported `redirect: error` mode: manual handling now rejects redirects. The legacy DCA request requires `includeFailedTx` despite omission in guide examples, so it defaults to false; live records arrive under `time` and normalize to `orders`. The initially failing DCA case passed after these corrections. Earn earnings were confirmed as an array; the documented object shape is also supported. Rates remain in upstream units. Production key configuration and deployed browser OAuth remain unverified.
+
+The implementation is tracked in PR #36. Remaining rollout work is configuring the production Worker key and verifying the deployed OAuth/service-binding path.
 
 ## Contract references
 

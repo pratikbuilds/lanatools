@@ -56,7 +56,7 @@ test('exact search deduplicates, preserves optional metadata and reports missing
     Accept: 'application/json',
   })
   expect(calls[0]?.init?.method).toBe('GET')
-  expect(calls[0]?.init?.redirect).toBe('error')
+  expect(calls[0]?.init?.redirect).toBe('manual')
 })
 
 test('name lookup has no arbitrary character cap and preserves candidate order', async () => {
@@ -347,4 +347,32 @@ test('upstream batch caps apply after normalization', async () => {
   })
   expect(result).toMatchObject({ ok: false, error: { code: 'invalid_input' } })
   expect(calls).toHaveLength(1)
+})
+
+test('redirects are rejected without forwarding the key or retrying', async () => {
+  let calls = 0
+  const client = new JupiterClient({
+    apiKey: 'test-key',
+    fetch: async (_url, init) => {
+      calls++
+      expect(init?.redirect).toBe('manual')
+      return new Response(null, {
+        status: 302,
+        headers: { Location: 'https://untrusted.example' },
+      })
+    },
+  })
+  const outcome = await client.read({
+    tool: 'jupiter_search_tokens',
+    input: { query: 'JUP' },
+  })
+  expect(outcome).toMatchObject({
+    ok: false,
+    error: {
+      code: 'upstream_unavailable',
+      message: 'Jupiter returned HTTP 302',
+      retryable: false,
+    },
+  })
+  expect(calls).toBe(1)
 })

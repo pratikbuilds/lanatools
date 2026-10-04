@@ -4,14 +4,41 @@ import { McpServer } from '@modelcontextprotocol/server'
 import { JupiterClient } from './index'
 import { formatJupiterResult, registerJupiterTools } from './mcp'
 
-test('MCP discovers three read-only schemas and calls them through the executor', async () => {
+test('MCP discovers nine read-only schemas and calls them through the executor', async () => {
   const server = new McpServer({ name: 'jupiter-test', version: '1' })
   const reader = new JupiterClient({
     apiKey: 'server-key',
-    fetch: (url) =>
-      Promise.resolve(
-        Response.json(new URL(url).pathname === '/price/v3' ? {} : []),
-      ),
+    fetch: async (url) => {
+      const path = new URL(url).pathname
+      if (path === '/tokens/v2/search')
+        return Response.json(
+          new URL(url).searchParams.get('query') === 'JUP'
+            ? []
+            : [
+                {
+                  id: 'So11111111111111111111111111111111111111112',
+                  decimals: 9,
+                },
+                {
+                  id: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+                  decimals: 6,
+                },
+              ],
+        )
+      if (path === '/swap/v2/order')
+        return Response.json({
+          inputMint: 'So11111111111111111111111111111111111111112',
+          outputMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+          inAmount: '1000000000',
+          outAmount: '100000000',
+          routePlan: [],
+        })
+      if (path.includes('getTriggerOrders'))
+        return Response.json({ orders: [], hasMoreData: false })
+      if (path === '/price/v3' || path === '/swap/v2/program-id-to-label')
+        return Response.json({})
+      return Response.json([])
+    },
   })
   registerJupiterTools(server, async (request) =>
     formatJupiterResult(await reader.read(request)),
@@ -27,6 +54,12 @@ test('MCP discovers three read-only schemas and calls them through the executor'
       'jupiter_search_tokens',
       'jupiter_discover_tokens',
       'jupiter_get_prices',
+      'jupiter_get_portfolio',
+      'jupiter_get_lending_markets',
+      'jupiter_get_lending_positions',
+      'jupiter_get_trigger_orders',
+      'jupiter_quote_swap',
+      'jupiter_get_swap_venues',
     ])
     for (const tool of tools) {
       expect(tool.inputSchema.type).toBe('object')
@@ -60,6 +93,40 @@ test('MCP discovers three read-only schemas and calls them through the executor'
       arguments: { mints: ['So11111111111111111111111111111111111111112'] },
     })
     expect(price.structuredContent).toMatchObject({ data: { prices: {} } })
+    const sol = 'So11111111111111111111111111111111111111112'
+    const usdc = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+    const remaining = [
+      { name: 'jupiter_get_portfolio', arguments: { view: 'platforms' } },
+      {
+        name: 'jupiter_get_lending_markets',
+        arguments: { view: 'borrow_vaults', market: 'ethena' },
+      },
+      {
+        name: 'jupiter_get_lending_positions',
+        arguments: { view: 'earn_positions', wallets: [sol] },
+      },
+      {
+        name: 'jupiter_get_trigger_orders',
+        arguments: {
+          view: 'legacy_price_orders',
+          wallet: sol,
+          orderStatus: 'active',
+        },
+      },
+      {
+        name: 'jupiter_quote_swap',
+        arguments: { inputMint: sol, outputMint: usdc, amount: '1' },
+      },
+      { name: 'jupiter_get_swap_venues', arguments: {} },
+    ]
+    for (const call of remaining) {
+      const response = await client.callTool(call)
+      expect(response.isError).not.toBe(true)
+      expect(response.structuredContent).toMatchObject({
+        source: 'jupiter',
+        network: 'mainnet-beta',
+      })
+    }
   } finally {
     await client.close()
     await server.close()

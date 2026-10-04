@@ -1,6 +1,7 @@
 export type JupiterError = {
   code:
     | 'invalid_input'
+    | 'no_route'
     | 'permission_denied'
     | 'upstream_unavailable'
     | 'rate_limited'
@@ -139,4 +140,80 @@ export type PricesData = {
   missingMints: string[]
 }
 
-export type JupiterData = SearchTokensData | DiscoverTokensData | PricesData
+export type ProviderRecord = Record<string, unknown>
+export type PortfolioData =
+  | {
+      view: 'positions'
+      wallet: string
+      portfolio: ProviderRecord
+      partial: boolean
+    }
+  | {
+      view: 'staked_jup'
+      wallet: string
+      stakedAmount: number
+      unstaking: ProviderRecord[]
+    }
+  | { view: 'platforms'; platforms: ProviderRecord[] }
+export type LendingMarketsData =
+  | { view: 'earn_tokens'; tokens: ProviderRecord[] }
+  | {
+      view: 'borrow_vaults'
+      market: 'main' | 'ethena'
+      vaults: ProviderRecord[]
+    }
+export type LendingPositionsData =
+  | { view: 'earn_positions'; positions: ProviderRecord[] }
+  | { view: 'earn_earnings'; wallet: string; earnings: ProviderRecord[] }
+  | {
+      view: 'borrow_positions'
+      market: 'main' | 'ethena'
+      positions: ProviderRecord[]
+    }
+export type TriggerOrdersData = {
+  view: 'legacy_price_orders' | 'legacy_dca_orders'
+  apiVersion: 'v1'
+  maintenance: 'legacy'
+  wallet: string
+  orders: ProviderRecord[]
+  pagination: {
+    page: number
+    hasMoreData: boolean | null
+    totalPages: number | null
+    totalItems: number | null
+  }
+}
+export type TokenAmount = {
+  decimal: string
+  baseUnits: string
+  decimals: number
+}
+export type QuoteSwapData = {
+  inputMint: string
+  outputMint: string
+  inputAmount: TokenAmount
+  expectedOutput: TokenAmount
+  minimumOutput: TokenAmount | null
+  slippageBps: number | null
+  priceImpact: ProviderRecord | null
+  fees: ProviderRecord | null
+  routePlan: ProviderRecord[]
+  router: string | null
+  constraints: {
+    maxSlippageBps: number | null
+    minOutputAmount: string | null
+    satisfied: boolean | null
+  }
+  providerQuote: ProviderRecord
+}
+export type SwapVenuesData = { venues: Record<string, string> }
+export type JupiterData =
+  | SearchTokensData
+  | DiscoverTokensData
+  | PricesData
+  | PortfolioData
+  | LendingMarketsData
+  | LendingPositionsData
+  | TriggerOrdersData
+  | QuoteSwapData
+  | SwapVenuesData

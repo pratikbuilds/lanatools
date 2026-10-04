@@ -13,10 +13,10 @@ cookie and a verified Privy access token.
 `whoami` requires an `account:read` token and an active grant and returns
 the Privy user ID and OAuth client ID.
 
-## Jupiter token research
+## Jupiter reads
 
-`jupiter_search_tokens`, `jupiter_discover_tokens`, and `jupiter_get_prices`
-require `jupiter:read`. Consent shows **Jupiter access** without a spending limit
+All nine Jupiter tools (token research, portfolio, lending, legacy orders,
+quote-only swaps and venue metadata) require `jupiter:read`. Consent shows **Jupiter access** without a spending limit
 or wallet-signature flow. Existing clients must request the scope and obtain
 consent; account-only or payments-only access does not authorize Jupiter reads.
 
