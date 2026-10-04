@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wallet · lanatools</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #ffffff;
+    --soft: #f5f5f8;
+    --soft-2: #ececf1;
+    --line: #e8e8ee;
+    --text: #1d1d27;
+    --text-2: #63637a;
+    --text-3: #9898aa;
+    --accent: #4353e8;
+    --accent-soft: #eceefd;
+    --warn: #8a5300;
+    --warn-soft: #fff3df;
+    --bad: #b42318;
+    --bad-soft: #fdecea;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 500 15px/1.5 Manrope, system-ui, sans-serif; -webkit-font-smoothing: antialiased; font-feature-settings: 'tnum'; }
+  h1, h2, p { margin: 0; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12.5px; }
+  sup { font-size: 0.55em; vertical-align: 0.65em; line-height: 0; margin-left: 1px; font-weight: inherit; }
+
+  /* Top bar: destinations only */
+  header { border-bottom: 1px solid var(--line); }
+  .bar { max-width: 1120px; margin: 0 auto; padding: 0 32px; height: 64px; display: flex; align-items: center; gap: 40px; }
+  .logo { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 16px; color: var(--text); text-decoration: none; letter-spacing: -0.01em; }
+  .logo svg { color: var(--accent); }
+  nav { display: flex; gap: 4px; }
+  nav a { padding: 7px 14px; border-radius: 999px; color: var(--text-2); text-decoration: none; font-weight: 500; font-size: 14px; }
+  nav a:hover { color: var(--text); background: var(--soft); }
+  nav a[aria-current] { color: var(--text); background: var(--soft-2); }
+  .me { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 500; color: var(--text-2); }
+  .me i { width: 32px; height: 32px; border-radius: 50%; background: var(--soft-2); color: var(--text); display: grid; place-items: center; font-style: normal; font-weight: 600; font-size: 13px; }
+
+  main { max-width: 1120px; margin: 0 auto; padding: 44px 32px 96px; }
+
+  /* Greeting and quick actions */
+  h1 { font-size: 30px; font-weight: 500; letter-spacing: -0.02em; }
+  .actions { display: flex; gap: 10px; margin: 22px 0 28px; flex-wrap: wrap; }
+  .pill { font: 600 14px Manrope, sans-serif; height: 38px; padding: 0 18px; border-radius: 999px; border: 0; background: var(--soft); color: var(--text); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+  .pill:hover { background: var(--soft-2); }
+  .pill.primary { background: var(--accent); color: #fff; }
+  .pill.primary:hover { background: #3442cf; }
+  .pill.sm { height: 32px; padding: 0 14px; font-size: 13px; }
+  .pill svg { width: 15px; height: 15px; }
+
+  /* Cards */
+  .grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 20px; }
+  .card { border: 1px solid var(--line); border-radius: 16px; padding: 24px 26px; background: var(--bg); }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .card-title { font-size: 15px; font-weight: 600; }
+  .muted { color: var(--text-2); }
+  .faint { color: var(--text-3); }
+
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 500; color: var(--text-2); background: var(--soft); border-radius: 999px; padding: 3px 10px; }
+  .chip i { width: 6px; height: 6px; border-radius: 50%; background: #f08c2b; }
+
+  .balance .big { font-size: 46px; font-weight: 500; letter-spacing: -0.03em; line-height: 1.1; margin: 14px 0 6px; }
+  .balance .big .unit { font-size: 16px; font-weight: 500; color: var(--text-3); letter-spacing: 0; margin-left: 10px; }
+  .deposit { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .deposit .k { font-size: 13px; color: var(--text-2); margin-bottom: 4px; }
+  .deposit .addr { color: var(--text); word-break: break-all; }
+
+  /* Clients card, like an accounts list */
+  .clients .card-head { margin-bottom: 6px; }
+  .round { width: 32px; height: 32px; border-radius: 50%; border: 0; background: var(--soft); cursor: pointer; display: grid; place-items: center; color: var(--text); font-size: 18px; line-height: 1; }
+  .round:hover { background: var(--soft-2); }
+  .client { all: unset; box-sizing: border-box; display: block; width: 100%; padding: 16px 0; cursor: pointer; border-bottom: 1px solid var(--line); }
+  .client:hover .name { color: var(--accent); }
+  .client .row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .client .name { font-weight: 600; font-size: 15px; }
+  .client .left { font-weight: 600; font-size: 16px; }
+  .client .sub { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--text-3); margin-top: 2px; }
+  .bar-track { height: 6px; border-radius: 3px; background: var(--soft-2); margin-top: 10px; overflow: hidden; }
+  .bar-track b { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+  .clients .foot { display: flex; justify-content: space-between; align-items: center; padding-top: 14px; font-size: 13.5px; }
+  .clients .foot a { color: var(--accent); text-decoration: none; font-weight: 600; }
+
+  /* Activity */
+  .activity { margin-top: 44px; }
+  .act-head { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
+  .act-head h2 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; margin-right: 8px; }
+  .filters { display: flex; gap: 6px; flex-wrap: wrap; }
+  .filters button { font: 500 13px Manrope, sans-serif; border: 1px solid var(--line); background: var(--bg); color: var(--text-2); border-radius: 999px; padding: 5px 13px; cursor: pointer; }
+  .filters button:hover { color: var(--text); }
+  .filters button[aria-pressed=true] { background: var(--text); border-color: var(--text); color: #fff; }
+  .act-head .all { margin-left: auto; color: var(--accent); text-decoration: none; font-weight: 600; font-size: 14px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 13px; font-weight: 500; color: var(--text-3); padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  td { padding: 15px 14px; border-bottom: 1px solid var(--line); font-size: 14.5px; vertical-align: middle; }
+  th:first-child, td:first-child { padding-left: 4px; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover td { background: #fafafc; }
+  tr.day td { cursor: default; background: none !important; font-size: 13px; font-weight: 600; color: var(--text-2); padding: 20px 4px 8px; }
+  td.time { color: var(--text-2); white-space: nowrap; width: 100px; }
+  td.tool .svc { font-weight: 600; }
+  td.tool .path { color: var(--text-3); margin-left: 6px; }
+  th.amt, td.amt { text-align: right; width: 130px; }
+  td.amt { font-weight: 600; white-space: nowrap; }
+  td.amt .free { color: var(--text-3); font-weight: 500; }
+  .tag { display: inline-block; font-size: 12.5px; font-weight: 600; border-radius: 6px; padding: 2px 9px; }
+  .tag.refused { background: var(--warn-soft); color: var(--warn); }
+  .tag.failed { background: var(--bad-soft); color: var(--bad); }
+  td.client-col { color: var(--text-2); padding-left: 32px; }
+  td.proto { color: var(--text-3); }
+
+  @media (max-width: 860px) {
+    .bar { padding: 0 16px; gap: 16px; }
+    .me span { display: none; }
+    .logo b { display: none; }
+    main { padding: 28px 16px 64px; }
+    .grid { grid-template-columns: 1fr; }
+    .hide-sm { display: none; }
+    .balance .big { font-size: 40px; }
+    .deposit { flex-direction: column; align-items: flex-start; }
+    td.tool .path { display: block; margin-left: 0; }
+    th.amt, td.amt { width: auto; }
+    table { table-layout: fixed; }
+    td.time { width: 76px; }
+    td.tool { word-break: break-all; }
+    .tag.failed .why { display: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <a class="logo" href="#"><svg width="22" height="22" viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M16 56h-4q-4 0-4-4V15q0-7 7-7h23l19 12.5V29L37 16H19.5q-3.5 0-3.5 3.5Z"/><path d="M23 26l8 7-8 7" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg><b>lanatools</b></a>
+    <nav aria-label="Main"><a href="#" aria-current="page">Wallet</a><a href="#">Activity</a><a href="#">Settings</a></nav>
+    <div class="me"><span>Pratik Saria</span><i>P</i></div>
+  </div>
+</header>
+
+<main>
+  <h1>Welcome, Pratik</h1>
+  <div class="actions">
+    <button class="pill primary"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>Deposit</button>
+    <button class="pill">Connect a client</button>
+    <button class="pill">Copy wallet address</button>
+  </div>
+
+  <div class="grid">
+    <!-- 1. Wallet: balance, address and deposit together -->
+    <section class="card balance" aria-label="Wallet">
+      <div class="card-head">
+        <span class="card-title">Wallet balance</span>
+        <span class="chip"><i></i>Solana devnet</span>
+      </div>
+      <div class="big">$19<sup>.91</sup><span class="unit">USDC</span></div>
+      <p class="muted">Your connected clients pay for tools from this balance.</p>
+      <div class="deposit">
+        <div>
+          <div class="k">Deposit address · USDC on Solana devnet only</div>
+          <div class="mono addr">G7fu2vBDEZ9SYM4agJ9shffJQUmyg6UC</div>
+        </div>
+        <button class="pill sm">Copy</button>
+      </div>
+    </section>
+
+    <!-- 2. Clients and their limits -->
+    <section class="card clients" aria-label="Connected clients">
+      <div class="card-head">
+        <span class="card-title">Connected clients</span>
+        <button class="round" aria-label="Connect a client">+</button>
+      </div>
+      <div id="clients"></div>
+      <div class="foot"><span class="muted" id="spent"></span><a href="#">Manage limits</a></div>
+    </section>
+  </div>
+
+  <!-- 3. Calls that have ended -->
+  <section class="activity" aria-label="Recent activity">
+    <div class="act-head">
+      <h2>Recent activity</h2>
+      <div class="filters" id="filters"></div>
+      <a class="all" href="#">View all</a>
+    </div>
+    <table>
+      <thead><tr><th>Time</th><th>Tool</th><th class="amt">Amount</th><th class="hide-sm" style="padding-left:32px">Client</th><th class="hide-sm">Protocol</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+</main>
+
+<script>
+  // Sample data. Balance and per-client spend match the live dashboard.
+  const clients = [
+    { id: 'cc', name: 'Claude Code', project: 'lanatools', host: 'localhost:62434', limit: 2, last: '5 hours ago' },
+    { id: 'cx', name: 'Codex', host: '127.0.0.1:58113', limit: 1, last: '54 min ago' },
+  ]
+  const services = { merchant: 'Devnet merchant', helius: 'Helius RPC' }
+  const calls = [
+    { day: 'Today', t: '6:11 PM', c: 'cx', s: 'merchant', path: '/api/v1/premium', p: 'x402', o: 'refused' },
+    { day: 'Today', t: '6:08 PM', c: 'cx', s: 'merchant', path: '/api/v1/search', p: 'x402', o: 'paid', a: 0.02 },
+    { day: 'Today', t: '6:05 PM', c: 'cx', s: 'merchant', path: '/api/v1/fixed', p: 'x402', o: 'paid', a: 0.01 },
+    { day: 'Today', t: '6:04 PM', c: 'cx', s: 'merchant', path: '/api/v1/fixed', p: 'x402', o: 'paid', a: 0.01 },
+    { day: 'Today', t: '6:04 PM', c: 'cx', s: 'merchant', path: '/api/v1/fixed', p: 'x402', o: 'paid', a: 0.01 },
+    { day: 'Today', t: '6:02 PM', c: 'cx', s: 'helius', path: '/getAssetsByOwner', p: 'RPC', o: 'free' },
+    { day: 'Today', t: '2:02 PM', c: 'cc', s: 'merchant', path: '/api/v1/fixed', p: 'x402', o: 'paid', a: 0.01 },
+    { day: 'Today', t: '2:02 PM', c: 'cc', s: 'merchant', path: '/api/v1/fixed', p: 'x402', o: 'paid', a: 0.01 },
+    { day: 'Today', t: '2:01 PM', c: 'cc', s: 'merchant', path: '/api/v1/fixed', p: 'x402', o: 'paid', a: 0.01 },
+    { day: 'Today', t: '1:41 PM', c: 'cc', s: 'merchant', path: '/api/v1/fixed', p: 'MPP', o: 'failed' },
+    { day: 'Yesterday', t: '4:15 PM', c: 'cc', s: 'merchant', path: '/api/v1/fixed', p: 'x402', o: 'paid', a: 0.01 },
+    { day: 'Yesterday', t: '4:14 PM', c: 'cc', s: 'merchant', path: '/api/v1/fixed', p: 'x402', o: 'paid', a: 0.01 },
+    { day: 'Yesterday', t: '4:14 PM', c: 'cc', s: 'merchant', path: '/api/v1/fixed', p: 'x402', o: 'paid', a: 0.01 },
+  ]
+
+    const money = (n) => '$' + n.toFixed(2)
+  const spentBy = (id) => calls.filter((x) => x.c === id && x.o === 'paid').reduce((s, x) => s + x.a, 0)
+  const name = (id) => clients.find((c) => c.id === id).name
+
+  document.getElementById('clients').innerHTML = clients.map((c) => {
+    const spent = spentBy(c.id)
+    return `<button class="client">
+      <div class="row"><span class="name">${c.name}</span><span class="left">${money(c.limit - spent)}</span></div>
+      <div class="sub"><span>${c.project ? c.project + ' · ' : ''}used ${c.last}</span><span>left of ${money(c.limit)}</span></div>
+      <div class="bar-track"><b style="width:${Math.max((spent / c.limit) * 100, 2)}%"></b></div>
+    </button>`
+  }).join('')
+  const total = clients.reduce((s, c) => s + spentBy(c.id), 0)
+  document.getElementById('spent').innerHTML = `${money(total)} spent across ${clients.length} clients`
+
+  const amount = (x) => ({
+    paid: () => `−${money(x.a)}`,
+    free: () => `<span class="free">Free</span>`,
+    refused: () => `<span class="tag refused">Refused</span>`,
+    failed: () => `<span class="tag failed">Failed<span class="why"> · not charged</span></span>`,
+  })[x.o]()
+
+  let filter = 'all'
+  function render() {
+    document.getElementById('filters').innerHTML = ['all', 'paid', 'free', 'refused', 'failed']
+      .map((o) => `<button aria-pressed="${o === filter}" onclick="filter='${o}';render()">${o[0].toUpperCase() + o.slice(1)}</button>`).join('')
+    let day = null
+    document.getElementById('rows').innerHTML = calls.filter((x) => filter === 'all' || x.o === filter).map((x) => {
+      const head = x.day !== day ? `<tr class="day"><td colspan="5">${(day = x.day)}</td></tr>` : ''
+      return `${head}<tr>
+        <td class="time">${x.t}</td>
+        <td class="tool"><span class="svc">${services[x.s]}</span><span class="path mono">${x.path}</span></td>
+        <td class="amt">${amount(x)}</td>
+        <td class="client-col hide-sm">${name(x.c)}</td>
+        <td class="proto hide-sm">${x.p}</td>
+      </tr>`
+    }).join('') || `<tr><td colspan="5" class="faint" style="padding:28px 4px">No ${filter} calls yet.</td></tr>`
+  }
+  render()
+</script>
+</body>
+</html>

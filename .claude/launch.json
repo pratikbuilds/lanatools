@@ -20,6 +20,18 @@
       "port": 8788
     },
     {
+      "name": "design-concepts",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4800",
+        "-d",
+        "docs/design/dashboard-concepts"
+      ],
+      "port": 4800
+    },
+    {
       "name": "api",
       "runtimeExecutable": "bunx",
       "runtimeArgs": [

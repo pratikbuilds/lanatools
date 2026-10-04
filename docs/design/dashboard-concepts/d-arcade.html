@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D · Arcade</title>
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f7f3ea;
+    --card: #fffdf8;
+    --sunk: #efe9dc;
+    --ink: #1c1a17;
+    --ink-2: #5e5850;
+    --ink-3: #9a9286;
+    --hp: #23b37f;
+    --hp-mid: #e4a72b;
+    --hp-low: #e2553f;
+    --gold: #e9b949;
+    --notch: polygon(6px 0, calc(100% - 6px) 0, calc(100% - 6px) 3px, calc(100% - 3px) 3px, calc(100% - 3px) 6px, 100% 6px, 100% calc(100% - 6px), calc(100% - 3px) calc(100% - 6px), calc(100% - 3px) calc(100% - 3px), calc(100% - 6px) calc(100% - 3px), calc(100% - 6px) 100%, 6px 100%, 6px calc(100% - 3px), 3px calc(100% - 3px), 3px calc(100% - 6px), 0 calc(100% - 6px), 0 6px, 3px 6px, 3px 3px, 6px 3px);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 'DM Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+  h1, h2, h3, p { margin: 0; }
+  .px { font-family: 'Pixelify Sans', monospace; }
+  .mono { font-family: 'DM Mono', monospace; }
+  .lbl { font: 500 13px 'Pixelify Sans', monospace; color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; }
+
+  /* Pixel frame: a notched box with a 3px ink edge and a hard drop */
+  .frame { position: relative; background: var(--ink); clip-path: var(--notch); padding: 3px; }
+  .frame > .in { background: var(--card); clip-path: var(--notch); height: 100%; }
+  .drop { filter: drop-shadow(0 4px 0 rgba(28, 26, 23, .9)); }
+
+  header { background: var(--card); border-bottom: 3px solid var(--ink); }
+  .bar { max-width: 1120px; margin: 0 auto; padding: 0 28px; height: 62px; display: flex; align-items: center; gap: 32px; }
+  .logo { display: flex; gap: 8px; align-items: center; font: 600 22px 'Pixelify Sans', monospace; color: var(--ink); text-decoration: none; }
+  nav { display: flex; gap: 8px; }
+  nav a { font: 500 16px 'Pixelify Sans', monospace; color: var(--ink-2); text-decoration: none; padding: 4px 12px; }
+  nav a[aria-current] { background: var(--ink); color: var(--card); }
+  nav a:hover:not([aria-current]) { color: var(--ink); background: var(--sunk); }
+  .me { margin-left: auto; display: flex; align-items: center; gap: 10px; font-weight: 500; }
+
+  main { max-width: 1120px; margin: 0 auto; padding: 36px 28px 96px; }
+
+  .btn { font: 600 16px 'Pixelify Sans', monospace; border: 0; cursor: pointer; padding: 0; background: none; color: inherit; }
+  .btn .frame { display: block; }
+  .btn .in { padding: 8px 18px; display: block; }
+  .btn:hover .in { background: var(--sunk); }
+  .btn.go .in { background: var(--ink); color: var(--card); }
+  .btn.go:hover .in { background: #3a352f; }
+  .btn:active { transform: translateY(3px); filter: none; }
+
+  /* 1. Vault + stage */
+  .top { display: grid; grid-template-columns: 380px 1fr; gap: 22px; }
+  .vault .in { padding: 22px 24px; display: flex; flex-direction: column; gap: 8px; }
+  .big { font: 600 64px/1 'Pixelify Sans', monospace; letter-spacing: -0.02em; margin: 6px 0 2px; }
+  .big small { font-size: 20px; color: var(--ink-3); margin-left: 8px; }
+  .addr { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: var(--sunk); padding: 8px 10px; margin-top: 8px; font-size: 13px; }
+  .addr button { all: unset; cursor: pointer; font: 600 13px 'Pixelify Sans', monospace; }
+  .net { display: inline-flex; gap: 6px; align-items: center; font: 500 13px 'Pixelify Sans', monospace; color: var(--ink-2); }
+
+  .stage .in { position: relative; overflow: hidden; height: 100%; min-height: 240px;
+    background: linear-gradient(transparent calc(100% - 46px), var(--ink) calc(100% - 46px), var(--ink) calc(100% - 43px), transparent calc(100% - 43px)),
+                repeating-linear-gradient(90deg, var(--sunk) 0 12px, var(--card) 12px 24px) bottom / 100% 43px no-repeat, var(--card); }
+  .stage .title { position: absolute; left: 20px; top: 16px; }
+  .stage .hint { position: absolute; right: 20px; top: 16px; font-size: 12.5px; color: var(--ink-3); max-width: 240px; text-align: right; }
+  .actor { position: absolute; bottom: 46px; display: flex; flex-direction: column; align-items: center; }
+  .actor .tag { font: 500 13px 'Pixelify Sans', monospace; background: var(--ink); color: var(--card); padding: 1px 8px; margin-bottom: 8px; white-space: nowrap; }
+  .actor .tag.off { background: var(--sunk); color: var(--ink-2); }
+  .walk { animation: walk 9s ease-in-out infinite; }
+  .walk .buddy { animation: bob .5s steps(2) infinite; }
+  @keyframes walk { 0%, 100% { transform: translateX(0); } 45% { transform: translateX(60px) ; } 50% { transform: translateX(60px) scaleX(-1); } 95% { transform: translateX(0) scaleX(-1); } }
+  @keyframes bob { 50% { transform: translateY(-3px); } }
+  .zz { position: absolute; top: -6px; right: -18px; font: 600 15px 'Pixelify Sans', monospace; color: var(--ink-3); animation: zz 2.4s steps(3) infinite; }
+  @keyframes zz { 0% { opacity: 0; transform: translate(0, 6px); } 50% { opacity: 1; } 100% { opacity: 0; transform: translate(6px, -10px); } }
+  .buddy .lids { opacity: 0; animation: lid 5s infinite; }
+  .buddy .eye { animation: eye 5s infinite; }
+  .sleep .buddy .eye { opacity: 0; animation: none; }
+  .sleep .buddy .lids { opacity: 1; animation: none; }
+  @keyframes lid { 0%, 94%, 100% { opacity: 0; } 95%, 98% { opacity: 1; } }
+  @keyframes eye { 0%, 94%, 100% { opacity: 1; } 95%, 98% { opacity: 0; } }
+  .coin { position: absolute; z-index: 3; pointer-events: none; }
+  .pop { position: absolute; font: 600 15px 'Pixelify Sans', monospace; pointer-events: none; animation: popup 1.2s steps(6) forwards; z-index: 4; }
+  @keyframes popup { to { transform: translateY(-30px); opacity: 0; } }
+
+  /* 2. Player cards */
+  .s-head { display: flex; align-items: center; gap: 14px; margin: 44px 0 16px; flex-wrap: wrap; }
+  .s-head h2 { font: 600 28px 'Pixelify Sans', monospace; }
+  .s-head .right { margin-left: auto; color: var(--ink-2); font-size: 14px; display: flex; gap: 14px; align-items: center; }
+  .players { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .player .in { padding: 18px 20px 20px; }
+  .player .hd { display: flex; gap: 14px; align-items: center; }
+  .player .ava { width: 60px; height: 60px; background: var(--sunk); display: grid; place-items: center; flex-shrink: 0; }
+  .player h3 { font: 600 20px 'Pixelify Sans', monospace; }
+  .player .host { font: 12.5px 'DM Mono', monospace; color: var(--ink-3); }
+  .hp-row { display: flex; justify-content: space-between; align-items: baseline; margin: 18px 0 6px; }
+  .hp-row b { font: 600 28px 'Pixelify Sans', monospace; }
+  .hp { display: grid; grid-template-columns: repeat(20, 1fr); gap: 3px; background: var(--ink); padding: 3px; }
+  .hp i { height: 14px; background: #3a352f; }
+  .hp i.on { background: var(--hp); }
+  .hp.mid i.on { background: var(--hp-mid); }
+  .hp.low i.on { background: var(--hp-low); }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; margin-top: 16px; font-size: 13.5px; }
+  .stats span { color: var(--ink-3); display: block; font-size: 12px; }
+  .player .acts { display: flex; gap: 10px; margin-top: 18px; }
+  .player.new > .in { background: var(--sunk); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 12px; min-height: 100%; }
+  .player.new p { color: var(--ink-2); font-size: 13.5px; max-width: 230px; }
+
+  /* 3. Event log */
+  .seg { display: flex; gap: 6px; }
+  .seg button { all: unset; cursor: pointer; font: 500 14px 'Pixelify Sans', monospace; padding: 3px 10px; color: var(--ink-2); }
+  .seg button[aria-pressed=true] { background: var(--ink); color: var(--card); }
+  .log .in { padding: 6px 0; }
+  .ev { display: grid; grid-template-columns: 96px 1fr 140px 140px; gap: 16px; align-items: center; padding: 12px 22px; font-size: 14.5px; }
+  .ev + .ev { border-top: 2px dashed var(--sunk); }
+  .ev.day { font: 500 13px 'Pixelify Sans', monospace; color: var(--ink-3); text-transform: uppercase; padding-top: 14px; padding-bottom: 4px; grid-template-columns: 1fr; border-top: 0 !important; }
+  .ev .t { font: 13px 'DM Mono', monospace; color: var(--ink-3); }
+  .ev .tool b { font-weight: 600; }
+  .ev .tool .mono { color: var(--ink-3); font-size: 12.5px; margin-left: 6px; }
+  .ev .who { color: var(--ink-2); }
+  .ev .amt { text-align: right; font: 600 16px 'Pixelify Sans', monospace; }
+  .o-free { color: var(--ink-3); }
+  .o-refused { color: #b26b00; }
+  .o-failed { color: var(--hp-low); }
+  .ev.fresh { animation: drop .6s cubic-bezier(.3, 1.6, .5, 1) both; background: #fff6d8; transition: background 2s; }
+  @keyframes drop { from { transform: translateY(-14px); opacity: 0; } }
+
+  @media (max-width: 900px) {
+    .wm { display: none; }
+    main { padding: 22px 16px 64px; }
+    .bar { padding: 0 16px; gap: 12px; }
+    .me b { display: none; }
+    nav a { padding: 4px 8px; font-size: 15px; }
+    .top { grid-template-columns: 1fr; }
+    .players { grid-template-columns: 1fr; }
+    .ev { grid-template-columns: 70px 1fr auto; padding: 12px 14px; }
+    .ev .who { display: none; }
+    .ev .tool .mono { display: block; margin: 0; }
+    .stage .hint { display: none; }
+    .seg { flex-wrap: wrap; }
+    .seg button { padding: 3px 7px; }
+    .s-head .right { margin-left: 0; width: 100%; justify-content: space-between; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <a class="logo" href="#"><svg width="22" height="22" viewBox="0 0 64 64" aria-hidden="true" shape-rendering="crispEdges"><path fill="currentColor" d="M16 56h-4q-4 0-4-4V15q0-7 7-7h23l19 12.5V29L37 16H19.5q-3.5 0-3.5 3.5Z"/><path d="M23 26l8 7-8 7" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="square"/></svg><span class="wm">lanatools</span></a>
+    <nav aria-label="Main"><a href="#" aria-current="page">Wallet</a><a href="#">Activity</a><a href="#">Settings</a></nav>
+    <div class="me"><b>Pratik Saria</b><span id="me"></span></div>
+  </div>
+</header>
+
+<main>
+  <div class="top">
+    <section class="frame drop vault" aria-label="Wallet"><div class="in">
+      <div style="display:flex;justify-content:space-between;align-items:center"><span class="lbl">Wallet</span><span class="net" id="net"></span></div>
+      <div class="big" id="bal"></div>
+      <p style="color:var(--ink-2);font-size:14px">Your clients pay for tools from this balance, each up to its own limit.</p>
+      <div class="addr"><span class="mono" id="addr"></span><button>Copy</button></div>
+      <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
+        <button class="btn go drop"><span class="frame"><span class="in">Deposit</span></span></button>
+        <button class="btn drop"><span class="frame"><span class="in">Connect a client</span></span></button>
+      </div>
+    </div></section>
+
+    <section class="frame drop stage" aria-label="Your agents right now"><div class="in" id="stage">
+      <span class="lbl title">Right now</span>
+      <span class="hint">Each paid call sends a coin from your wallet to the agent that spent it.</span>
+    </div></section>
+  </div>
+
+  <div class="s-head"><h2>Connected clients</h2><div class="right" id="spent"></div></div>
+  <div class="players" id="players"></div>
+
+  <div class="s-head"><h2>Activity</h2><div class="right"><div class="seg" id="seg"></div><a href="#" style="color:var(--ink)">View all</a></div></div>
+  <section class="frame drop log" aria-label="Activity"><div class="in" id="log"></div></section>
+</main>
+
+<script src="data.js"></script>
+<script>
+  const { clients, services, money } = LT
+  const PAL = {
+    warm: { a: '#1c1a17', b: '#e07a4f', l: '#f5b08c', d: '#1c1a17', m: '#1c1a17' },
+    cool: { a: '#1c1a17', b: '#6f8fd6', l: '#b4c6f0', d: '#1c1a17', m: '#1c1a17' },
+  }
+  // Pixel sprites for the stage
+  const sprite = (rows, map, size) => {
+    const W = rows[0].length, H = rows.length
+    let r = ''
+    rows.forEach((row, y) => [...row].forEach((ch, x) => { if (map[ch]) r += `<rect x="${x}" y="${y}" width="1.02" height="1.02" fill="${map[ch]}"/>` }))
+    return `<svg viewBox="0 0 ${W} ${H}" width="${size}" height="${(size * H) / W}" shape-rendering="crispEdges" aria-hidden="true">${r}</svg>`
+  }
+  const CHEST = ['..dddddddd..', '.dyyyyyyyyd.', 'dyyyyyyyyyyd', 'dddddddddddd', 'dbbbbddbbbbd', 'dbbbbyybbbbd', 'dbbbbddbbbbd', 'dbbbbbbbbbbd', 'dbbbbbbbbbbd', 'dddddddddddd']
+  const COIN = ['.dddd.', 'dyyyyd', 'dywyyd', 'dyyyyd', 'dyyyyd', '.dddd.']
+  const C = { d: '#1c1a17', y: '#e9b949', b: '#a8642f', w: '#fff3c4' }
+  const SOL = ['.ttttttt', 'ttttttt.', '........', 'ttttttt.', '.ttttttt', '........', '.ttttttt', 'ttttttt.']
+
+  document.getElementById('me').innerHTML = LT.buddySVG(PAL.cool, { size: 26 })
+  document.getElementById('net').innerHTML = `${sprite(SOL, { t: '#1c1a17' }, 12)} Solana devnet`
+  document.getElementById('addr').textContent = LT.short(LT.wallet.address, 10)
+
+  // Stage: vault on the left, agents standing on the ground
+  const stage = document.getElementById('stage')
+  stage.insertAdjacentHTML('beforeend', `<div class="actor" id="vault" style="left:28px">${sprite(CHEST, C, 76)}</div>` +
+    clients.map((c, i) => `<div class="actor ${c.live ? '' : 'sleep'}" id="actor-${c.id}" style="left:${c.live ? 46 : 74}%">
+      <span class="tag ${c.live ? '' : 'off'}">${c.name}${c.live ? '' : ' · idle'}</span>
+      <div class="${c.live ? 'walk' : ''}" style="position:relative">${c.live ? '' : '<span class="zz">z</span>'}${LT.buddySVG(PAL[c.buddy], { size: 70 })}</div>
+    </div>`).join(''))
+
+  function flyCoin(id, amount) {
+    const box = stage.getBoundingClientRect()
+    const from = document.getElementById('vault').getBoundingClientRect()
+    const to = document.querySelector(`#actor-${id} .buddy`).getBoundingClientRect()
+    const coin = document.createElement('div')
+    coin.className = 'coin'; coin.innerHTML = sprite(COIN, C, 18)
+    const x0 = from.left - box.left + 24, y0 = from.top - box.top
+    const x1 = to.left - box.left + 20, y1 = to.top - box.top
+    coin.style.left = x0 + 'px'; coin.style.top = y0 + 'px'
+    stage.appendChild(coin)
+    const dx = x1 - x0, dy = y1 - y0
+    coin.animate([
+      { transform: 'translate(0,0)' },
+      { transform: `translate(${dx * 0.5}px, ${dy - 70}px)` },
+      { transform: `translate(${dx}px, ${dy}px)` },
+    ], { duration: 900, easing: 'steps(12)' }).onfinish = () => {
+      coin.remove()
+      stage.insertAdjacentHTML('beforeend', `<span class="pop" style="left:${x1}px;top:${y1 - 10}px">−${money(amount)}</span>`)
+      setTimeout(() => stage.querySelector('.pop')?.remove(), 1300)
+    }
+  }
+
+  function renderTop() {
+    document.getElementById('bal').innerHTML = `${money(LT.wallet.balance)}<small>USDC</small>`
+    document.getElementById('spent').innerHTML = `<b>${money(LT.totalSpent())}</b>&nbsp;spent by ${clients.length} clients`
+    document.getElementById('players').innerHTML = clients.map((c) => {
+      const spent = LT.spent(c.id), left = c.limit - spent, pct = left / c.limit
+      const on = Math.round(pct * 20), level = pct < 0.2 ? 'low' : pct < 0.5 ? 'mid' : ''
+      const today = LT.calls.filter((x) => x.c === c.id && x.day === 'Today').length
+      return `<article class="frame drop player"><div class="in">
+        <div class="hd"><div class="ava">${LT.buddySVG(PAL[c.buddy], { size: 44 })}</div><div><h3>${c.name}</h3><div class="host">${c.host}</div></div></div>
+        <div class="hp-row"><span class="lbl">Left to spend</span><b>${money(left)}</b></div>
+        <div class="hp ${level}">${Array.from({ length: 20 }, (_, i) => `<i class="${i < on ? 'on' : ''}"></i>`).join('')}</div>
+        <div class="stats"><div><span>Spent</span>${money(spent)} of ${money(c.limit)}</div><div><span>Last used</span>${c.last}</div><div><span>Calls today</span>${today}</div><div><span>Status</span>${c.live ? 'Working' : 'Idle'}</div></div>
+        <div class="acts"><button class="btn drop"><span class="frame"><span class="in" style="padding:5px 14px;font-size:14px">Edit limit</span></span></button></div>
+      </div></article>`
+    }).join('') + `<article class="frame player new"><div class="in">
+        ${LT.buddySVG({ a: '#9a9286', b: '#d8d0c0', l: '#e8e1d3', d: '#9a9286', m: '#9a9286' }, { size: 52 })}
+        <h3 class="px" style="font-size:20px">New client</h3>
+        <p>Plug any MCP client into your toolkit, then give it a spending limit.</p>
+        <button class="btn go drop"><span class="frame"><span class="in" style="padding:5px 14px;font-size:14px">Connect</span></span></button>
+      </div></article>`
+  }
+
+  let filter = 'all'
+  function renderLog() {
+    document.getElementById('seg').innerHTML = ['all', 'paid', 'free', 'refused', 'failed']
+      .map((o) => `<button aria-pressed="${o === filter}" onclick="filter='${o}';renderLog()">${LT.cap(o)}</button>`).join('')
+    let day = null
+    document.getElementById('log').innerHTML = LT.calls.filter((x) => filter === 'all' || x.o === filter).slice(0, 10).map((x) => {
+      const head = x.day !== day ? `<div class="ev day">${(day = x.day)}</div>` : ''
+      const amt = x.o === 'paid' ? `−${money(x.a)}` : x.o === 'failed' ? 'Failed · $0' : LT.cap(x.o)
+      return `${head}<div class="ev ${x.fresh ? 'fresh' : ''}"><span class="t">${x.t}</span><span class="tool"><b>${services[x.s]}</b><span class="mono">${x.path}</span></span><span class="who">${LT.client(x.c).name}</span><span class="amt o-${x.o}">${amt}</span></div>`
+    }).join('') || '<div class="ev">No calls.</div>'
+    LT.calls.forEach((x) => (x.fresh = false))
+  }
+
+  renderTop(); renderLog()
+  LT.live((call) => { flyCoin(call.c, call.a); setTimeout(() => { renderTop(); renderLog() }, 900) }, 6000)
+</script>
+</body>
+</html>
