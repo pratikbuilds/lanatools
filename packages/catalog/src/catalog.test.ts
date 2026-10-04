@@ -298,6 +298,16 @@ test('search falls back to keyword ranking when TypeSafe fails', async () => {
       throw new DOMException('timed out', 'TimeoutError')
     },
     async () => Response.json({ model: 'jev-1.13.0', answers: {} }),
+    // A body that is not JSON, and one that fails while it is read (as when
+    // the timeout fires mid-stream).
+    async () => new Response('<html>bad gateway</html>'),
+    async () =>
+      new Response(
+        new ReadableStream({
+          start: (controller) =>
+            controller.error(new DOMException('timed out', 'TimeoutError')),
+        }),
+      ),
   ]
   for (const fetch of failing) {
     const result = await searchCatalog(catalog, input, {

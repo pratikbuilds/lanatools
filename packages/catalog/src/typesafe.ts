@@ -72,9 +72,11 @@ export async function askJev(
 ) {
   const fetcher = opts.fetch ?? fetch
   const started = performance.now()
-  let response: Response
+  // Reading the body is inside the boundary too: the timeout can fire while
+  // it streams, and a malformed body throws while parsing.
+  let body: unknown
   try {
-    response = await fetcher(SYSTEM_ONE_URL, {
+    const response = await fetcher(SYSTEM_ONE_URL, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${opts.apiKey}`,
@@ -83,14 +85,16 @@ export async function askJev(
       body: JSON.stringify({ state, model: JEV_MODEL, questions }),
       signal: AbortSignal.timeout(opts.timeoutMs),
     })
+    if (!response.ok)
+      throw new TypeSafeError(
+        `TypeSafe returned HTTP ${response.status}: ${(await response.text()).slice(0, 500)}`,
+      )
+    body = await response.json()
   } catch (cause) {
-    throw new TypeSafeError('TypeSafe did not respond', { cause })
+    if (cause instanceof TypeSafeError) throw cause
+    throw new TypeSafeError('TypeSafe request failed', { cause })
   }
-  if (!response.ok)
-    throw new TypeSafeError(
-      `TypeSafe returned HTTP ${response.status}: ${(await response.text()).slice(0, 500)}`,
-    )
-  const parsed = SystemOneResponse.safeParse(await response.json())
+  const parsed = SystemOneResponse.safeParse(body)
   if (!parsed.success)
     throw new TypeSafeError('TypeSafe returned an unexpected response')
   const { model, answers, usage } = parsed.data
