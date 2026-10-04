@@ -5,7 +5,7 @@ import type { McpScope } from '@lanatools/contracts'
 export function Permissions({ scopes }: { scopes: readonly McpScope[] }) {
   const payments = scopes.includes('payments:pay')
   return (
-    <div className="d-card mt-6">
+    <div className="d-card">
       <p className="d-th d-label flex min-h-9 items-center px-4">
         {scopes.length > 1 ? 'Permissions requested' : 'Permission requested'}
       </p>

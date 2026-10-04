@@ -10,8 +10,9 @@ import {
   parseClientLimit,
 } from '@lanatools/contracts'
 import { Permissions } from './permissions'
-import { Frame } from '../../web/src/components/dashboard/frame'
-import { SolanaMark } from '../../web/src/components/dashboard/solana-mark'
+import { SideField } from '../../web/src/components/dashboard/side-field'
+import { useTheme } from '../../web/src/components/dashboard/theme'
+import { BrandMark } from '../../web/src/components/landing/brand'
 import './styles.css'
 
 const LIMIT_HINT = `Enter an amount up to ${formatUsd(MAX_CLIENT_LIMIT_MICRO_USD)}, such as 1.00.`
@@ -29,6 +30,8 @@ function Connect() {
   const [busy, setBusy] = useState(false)
   const [limitUsd, setLimitUsd] = useState('1.00')
   const handle = new URLSearchParams(window.location.search).get('handle')
+  // Follows the system; the page has no header to hold a theme switch.
+  const { theme } = useTheme()
 
   useEffect(() => {
     if (!handle) return
@@ -105,84 +108,91 @@ function Connect() {
     user?.id
 
   return (
-    <Frame
-      actions={<span className="d-hdr-pill px-3">MCP connection</span>}
-      status={{
-        start: (
-          <span className="d-status" data-state="live">
-            <i aria-hidden="true" />
-            Secure connection
-          </span>
-        ),
-        end: (
-          <span>
-            <SolanaMark />
-            Built on Solana
-          </span>
-        ),
-      }}
-      mainClassName="flex items-center justify-center py-6 sm:py-10"
-      // The card is narrow, so the art can come in close around it.
-      artColumn={600}
+    <div
+      data-theme={theme}
+      className="dash flex min-h-screen items-center justify-center px-4 py-8 sm:py-12"
     >
-      <section
+      {/* The card is narrow, so the art can come in close around it. */}
+      <SideField column={600} />
+      <main
         aria-labelledby="title"
-        className="d-card w-full max-w-[34rem] px-5 py-6 sm:px-9 sm:py-9"
+        className="d-card relative z-[1] w-full max-w-[34rem]"
       >
-        <p className="d-label">Client access</p>
-        <h1
-          id="title"
-          className="mt-3 font-mono text-[1.6rem] leading-tight font-semibold tracking-[-0.04em] break-words sm:text-[1.85rem]"
-        >
-          {pending ? `Connect ${pending.clientName}?` : 'Connect a client'}
-        </h1>
+        <header className="d-th flex h-12 items-center justify-between gap-4 border-b border-line px-5 sm:px-7">
+          <span className="flex items-center gap-2 font-mono text-[14px] font-bold text-fg">
+            <BrandMark size={18} />
+            <span>
+              lanatools<span className="font-medium text-fg-3">.sh</span>
+            </span>
+          </span>
+          <span className="d-label">MCP connection</span>
+        </header>
 
-        {!handle && (
-          <p className="mt-2 text-fg-2" role="alert">
-            Open this page from your MCP client to connect.
-          </p>
-        )}
+        <div className="px-5 pt-6 pb-5 sm:px-7">
+          <p className="d-label">Client access</p>
+          <h1
+            id="title"
+            className="mt-2.5 font-mono text-[1.6rem] leading-tight font-semibold tracking-[-0.04em] break-words sm:text-[1.85rem]"
+          >
+            {pending ? `Connect ${pending.clientName}?` : 'Connect a client'}
+          </h1>
+          {pending ? (
+            <p className="mt-1.5 font-mono text-[11.5px] text-fg-3">
+              Client name supplied by the app
+            </p>
+          ) : (
+            !handle && (
+              <p className="mt-2 text-fg-2" role="alert">
+                Open this page from your MCP client to connect.
+              </p>
+            )
+          )}
+        </div>
 
         {pending && (
           <>
-            <p className="mt-2 font-mono text-[11.5px] text-fg-3">
-              Client name supplied by the app
-            </p>
+            <section
+              aria-label="What it can do"
+              className="border-t border-line px-5 py-5 sm:px-7"
+            >
+              <Permissions scopes={pending.scopes} />
 
-            <Permissions scopes={pending.scopes} />
-
-            {payments && (
-              <label className="mt-5 block">
-                <span className="d-label">Spending limit for this app</span>
-                <span className="mt-2 flex h-11 items-center gap-1 rounded-[9px] border border-line-2 bg-surface px-3 font-mono font-semibold has-aria-invalid:border-bad has-focus-visible:border-accent">
-                  <span aria-hidden="true" className="text-fg-3">
-                    $
+              {payments && (
+                <label className="mt-5 block">
+                  <span className="d-label">Spending limit for this app</span>
+                  <span className="mt-2 flex h-11 items-center gap-1 rounded-[9px] border border-line-2 bg-surface px-3 font-mono font-semibold has-aria-invalid:border-bad has-focus-visible:border-accent">
+                    <span aria-hidden="true" className="text-fg-3">
+                      $
+                    </span>
+                    <input
+                      className="h-full min-w-0 flex-1 bg-transparent font-mono font-semibold outline-none"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      value={limitUsd}
+                      disabled={busy}
+                      aria-invalid={limit === null}
+                      onChange={(event) => setLimitUsd(event.target.value)}
+                    />
+                    <span className="text-[12px] font-medium text-fg-3">
+                      USDC
+                    </span>
                   </span>
-                  <input
-                    className="h-full min-w-0 flex-1 bg-transparent font-mono font-semibold outline-none"
-                    inputMode="decimal"
-                    autoComplete="off"
-                    value={limitUsd}
-                    disabled={busy}
-                    aria-invalid={limit === null}
-                    onChange={(event) => setLimitUsd(event.target.value)}
-                  />
-                  <span className="text-[12px] font-medium text-fg-3">
-                    USDC
+                  <span
+                    className={`mt-2 block text-[12.5px] ${limit === null ? 'text-bad' : 'text-fg-3'}`}
+                  >
+                    {limit === null
+                      ? LIMIT_HINT
+                      : `This app can spend ${formatUsd(limit)} in total. You can change or stop this in your dashboard.`}
                   </span>
-                </span>
-                <span
-                  className={`mt-2 block text-[12.5px] ${limit === null ? 'text-bad' : 'text-fg-3'}`}
-                >
-                  {limit === null
-                    ? LIMIT_HINT
-                    : `This app can spend ${formatUsd(limit)} in total. You can change or stop this in your dashboard.`}
-                </span>
-              </label>
-            )}
+                </label>
+              )}
+            </section>
 
             {ready && authenticated && (
-              <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[10px] border border-line bg-surface px-4 py-3">
+              <section
+                aria-label="Your account"
+                className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line px-5 py-4 sm:px-7"
+              >
                 <span className="min-w-0 flex-1">
                   <span className="d-label block">Signed in as</span>
                   <strong className="mt-0.5 block font-semibold break-all">
@@ -197,51 +207,55 @@ function Connect() {
                 >
                   Use another account
                 </button>
-              </div>
+              </section>
             )}
 
-            <p className="mt-5 border-t border-line pt-4 text-[12.5px] text-fg-3">
-              Only continue if you started this connection in your app.
-            </p>
-
-            <div className="mt-4 flex gap-2.5">
-              {ready && !authenticated ? (
+            <footer className="border-t border-line bg-surface px-5 py-5 sm:px-7">
+              <p className="text-[12.5px] text-fg-3">
+                Only continue if you started this connection in your app.
+              </p>
+              <div className="mt-3 flex gap-2.5">
+                {ready && !authenticated ? (
+                  <button
+                    type="button"
+                    className="d-btn d-btn-primary h-11 flex-1"
+                    onClick={() => login()}
+                  >
+                    Sign in
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="d-btn d-btn-primary h-11 flex-1"
+                    disabled={!ready || !authenticated || busy}
+                    onClick={() => void decide('approve')}
+                  >
+                    Allow access
+                  </button>
+                )}
                 <button
                   type="button"
-                  className="d-btn d-btn-primary h-11 flex-1"
-                  onClick={() => login()}
+                  className="d-btn h-11"
+                  disabled={busy}
+                  onClick={() => void decide('deny')}
                 >
-                  Sign in
+                  Deny
                 </button>
-              ) : (
-                <button
-                  type="button"
-                  className="d-btn d-btn-primary h-11 flex-1"
-                  disabled={!ready || !authenticated || busy}
-                  onClick={() => void decide('approve')}
-                >
-                  Allow access
-                </button>
-              )}
-              <button
-                type="button"
-                className="d-btn h-11"
-                disabled={busy}
-                onClick={() => void decide('deny')}
-              >
-                Deny
-              </button>
-            </div>
+              </div>
+            </footer>
           </>
         )}
 
         {message && (
-          <p role="alert" className="mt-4 text-[13px] text-bad">
+          <p
+            role="alert"
+            className="border-t border-line px-5 py-4 text-[13px] text-bad sm:px-7"
+          >
             {message}
           </p>
         )}
-      </section>
-    </Frame>
+      </main>
+    </div>
   )
 }
 
