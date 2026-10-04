@@ -36,6 +36,24 @@ See [package usage and verification](../../packages/jupiter/README.md).
 The other read tools are follow-up slices. Private Trigger V2 endpoints and
 wallet authentication are outside the agreed scope.
 
+## Reading Solana data
+
+The `chain:read` OAuth scope grants access to every read-only tool exported by
+[`@lanatools/helius`](../../packages/helius/README.md). A client can request it
+alone or alongside `account:read` and `payments:pay`. Consent and the dashboard
+label it **Read Solana data**; it does not authorize wallet signing or payments.
+Disconnecting the grant blocks every call immediately, including calls using an
+unexpired OAuth access token.
+
+`src/server.ts` registers the package registry in one loop, with read-only,
+idempotent, open-world and non-destructive annotations. Input validation runs
+before any API RPC. Tool results contain the same JSON in text and
+`structuredContent`; failures carry a safe `error.code` and `error.message`.
+The API Worker chooses the server-configured network, keeps the Helius key, enforces the
+grant again, and records provider credits in `tool_activity`. The MCP Worker
+has no Helius key or caller-selectable network. See the package README for each
+tool's inputs, outputs, provider behavior and credit accounting.
+
 ## Discovering paid APIs in the pay.sh catalog
 
 `list_catalog`, `search_catalog`, and `get_catalog_entry` come from
@@ -167,6 +185,47 @@ MCP, lists the tools, and calls `whoami` and `phoenix_get_market` without
 printing credentials or IDs.
 Set `LANATOOLS_MCP_CLIENT_ID` to reuse a previously registered local client.
 
+### Verify every Solana tool through OAuth on devnet
+
+Use the local API configuration (`SOLANA_NETWORK=devnet`) and its ignored
+`.dev.vars` with an existing Helius key and devnet RPC URL, then apply local D1
+migrations. Capture the local Workers' logs with
+`bun run dev:mcp 2>&1 | tee /tmp/lanatools-workers.log`.
+
+Run `bun run --cwd apps/mcp verify:local -- --chain-read` with:
+
+- `LANATOOLS_DEVNET_SIGNATURE`: an existing devnet transaction. Verification
+  requires a found, shaped transaction, so a dummy signature does not pass.
+- Optional `LANATOOLS_DEVNET_ADDRESS` and `LANATOOLS_DEVNET_MINT`: devnet fixtures
+  for wallet/account and token lookup. Defaults are the system program and the
+  wrapped SOL mint. No tool receives a `network` argument.
+- `HELIUS_API_KEY`: the same existing API key, available only in this local
+  verification process for exact raw/URL-encoded secret scanning. The script
+  never sends or prints it. Do not commit it or put it in a command argument.
+- `LANATOOLS_WORKER_LOG=/tmp/lanatools-workers.log`: the captured local log.
+
+Open the printed OAuth URL, sign in, and approve identity plus Solana read
+access. The official MCP SDK connects over HTTP and calls every exported tool.
+Adding a package export without a schema-valid fixture and result validator in
+`scripts/verify-chain.ts` fails before OAuth starts; it cannot silently skip a
+new tool. The pass checks advertised annotations, input network exclusion,
+shaped output, identical JSON text/structured content, and the local D1 ledger:
+exactly one successful `devnet` row with positive provider credits per call.
+The D1 query uses the same local persistence directory as `dev:mcp` and never
+queries a remote database.
+
+Tool results and captured Worker logs are scanned for the exact key and
+credential-bearing provider URLs without echoing any matches. Missing key/log
+inputs report `CHAIN_SECRETS NOT_VERIFIED` and exit 2. A failed assertion exits
+nonzero; output never prints returned data or secrets. Use a fresh registration
+(the default) or avoid concurrent calls if reusing `LANATOOLS_MCP_CLIENT_ID`.
+
+Unit tests use a real SDK client and in-memory MCP transport for registration,
+scope refusal, revocation, validation-before-RPC, structured output and safe
+errors. They do not substitute for the signed-in devnet pass above. Report the
+OAuth run, ledger check, log scan and `bun run check` separately in PR evidence;
+never claim a live pass without configured credentials and user approval.
+
 `bun run --cwd apps/mcp verify:payments` connects an MCP SDK client with
 `payments:pay` and calls `pay_http` against the hosted devnet merchant
 (`https://devnet-merchant-production.up.railway.app/api/v1`): refusals first,
@@ -228,3 +287,5 @@ For a manual rollout, apply new D1 migrations with
 `bun run --cwd apps/api db:migrate:remote`, then run `bun run deploy:mcp`
 followed by `bun run deploy:api`. Normal API builds already apply migrations
 before deployment. Supply `VITE_PRIVY_APP_ID` when building MCP locally.
+
+Schema-invalid MCP arguments are rejected before any API call, as required by ADI-211, and therefore have no activity row. The ledger records every API-authorized invocation, including provider or configuration failures; authorization refusals are not attributed to a caller-supplied identity.
