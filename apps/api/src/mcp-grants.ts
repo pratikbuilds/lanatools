@@ -2,7 +2,7 @@ import { and, desc, eq, lt, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
 import { isClientLimit, isMcpScope } from '@lanatools/contracts'
-import type { McpClient } from '@lanatools/contracts'
+import type { McpClient, McpScope } from '@lanatools/contracts'
 import { mcpConsent, mcpGrant, paymentActivity } from './db/schema'
 
 export type ConsentInput = {
@@ -193,10 +193,11 @@ export async function useActiveGrant(
   database: D1Database,
   { grantId, userId, clientId }: GrantIdentity,
   now = Date.now(),
+  requiredScope?: McpScope,
 ) {
   const db = drizzle(database)
   const grant = await db
-    .select({ lastUsedAt: mcpGrant.lastUsedAt })
+    .select({ lastUsedAt: mcpGrant.lastUsedAt, scope: mcpGrant.scope })
     .from(mcpGrant)
     .where(
       and(
@@ -208,6 +209,8 @@ export async function useActiveGrant(
     )
     .get()
   if (!grant) return false
+  if (requiredScope && !scopeList(grant.scope).includes(requiredScope))
+    return false
   if (!grant.lastUsedAt || now - grant.lastUsedAt > LAST_USED_INTERVAL) {
     // Last use is bookkeeping; failing to record it must not deny access.
     try {

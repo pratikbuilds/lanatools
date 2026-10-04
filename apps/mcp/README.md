@@ -13,6 +13,29 @@ cookie and a verified Privy access token.
 `whoami` requires an `account:read` token and an active grant and returns
 the Privy user ID and OAuth client ID.
 
+## Jupiter reads
+
+All nine Jupiter tools (token research, portfolio, lending, legacy orders,
+quote-only swaps and venue metadata) require `jupiter:read`. Consent shows **Jupiter access** without a spending limit
+or wallet-signature flow. Existing clients must request the scope and obtain
+consent; account-only or payments-only access does not authorize Jupiter reads.
+
+Definitions and REST adapters live in `packages/jupiter`. MCP passes the grant
+identity through the API service binding; the API checks the current stored
+grant/scope and supplies `JUPITER_API_KEY`. Put the key in ignored
+`apps/api/.dev.vars` locally. For the hosted API, provision it with
+`bunx wrangler secret put JUPITER_API_KEY -c apps/api/wrangler.jsonc`.
+No key is stored in the MCP Worker, browser or agent arguments.
+
+Results include text summaries and structured data. Missing prices and optional
+verification failures remain visible. Tag/recent discovery pages are local
+slices, not stable snapshots. Jupiter data comes from mainnet-beta independently
+of the payments network.
+
+See [package usage and verification](../../packages/jupiter/README.md).
+The other read tools are follow-up slices. Private Trigger V2 endpoints and
+wallet authentication are outside the agreed scope.
+
 ## Discovering paid APIs in the pay.sh catalog
 
 `list_catalog`, `search_catalog`, and `get_catalog_entry` come from

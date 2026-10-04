@@ -19,6 +19,7 @@
       "name": "@lanatools/api",
       "dependencies": {
         "@lanatools/contracts": "workspace:*",
+        "@lanatools/jupiter": "workspace:*",
         "@privy-io/node": "^0.35.0",
         "@solana/keychain-privy": "1.4.0",
         "@solana/kit": "~6.10.0",
@@ -39,6 +40,7 @@
         "@cloudflare/workers-oauth-provider": "1.1.0",
         "@lanatools/catalog": "workspace:*",
         "@lanatools/contracts": "workspace:*",
+        "@lanatools/jupiter": "workspace:*",
         "@lanatools/phoenix": "workspace:*",
         "@modelcontextprotocol/server": "2.0.0",
         "@privy-io/react-auth": "^3.45.0",
@@ -106,6 +108,17 @@
       "name": "@lanatools/contracts",
       "dependencies": {
         "arktype": "catalog:",
+      },
+    },
+    "packages/jupiter": {
+      "name": "@lanatools/jupiter",
+      "dependencies": {
+        "@modelcontextprotocol/server": "2.0.0",
+        "@solana/kit": "~6.10.0",
+        "zod": "4.4.3",
+      },
+      "devDependencies": {
+        "@modelcontextprotocol/client": "2.0.0",
       },
     },
     "packages/phoenix": {
@@ -433,6 +446,8 @@
     "@lanatools/catalog": ["@lanatools/catalog@workspace:packages/catalog"],
 
     "@lanatools/contracts": ["@lanatools/contracts@workspace:packages/contracts"],
+
+    "@lanatools/jupiter": ["@lanatools/jupiter@workspace:packages/jupiter"],
 
     "@lanatools/mcp": ["@lanatools/mcp@workspace:apps/mcp"],
 

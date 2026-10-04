@@ -15,7 +15,11 @@ export const EarlyAccessResponse = type({
 export type EarlyAccessResponse = typeof EarlyAccessResponse.infer
 
 /** OAuth scopes the LanaTools MCP server grants. */
-export const MCP_SCOPES = ['account:read', 'payments:pay'] as const
+export const MCP_SCOPES = [
+  'account:read',
+  'payments:pay',
+  'jupiter:read',
+] as const
 export type McpScope = (typeof MCP_SCOPES)[number]
 
 export function isMcpScope(value: string): value is McpScope {
