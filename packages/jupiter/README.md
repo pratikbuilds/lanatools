@@ -31,7 +31,7 @@ const outcome = await client.read({
 
 All calls use GET on `https://api.jup.ag` with the server key in `x-api-key`.
 Redirects are refused using manual redirect handling compatible with Workers. Default request timeout: 10 seconds; complete tool
-deadline: 30 seconds. A request can retry once on transport failure, HTTP 5xx or 429. Retry-After is respected when it fits the remaining deadline; otherwise a
+deadline: 30 seconds. A request can retry once on transport failure or HTTP 5xx. A 429 retries only when a usable Retry-After fits the remaining deadline; otherwise a
 structured rate-limit error is returned. Invalid inputs, unusable response
 shapes and other HTTP 4xx are not retried. Failed optional eligibility never
 repeats successful token metadata lookup.
@@ -45,12 +45,12 @@ repeats successful token metadata lookup.
   Ranked needs category/interval; tag needs a tag. Tag/recent offset pagination
   slices the provider list locally and is not a stable upstream snapshot.
   Ranked has no next-page contract.
-- Prices accepts up to 50 unique mints and reports omitted ones in
+- Prices accepts up to 50 unique mints and reports omitted or unusable price entries in
   `missingMints`. Missing prices are never zero. `createdAt` is the provider's
   token-creation timestamp, not price freshness; preserve `blockId` when supplied.
 
 - Portfolio preserves provider records and fetcher reports. Failed or unknown fetchers
-  mark a partial result; missing reports leave completeness unconfirmed. Staking
+  mark a partial result; missing or empty reports leave completeness unconfirmed. Staking
   amounts retain upstream units.
 - Lending preserves amount/rate precision and upstream units; rates are not relabeled
   as APY. Earn earnings normalize either the documented object or array shape to an

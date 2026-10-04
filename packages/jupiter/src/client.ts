@@ -124,7 +124,10 @@ export class ReadContext {
             ? { retryAfterSeconds: seconds }
             : {}),
         }
-        if (limited && seconds !== undefined) delayMs = seconds * 1000
+        if (limited) {
+          if (seconds === undefined) throw new JupiterReadError(failure)
+          delayMs = seconds * 1000
+        }
       } catch (error) {
         if (error instanceof JupiterReadError) throw error
         failure = {

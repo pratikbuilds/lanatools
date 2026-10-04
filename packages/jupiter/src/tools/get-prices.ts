@@ -12,7 +12,13 @@ export async function getPrices(
   if (!isRecord(value)) throw unavailable()
   const prices: Record<string, PriceRecord> = {}
   for (const [mint, price] of Object.entries(value)) {
-    if (isRecord(price)) prices[mint] = price as PriceRecord
+    if (
+      isRecord(price) &&
+      typeof price.usdPrice === 'number' &&
+      Number.isFinite(price.usdPrice) &&
+      price.usdPrice >= 0
+    )
+      prices[mint] = price as PriceRecord
     else
       context.warnings.push(
         `Jupiter returned an unusable price entry for ${mint}.`,

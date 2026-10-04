@@ -376,3 +376,64 @@ test('redirects are rejected without forwarding the key or retrying', async () =
   })
   expect(calls).toBe(1)
 })
+
+test('incomplete per-mint price objects remain missing instead of becoming valid prices', async () => {
+  for (const invalid of [
+    { error: 'not priced' },
+    { usdPrice: null },
+    { usdPrice: '1.0' },
+    { usdPrice: -1 },
+  ]) {
+    const { client } = fixture([
+      {
+        [SOL]: invalid,
+        [JUP]: { usdPrice: 0.000000123456789, newField: null },
+      },
+    ])
+    const out = await client.read({
+      tool: 'jupiter_get_prices',
+      input: { mints: [SOL, JUP] },
+    })
+    expect(out).toMatchObject({
+      ok: true,
+      result: {
+        data: {
+          prices: { [JUP]: { usdPrice: 0.000000123456789, newField: null } },
+          missingMints: [SOL],
+        },
+        warnings: [expect.stringContaining('unusable price entry')],
+      },
+    })
+    if (out.ok && 'prices' in out.result.data)
+      expect(Object.hasOwn(out.result.data.prices, SOL)).toBe(false)
+  }
+})
+
+test('429 without usable Retry-After returns immediately; an explicit fitting delay permits one retry', async () => {
+  for (const headers of [{}, { 'Retry-After': 'not-a-delay' }]) {
+    const { client, calls } = fixture([
+      new Response('private response', { status: 429, headers }),
+    ])
+    const out = await client.read({
+      tool: 'jupiter_get_prices',
+      input: { mints: [SOL] },
+    })
+    expect(out).toMatchObject({
+      ok: false,
+      error: { code: 'rate_limited', retryable: true },
+    })
+    expect(calls).toHaveLength(1)
+    expect(JSON.stringify(out)).not.toContain('private response')
+  }
+  const { client, calls } = fixture([
+    new Response(null, { status: 429, headers: { 'Retry-After': '0' } }),
+    { [SOL]: { usdPrice: 1 } },
+  ])
+  expect(
+    await client.read({ tool: 'jupiter_get_prices', input: { mints: [SOL] } }),
+  ).toMatchObject({
+    ok: true,
+    result: { data: { prices: { [SOL]: { usdPrice: 1 } } } },
+  })
+  expect(calls).toHaveLength(2)
+})

@@ -36,7 +36,7 @@ export async function getPortfolio(
   }
   const reports = value.fetcherReports
   let partial = true
-  if (Array.isArray(reports)) {
+  if (Array.isArray(reports) && reports.length > 0) {
     partial = reports.some(
       (report) =>
         !isRecord(report) ||

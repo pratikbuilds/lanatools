@@ -127,11 +127,11 @@ export type DiscoverTokensData = {
 
 export type PriceRecord = {
   usdPrice: number
-  liquidity: number
-  createdAt: string
-  decimals: number
-  blockId: number | null
-  priceChange24h: number | null
+  liquidity?: number | null
+  createdAt?: string
+  decimals?: number
+  blockId?: number | null
+  priceChange24h?: number | null
   [field: string]: unknown
 }
 

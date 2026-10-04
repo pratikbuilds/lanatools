@@ -144,8 +144,9 @@ function Connect() {
                   <>
                     <strong>Jupiter access</strong>
                     <span>
-                      Read token information, discovery lists and reference
-                      prices.
+                      Read token information, discovery lists, reference prices,
+                      public-wallet portfolios and lending data, legacy orders,
+                      swap quotes and venue information.
                     </span>
                   </>
                 )}

@@ -158,3 +158,8 @@ The implementation is tracked in PR #36. After incorporating the already-merged 
 9. [Venues](<https://linear.app/0xpratik/document/read-tool-9-jupiter-get-swap-venues-f676c43e9c0c>)
 
 [Shared access/output contract](<https://linear.app/0xpratik/document/jupiter-reads-shared-access-and-output-contract-74e4d3de90bd>)
+
+
+## Codex review follow-up
+
+Codex reviewed the implementation and identified four issues, all addressed: only usable finite nonnegative USD prices are accepted; consent describes the entire read scope; empty portfolio fetcher reports keep completeness unknown; and 429 retries require usable Retry-After guidance. Focused regression tests cover the provider-data and retry cases. Live price/portfolio checks through the Worker binding passed after the fixes.

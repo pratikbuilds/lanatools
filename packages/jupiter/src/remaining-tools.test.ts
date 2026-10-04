@@ -454,3 +454,20 @@ test('legacy DCA always supplies includeFailedTx even when the agent omits it', 
   expect(calls[0]!.searchParams.get('includeFailedTx')).toBe('false')
   expect(calls[0]!.searchParams.get('recurringType')).toBe('time')
 })
+
+test('an empty fetcher report list cannot claim a complete portfolio valuation', async () => {
+  const out = await reader({ fetcherReports: [], elements: [] }).read({
+    tool: 'jupiter_get_portfolio',
+    input: { view: 'positions', wallet: sol, platforms: ['unknown-platform'] },
+  })
+  expect(out).toMatchObject({
+    ok: true,
+    result: {
+      data: { partial: true, portfolio: { fetcherReports: [], elements: [] } },
+      warnings: [
+        expect.stringContaining('completeness cannot be confirmed'),
+        expect.stringContaining('incomplete'),
+      ],
+    },
+  })
+})
