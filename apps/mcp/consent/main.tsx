@@ -10,7 +10,8 @@ import {
   parseClientLimit,
 } from '@lanatools/contracts'
 import { Permissions } from './permissions'
-import logoUrl from '../../web/public/favicon.svg?url'
+import { Frame } from '../../web/src/components/dashboard/frame'
+import { SolanaMark } from '../../web/src/components/dashboard/solana-mark'
 import './styles.css'
 
 const LIMIT_HINT = `Enter an amount up to ${formatUsd(MAX_CLIENT_LIMIT_MICRO_USD)}, such as 1.00.`
@@ -104,114 +105,143 @@ function Connect() {
     user?.id
 
   return (
-    <main className="page">
-      <div className="shell">
-        <header className="brand">
-          <span className="wordmark">
-            <img src={logoUrl} alt="" width="30" height="30" />
-            <span>
-              lanatools<span className="wordmark-suffix">.sh</span>
-            </span>
+    <Frame
+      actions={<span className="d-hdr-pill px-3">MCP connection</span>}
+      status={{
+        start: (
+          <span className="d-status" data-state="live">
+            <i aria-hidden="true" />
+            Secure connection
           </span>
-          <span className="brand-context">MCP connection</span>
-        </header>
+        ),
+        end: (
+          <span>
+            <SolanaMark />
+            Built on Solana
+          </span>
+        ),
+      }}
+      mainClassName="flex items-center justify-center py-6 sm:py-10"
+      // The card is narrow, so the art can come in close around it.
+      artColumn={600}
+    >
+      <section
+        aria-labelledby="title"
+        className="d-card w-full max-w-[34rem] px-5 py-6 sm:px-9 sm:py-9"
+      >
+        <p className="d-label">Client access</p>
+        <h1
+          id="title"
+          className="mt-3 font-mono text-[1.6rem] leading-tight font-semibold tracking-[-0.04em] break-words sm:text-[1.85rem]"
+        >
+          {pending ? `Connect ${pending.clientName}?` : 'Connect a client'}
+        </h1>
 
-        <section className="panel" aria-labelledby="title">
-          <p className="eyebrow">Client access</p>
-          <h1 id="title">
-            {pending ? `Connect ${pending.clientName}?` : 'Connect a client'}
-          </h1>
+        {!handle && (
+          <p className="mt-2 text-fg-2" role="alert">
+            Open this page from your MCP client to connect.
+          </p>
+        )}
 
-          {!handle && (
-            <p className="lede" role="alert">
-              Open this page from your MCP client to connect.
+        {pending && (
+          <>
+            <p className="mt-2 font-mono text-[11.5px] text-fg-3">
+              Client name supplied by the app
             </p>
-          )}
 
-          {pending && (
-            <>
-              <p className="client-note">Client name supplied by the app</p>
+            <Permissions scopes={pending.scopes} />
 
-              <Permissions scopes={pending.scopes} />
-
-              {payments && (
-                <label className="limit">
-                  <span className="limit-label">
-                    Spending limit for this app
+            {payments && (
+              <label className="mt-5 block">
+                <span className="d-label">Spending limit for this app</span>
+                <span className="mt-2 flex h-11 items-center gap-1 rounded-[9px] border border-line-2 bg-surface px-3 font-mono font-semibold has-aria-invalid:border-bad has-focus-visible:border-accent">
+                  <span aria-hidden="true" className="text-fg-3">
+                    $
                   </span>
-                  <span className="limit-field">
-                    <span aria-hidden="true">$</span>
-                    <input
-                      inputMode="decimal"
-                      autoComplete="off"
-                      value={limitUsd}
-                      disabled={busy}
-                      aria-invalid={limit === null}
-                      onChange={(event) => setLimitUsd(event.target.value)}
-                    />
-                    <span>USD</span>
-                  </span>
-                  <span className="limit-help">
-                    {limit === null
-                      ? LIMIT_HINT
-                      : `This app can spend ${formatUsd(limit)} in total. You can change or stop this in your dashboard.`}
-                  </span>
-                </label>
-              )}
-
-              {ready && authenticated && (
-                <div className="account">
-                  <span className="account-label">Signed in as</span>
-                  <strong>{account}</strong>
-                  <button
-                    type="button"
-                    className="text-button"
+                  <input
+                    className="h-full min-w-0 flex-1 bg-transparent font-mono font-semibold outline-none"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    value={limitUsd}
                     disabled={busy}
-                    onClick={() => void logout()}
-                  >
-                    Sign out to use another account
-                  </button>
-                </div>
-              )}
+                    aria-invalid={limit === null}
+                    onChange={(event) => setLimitUsd(event.target.value)}
+                  />
+                  <span className="text-[12px] font-medium text-fg-3">
+                    USDC
+                  </span>
+                </span>
+                <span
+                  className={`mt-2 block text-[12.5px] ${limit === null ? 'text-bad' : 'text-fg-3'}`}
+                >
+                  {limit === null
+                    ? LIMIT_HINT
+                    : `This app can spend ${formatUsd(limit)} in total. You can change or stop this in your dashboard.`}
+                </span>
+              </label>
+            )}
 
-              <p className="client-note">
-                Only continue if you started this connection in your app.
-              </p>
-
-              <div className="actions">
-                {ready && !authenticated ? (
-                  <button type="button" onClick={() => login()}>
-                    Sign in
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={!ready || !authenticated || busy}
-                    onClick={() => void decide('approve')}
-                  >
-                    Allow access
-                  </button>
-                )}
+            {ready && authenticated && (
+              <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[10px] border border-line bg-surface px-4 py-3">
+                <span className="min-w-0 flex-1">
+                  <span className="d-label block">Signed in as</span>
+                  <strong className="mt-0.5 block font-semibold break-all">
+                    {account}
+                  </strong>
+                </span>
                 <button
                   type="button"
-                  className="secondary"
+                  className="d-btn d-btn-sm"
                   disabled={busy}
-                  onClick={() => void decide('deny')}
+                  onClick={() => void logout()}
                 >
-                  Deny
+                  Use another account
                 </button>
               </div>
-            </>
-          )}
+            )}
 
-          {message && (
-            <p role="alert" className="error">
-              {message}
+            <p className="mt-5 border-t border-line pt-4 text-[12.5px] text-fg-3">
+              Only continue if you started this connection in your app.
             </p>
-          )}
-        </section>
-      </div>
-    </main>
+
+            <div className="mt-4 flex gap-2.5">
+              {ready && !authenticated ? (
+                <button
+                  type="button"
+                  className="d-btn d-btn-primary h-11 flex-1"
+                  onClick={() => login()}
+                >
+                  Sign in
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="d-btn d-btn-primary h-11 flex-1"
+                  disabled={!ready || !authenticated || busy}
+                  onClick={() => void decide('approve')}
+                >
+                  Allow access
+                </button>
+              )}
+              <button
+                type="button"
+                className="d-btn h-11"
+                disabled={busy}
+                onClick={() => void decide('deny')}
+              >
+                Deny
+              </button>
+            </div>
+          </>
+        )}
+
+        {message && (
+          <p role="alert" className="mt-4 text-[13px] text-bad">
+            {message}
+          </p>
+        )}
+      </section>
+    </Frame>
   )
 }
 
@@ -245,7 +275,7 @@ ReactDOM.createRoot(root).render(
       <Connect />
     </PrivyProvider>
   ) : (
-    <main>
+    <main className="p-6 text-paper">
       <p role="alert">Privy sign-in is not configured on this server.</p>
     </main>
   ),
