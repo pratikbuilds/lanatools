@@ -11,7 +11,8 @@ import {
   getWalletBalances,
 } from '#/lib/solana'
 import { Drawer, DrawerFacts, DrawerHeader } from './drawer'
-import { SolanaMark } from './solana-mark'
+import { Modal } from './modal'
+import { SolanaShine } from './solana-shine'
 import { SplitPanel } from './split-panel'
 
 export function CreateWallet() {
@@ -64,18 +65,25 @@ function wholeCents(usdc: bigint) {
   return Number(usdc / 10_000n) / 100
 }
 
+/** A wallet address cut to its first and last four characters. */
+function shortAddress(walletAddress: string) {
+  return `${walletAddress.slice(0, 4)}…${walletAddress.slice(-4)}`
+}
+
 /**
- * The balance and the way to add to it, as one panel: what is available on
- * the left, the wallet's address and Deposit on the right.
+ * The balance and the ways to move it, as one panel: what is available on
+ * the left, the wallet's address with Deposit and Withdraw on the right.
  */
 export function WalletPanel({ walletAddress }: { walletAddress: string }) {
   const { state, copy } = useCopy(walletAddress)
   const balances = useWalletBalances(walletAddress)
   const [depositing, setDepositing] = useState(false)
+  const [withdrawing, setWithdrawing] = useState(false)
 
   return (
     <section className="mt-5">
       <SplitPanel
+        leftClassName="sol-shine-host"
         left={
           <>
             <p className="d-label">Available</p>
@@ -111,39 +119,48 @@ export function WalletPanel({ walletAddress }: { walletAddress: string }) {
             >
               {balances.isError ? 'Could not load balances.' : ''}
             </p>
-            <span className="absolute right-[26px] bottom-[22px] text-fg opacity-[0.06]">
-              <SolanaMark size={64} />
+            <span className="absolute right-[22px] bottom-[18px] text-fg">
+              <SolanaShine size={64} />
             </span>
           </>
         }
         right={
           <>
             <h2 className="d-label">Deposit USDC</h2>
-            <div className="mt-3 mb-4 flex items-stretch gap-2">
-              <code title={walletAddress} className="d-well min-w-0 flex-1">
-                {walletAddress}
+            <div className="mt-3 flex items-center gap-2">
+              <code title={walletAddress} className="d-well">
+                {shortAddress(walletAddress)}
               </code>
               <button
                 type="button"
                 onClick={() => void copy()}
-                className="d-btn h-auto"
-                aria-label="Copy the deposit address"
+                className="d-btn h-[39px]"
+                aria-label="Copy the wallet address"
               >
                 {copyLabel(state, 'Copy')}
               </button>
               <CopyStatus state={state} subject="address" />
             </div>
-            <button
-              type="button"
-              className="d-btn d-btn-primary"
-              onClick={() => setDepositing(true)}
-            >
-              <span aria-hidden="true">↘</span> Deposit
-            </button>
             <p className="mt-3 text-[12.5px] text-fg-3">
-              Send USDC on {NETWORK.label} only. Other tokens or networks won’t
+              Only send USDC on {NETWORK.label}. Other tokens or networks won’t
               show up.
             </p>
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                className="d-btn d-btn-primary"
+                onClick={() => setDepositing(true)}
+              >
+                <span aria-hidden="true">↓</span> Deposit
+              </button>
+              <button
+                type="button"
+                className="d-btn"
+                onClick={() => setWithdrawing(true)}
+              >
+                <span aria-hidden="true">↑</span> Withdraw
+              </button>
+            </div>
           </>
         }
       />
@@ -182,6 +199,85 @@ export function WalletPanel({ walletAddress }: { walletAddress: string }) {
           ]}
         />
       </Drawer>
+
+      <WithdrawModal
+        open={withdrawing}
+        onClose={() => setWithdrawing(false)}
+        available={balances.data ? wholeCents(balances.data.usdc) : null}
+      />
     </section>
+  )
+}
+
+/**
+ * Where a withdrawal will be filled in, in a centred modal. Sending is not built yet, so the
+ * form can be filled but not submitted.
+ */
+function WithdrawModal({
+  open,
+  onClose,
+  available,
+}: {
+  open: boolean
+  onClose: () => void
+  available: number | null
+}) {
+  const [to, setTo] = useState('')
+  const [amount, setAmount] = useState('')
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Withdraw USDC"
+      detail={`From your wallet on ${NETWORK.label}`}
+    >
+      <form className="grid gap-4" onSubmit={(event) => event.preventDefault()}>
+        <label className="grid gap-1.5">
+          <span className="d-label">To address</span>
+          <input
+            className="d-input h-10 font-mono"
+            placeholder="Solana address"
+            value={to}
+            onChange={(event) => setTo(event.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+        <label className="grid gap-1.5">
+          <span className="flex items-baseline justify-between">
+            <span className="d-label">Amount</span>
+            <span className="font-mono text-[12px] text-fg-3">
+              {available === null ? '—' : `$${available.toFixed(2)} available`}
+            </span>
+          </span>
+          <span className="flex gap-2">
+            <input
+              className="d-input h-10 min-w-0 flex-1 font-mono"
+              inputMode="decimal"
+              placeholder="0.00"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+            />
+            <button
+              type="button"
+              className="d-btn h-10"
+              disabled={available === null}
+              onClick={() =>
+                available !== null && setAmount(available.toFixed(2))
+              }
+            >
+              Max
+            </button>
+          </span>
+        </label>
+        <button type="submit" className="d-btn d-btn-primary h-11" disabled>
+          Withdraw
+        </button>
+        <p className="text-[12.5px] text-fg-3">
+          Withdrawals are coming soon. Nothing is sent from this form yet.
+        </p>
+      </form>
+    </Modal>
   )
 }

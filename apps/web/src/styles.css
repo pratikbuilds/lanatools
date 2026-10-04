@@ -19,6 +19,8 @@
   --font-sans: var(--font-mono);
 
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  /* For movement that stays on screen. */
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 }
 
 html {
@@ -730,9 +732,128 @@ body {
     fill: var(--d-pat-acc);
   }
 
+  /* The Solana watermark: faint until its host is hovered, then alive
+     inside its own shape. Colour flows, glitter blinks, a shine sweeps.
+     Only colour, opacity and what is inside the mark change; it never
+     moves or grows. Hover only means something with a real pointer, so
+     touch screens keep the quiet watermark. */
+  .sol-shine-mute {
+    opacity: 0.07;
+    transition: opacity 250ms var(--ease-out);
+  }
+  .sol-shine-colour {
+    opacity: 0;
+    transition: opacity 250ms var(--ease-out);
+  }
+  .sol-shine-sweep {
+    translate: -40px 0;
+  }
+  .sol-shine-speck {
+    fill: #fff;
+    opacity: 0;
+  }
+  .sol-shine-real {
+    opacity: 0;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .sol-shine-host:hover .sol-shine-mute {
+      opacity: 0;
+    }
+    .sol-shine-host:hover .sol-shine-colour {
+      opacity: 1;
+    }
+    .sol-shine-host:hover .sol-shine-real {
+      animation: sol-settle 7s var(--ease-in-out) infinite;
+    }
+    .sol-shine-host:hover .sol-shine-flow {
+      animation: sol-flow 3s linear infinite;
+    }
+    .sol-shine-host:hover .sol-shine-speck {
+      animation: sol-speck 2s var(--ease-in-out) infinite;
+    }
+    .sol-shine-host:hover .sol-shine-sweep {
+      animation: sol-sweep 2.4s var(--ease-in-out) infinite;
+    }
+  }
+  /* Animate for about four seconds, then fade into the real colours, hold
+     them, and fade back out to start again. */
+  @keyframes sol-settle {
+    0%,
+    55% {
+      opacity: 0;
+    }
+    68%,
+    92% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+  @keyframes sol-flow {
+    to {
+      translate: 202px 0;
+    }
+  }
+  /* A speck flashes on briefly, then rests dark for most of the cycle. */
+  @keyframes sol-speck {
+    0%,
+    30%,
+    100% {
+      opacity: 0;
+    }
+    12% {
+      opacity: 0.95;
+    }
+  }
+  @keyframes sol-sweep {
+    0%,
+    20% {
+      translate: -40px 0;
+    }
+    70%,
+    100% {
+      translate: 190px 0;
+    }
+  }
+
+  /* A modal eases in from just below full size; closing snaps. */
+  .d-modal[open] {
+    opacity: 1;
+    scale: 1;
+    transition:
+      opacity 200ms var(--ease-out),
+      scale 200ms var(--ease-out);
+    @starting-style {
+      opacity: 0;
+      scale: 0.96;
+    }
+  }
+  .d-modal[open]::backdrop {
+    opacity: 1;
+    transition: opacity 200ms var(--ease-out);
+    @starting-style {
+      opacity: 0;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .d-status[data-state='live'] i {
       animation: none;
+    }
+    .sol-shine-host:hover
+      :is(.sol-shine-flow, .sol-shine-speck, .sol-shine-sweep) {
+      animation: none;
+    }
+    /* The modal fades without growing. */
+    .d-modal[open] {
+      scale: 1;
+      transition: opacity 200ms var(--ease-out);
+    }
+    /* Without motion, just the real colours. */
+    .sol-shine-host:hover .sol-shine-real {
+      animation: none;
+      opacity: 1;
     }
   }
 }
