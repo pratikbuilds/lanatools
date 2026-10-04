@@ -16,6 +16,7 @@ const claude: McpClient = {
   limitMicroUsd: 0,
   spentMicroUsd: 0,
   reservedMicroUsd: 0,
+  estimatedCredits: 0,
 }
 
 const paying: McpClient = {
@@ -128,4 +129,25 @@ test('Solana read access has the same plain label and grants no payment access',
     detail({ ...paying, scopes: [...paying.scopes, 'chain:read'] }),
   ).toContain('Read Solana data')
   expect(detail(claude)).not.toContain('Read Solana data')
+})
+
+test('each client shows its own credits as estimates, whether or not it can pay', () => {
+  const html = table([
+    { ...claude, estimatedCredits: 1 },
+    {
+      ...paying,
+      grantId: 'grant-2',
+      clientId: 'client-2',
+      estimatedCredits: 1_234,
+    },
+  ])
+  expect(html).toContain('1 estimated credit')
+  expect(html).toContain('1,234 estimated credits')
+  expect(html).toContain('$0.02')
+  expect(html).toContain('Helius does not report a per-call cost')
+  const clientDetail = detail({ ...claude, estimatedCredits: 1_234 })
+  expect(clientDetail).toContain('Estimated credits')
+  expect(clientDetail).toContain('1,234')
+  expect(clientDetail).toContain('Helius does not report a per-call cost')
+  expect(clientDetail).not.toContain('$')
 })

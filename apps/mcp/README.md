@@ -210,7 +210,9 @@ Adding a package export without a schema-valid fixture and result validator in
 `scripts/verify-chain.ts` fails before OAuth starts; it cannot silently skip a
 new tool. The pass checks advertised annotations, input network exclusion,
 shaped output, identical JSON text/structured content, and the local D1 ledger:
-exactly one successful `devnet` row with positive provider credits per call.
+exactly one successful `devnet` row with estimated credits per call.
+Documented DAS not-found/no-assets responses may legitimately use zero credits;
+RPC and history smoke fixtures must have positive credits.
 The D1 query uses the same local persistence directory as `dev:mcp` and never
 queries a remote database.
 

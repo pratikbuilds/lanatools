@@ -11,7 +11,10 @@ import { CopyStatus, copyLabel, useCopy } from '#/components/landing/copy-url'
 import {
   ACTIVITY_OUTCOMES,
   OUTCOME_LABELS,
+  CREDIT_ESTIMATE_NOTE,
   callHost,
+  callTitle,
+  formatCredits,
   dayLabel,
   explorerURL,
   formatTime,
@@ -25,7 +28,7 @@ import { useDashboardSession } from './session'
 
 const DAY_MS = 86_400_000
 const ROW =
-  'grid grid-cols-[4.6rem_minmax(0,1fr)_auto] items-center gap-x-3 px-1 md:grid-cols-[4.6rem_6.5rem_minmax(0,1fr)_4rem_7rem] md:gap-x-5'
+  'grid grid-cols-[4.6rem_minmax(0,1fr)_auto] items-center gap-x-3 px-1 md:grid-cols-[4.6rem_6.5rem_minmax(0,1fr)_4rem_9rem] md:gap-x-5'
 const PROTOCOL_LABELS = { mpp: 'MPP', x402: 'x402' }
 
 function clientName(item: ActivityItem) {
@@ -118,11 +121,12 @@ export function ActivityPage({
         <ActivityTotals totals={calls.data?.pages[0]?.totals} />
         {days.data && <ActivityHeatmap days={days.data} />}
       </div>
+      <p className="mb-4 text-[12px] text-mute">{CREDIT_ESTIMATE_NOTE}</p>
       <div className="flex flex-wrap items-center gap-2.5 border-b-[1.5px] border-ink pb-3.5">
         <div
           role="group"
           aria-label="Filter by outcome"
-          className="inline-flex overflow-hidden rounded-[6px] border-[1.5px] border-ink"
+          className="inline-flex max-w-full overflow-x-auto rounded-[6px] border-[1.5px] border-ink"
         >
           {[undefined, ...ACTIVITY_OUTCOMES].map((outcome) => (
             <button
@@ -130,7 +134,7 @@ export function ActivityPage({
               type="button"
               aria-pressed={filter.outcome === outcome}
               onClick={() => onFilter({ ...filter, outcome })}
-              className="h-[30px] border-r-[1.5px] border-ink bg-card px-3 text-[12.5px] last:border-r-0 aria-pressed:bg-ink aria-pressed:font-bold aria-pressed:text-card"
+              className="h-[30px] shrink-0 border-r-[1.5px] border-ink bg-card px-3 text-[12.5px] last:border-r-0 aria-pressed:bg-ink aria-pressed:font-bold aria-pressed:text-card"
             >
               {outcome ? OUTCOME_LABELS[outcome] : 'All'}
             </button>
@@ -200,6 +204,10 @@ export function ActivityTotals({
         [
           ['Spent', totals && formatUsd(totals.spentMicroUsd)],
           ['Calls', totals?.calls.toLocaleString('en-US')],
+          [
+            'Estimated credits',
+            totals?.estimatedCredits.toLocaleString('en-US'),
+          ],
         ] as const
       ).map(([label, value]) => (
         <div key={label}>
@@ -268,7 +276,7 @@ function CallHead() {
       <span>Time</span>
       <span>Client</span>
       <span>Request</span>
-      <span>Protocol</span>
+      <span>Source</span>
       <span className="text-right">Outcome</span>
     </div>
   )
@@ -294,7 +302,7 @@ export function CallRows({
         const heading = byDay && label !== day
         day = label
         return (
-          <li key={item.id}>
+          <li key={`${item.kind}:${item.id}`}>
             {heading && (
               <h3 className="border-b border-rule px-1 pt-5 pb-2 text-[12px] font-bold">
                 {label}
@@ -313,8 +321,10 @@ export function CallRows({
               </span>
               <span className="min-w-0">
                 <span className="block truncate text-mute">
-                  <b className="font-semibold text-ink">{callHost(item)}</b>
-                  {item.path}
+                  <b className="font-semibold text-ink">
+                    {item.kind === 'tool' ? item.tool : callHost(item)}
+                  </b>
+                  {item.kind === 'payment' && item.path}
                 </span>
                 {item.reason && (
                   <span
@@ -325,10 +335,22 @@ export function CallRows({
                 )}
               </span>
               <span className="hidden text-[12px] text-mute md:block">
-                {item.protocol && PROTOCOL_LABELS[item.protocol]}
+                {item.kind === 'tool'
+                  ? item.provider === 'helius'
+                    ? 'Helius'
+                    : item.provider
+                  : item.protocol && PROTOCOL_LABELS[item.protocol]}
               </span>
               <span className="text-right text-[12.5px] whitespace-nowrap text-mute">
                 <Outcome item={item} />
+                {item.kind === 'tool' && (
+                  <span
+                    className="block max-w-[9rem] text-[11px] whitespace-normal"
+                    title={CREDIT_ESTIMATE_NOTE}
+                  >
+                    {formatCredits(item.estimatedCredits)}
+                  </span>
+                )}
               </span>
             </button>
           </li>
@@ -340,7 +362,11 @@ export function CallRows({
 
 /** Lime is money that moved, coral is a refusal, grey is neither. */
 function Outcome({ item }: { item: ActivityItem }) {
-  if (item.outcome === 'paid' && item.amountMicroUsd !== null)
+  if (
+    item.kind === 'payment' &&
+    item.outcome === 'paid' &&
+    item.amountMicroUsd !== null
+  )
     return (
       <span className="rounded-[4px] bg-lime px-[7px] py-0.5 text-[13.5px] font-bold text-ink">
         {formatUsd(item.amountMicroUsd)}
@@ -366,7 +392,7 @@ function CallDrawer({
     <Drawer
       open={item !== undefined}
       onClose={onClose}
-      label={item ? `Call to ${callHost(item)}${item.path}` : 'Call'}
+      label={item ? `Call: ${callTitle(item)}` : 'Call'}
     >
       {item && <CallDetail item={item} onClose={onClose} />}
     </Drawer>
@@ -383,33 +409,50 @@ export function CallDetail({
   now?: number
 }) {
   const facts: Array<[string, ReactNode]> = [
-    ['Request', `${item.method} ${item.origin}${item.path}`],
+    item.kind === 'tool'
+      ? ['Tool', item.tool]
+      : ['Request', `${item.method} ${item.origin}${item.path}`],
     [
       'Client',
       item.connected ? clientName(item) : `${clientName(item)}, disconnected`,
     ],
   ]
-  if (item.protocol)
+  if (item.kind === 'tool') {
+    facts.push([
+      'Provider',
+      item.provider === 'helius' ? 'Helius' : item.provider,
+    ])
+    if (item.network) facts.push(['Network', item.network])
+    facts.push(['Duration', `${item.durationMs.toLocaleString('en-US')} ms`])
+  }
+  if (item.kind === 'payment' && item.protocol)
     facts.push([
       'Protocol',
       item.network
         ? `${PROTOCOL_LABELS[item.protocol]}, USDC on ${item.network}`
         : PROTOCOL_LABELS[item.protocol],
     ])
-  if (item.httpStatus)
+  if (item.kind === 'payment' && item.httpStatus)
     facts.push(['Endpoint answered', `HTTP ${item.httpStatus}`])
 
   return (
     <>
       <DrawerHeader
-        title={`${callHost(item)}${item.path}`}
+        title={callTitle(item)}
         detail={`${clientName(item)}, ${dayLabel(item.createdAt, now)} at ${formatTime(item.createdAt)}`}
         onClose={onClose}
       />
       <p className="text-[12px] text-mute">{OUTCOME_LABELS[item.outcome]}</p>
       <p className="mt-1.5 mb-1 text-[3.2rem] leading-none font-bold tracking-[-0.05em]">
-        {formatUsd(item.amountMicroUsd ?? 0)}
+        {item.kind === 'tool'
+          ? item.estimatedCredits.toLocaleString('en-US')
+          : formatUsd(item.amountMicroUsd ?? 0)}
       </p>
+      {item.kind === 'tool' && (
+        <p className="mt-2 text-[12px] text-mute">
+          Estimated credits. Helius does not report a per-call cost.
+        </p>
+      )}
       {item.reason && (
         <p
           className={`text-[12px] ${item.outcome === 'refused' ? 'text-coral-ink' : 'text-mute'}`}
@@ -418,7 +461,7 @@ export function CallDetail({
         </p>
       )}
       <DrawerFacts facts={facts} />
-      {item.signature && (
+      {item.kind === 'payment' && item.signature && (
         <Transaction signature={item.signature} network={item.network} />
       )}
     </>
@@ -516,8 +559,8 @@ function NoCalls() {
     <div className="px-1 pt-10 pb-2 text-center">
       <h3 className="text-[15px] font-bold">No calls yet</h3>
       <p className="mt-1.5 text-[12px] text-mute">
-        Ask a connected client to call a paid endpoint. Every call shows up
-        here, with what it cost.
+        Ask a connected client to read Solana data or call a paid endpoint. Tool
+        calls show estimated credits; payments show what they cost.
       </p>
     </div>
   )

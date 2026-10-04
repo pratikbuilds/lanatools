@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { formatUsd } from '@lanatools/contracts'
+import { CREDIT_ESTIMATE_NOTE, formatCredits } from '#/lib/activity'
 import type { McpClient } from '@lanatools/contracts'
 import {
   listMcpClients,
@@ -215,6 +216,12 @@ export function ClientTable({
                 <span className="block truncate text-[12px] text-mute">
                   {client.redirectHost ?? client.clientId}
                 </span>
+                <span
+                  className="block text-[11px] text-mute"
+                  title={CREDIT_ESTIMATE_NOTE}
+                >
+                  {formatCredits(client.estimatedCredits)}
+                </span>
               </span>
               {canPay(client) ? (
                 <>
@@ -305,6 +312,7 @@ export function ClientDetail({
       'Can',
       client.scopes.map((scope) => SCOPE_LABELS[scope] ?? scope).join(', '),
     ],
+    ['Estimated credits', client.estimatedCredits.toLocaleString('en-US')],
     ['Connected', timeAgo(client.connectedAt, now)],
     [
       'Last used',
@@ -328,6 +336,7 @@ export function ClientDetail({
         />
       )}
       <DrawerFacts facts={facts} />
+      <p className="mt-3 text-[12px] text-mute">{CREDIT_ESTIMATE_NOTE}</p>
       {/* The page behind an open drawer cannot be reached, so a failure is
           reported here, where the action was taken. */}
       <p role="alert" className="mt-5 text-[13px] text-coral-ink empty:hidden">

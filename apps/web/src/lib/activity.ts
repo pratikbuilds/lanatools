@@ -1,5 +1,5 @@
 import { ActivityDays, ActivityPage } from '@lanatools/contracts'
-import type { ActivityItem } from '@lanatools/contracts'
+import type { ActivityItem, PaymentActivityItem } from '@lanatools/contracts'
 import { authorized } from './mcp-clients'
 import type { GetAccessToken } from './mcp-clients'
 
@@ -11,6 +11,7 @@ export type ActivityFilter = {
 }
 
 export const ACTIVITY_OUTCOMES: Array<ActivityOutcome> = [
+  'ok',
   'paid',
   'free',
   'refused',
@@ -18,6 +19,7 @@ export const ACTIVITY_OUTCOMES: Array<ActivityOutcome> = [
 ]
 
 export const OUTCOME_LABELS: Record<ActivityOutcome, string> = {
+  ok: 'Succeeded',
   paid: 'Paid',
   free: 'Free',
   refused: 'Refused',
@@ -85,8 +87,20 @@ export function dayLabel(timestamp: number, now = Date.now()) {
 }
 
 /** The host a call went to, without its scheme. */
-export function callHost(item: Pick<ActivityItem, 'origin'>) {
+export function callHost(item: Pick<PaymentActivityItem, 'origin'>) {
   return item.origin.replace(/^https?:\/\//, '')
+}
+
+/** A human-readable estimate, kept separate from payment amounts. */
+export function formatCredits(credits: number) {
+  return `${credits.toLocaleString('en-US')} estimated ${credits === 1 ? 'credit' : 'credits'}`
+}
+
+export const CREDIT_ESTIMATE_NOTE =
+  'Credits are estimates. Helius does not report a per-call cost.'
+
+export function callTitle(item: ActivityItem) {
+  return item.kind === 'tool' ? item.tool : `${callHost(item)}${item.path}`
 }
 
 /**

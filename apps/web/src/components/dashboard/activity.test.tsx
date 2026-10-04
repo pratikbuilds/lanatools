@@ -11,6 +11,7 @@ import {
 const now = new Date(2026, 9, 2, 15).getTime()
 
 const paid: ActivityItem = {
+  kind: 'payment',
   id: 'call-paid',
   clientId: 'client-1',
   clientName: 'Codex',
@@ -132,10 +133,14 @@ test('a call from a disconnected or unnamed client still says who made it', () =
 
 test('totals show spend and calls, and a dash until they load', () => {
   const html = renderToString(
-    <ActivityTotals totals={{ calls: 1234, spentMicroUsd: 460_000 }} />,
+    <ActivityTotals
+      totals={{ calls: 1234, spentMicroUsd: 460_000, estimatedCredits: 4321 }}
+    />,
   )
   expect(html).toContain('$0.46')
   expect(html).toContain('1,234')
+  expect(html).toContain('4,321')
+  expect(html).toContain('Estimated credits')
   expect(renderToString(<ActivityTotals totals={undefined} />)).toContain('—')
 })
 
@@ -155,4 +160,59 @@ test('the chart has a square for each charted day, darkest for the busiest', () 
   expect(html).toContain('Oct 2: 8 calls, $0.04 spent')
   expect(html).toContain('Oct 1: 1 call, $0.00 spent')
   expect(html.match(/bg-rule/g)).toHaveLength(82)
+})
+
+const tool: ActivityItem = {
+  kind: 'tool',
+  id: 'tool-ok',
+  clientId: 'client-1',
+  clientName: 'Codex',
+  connected: true,
+  tool: 'get_balance',
+  provider: 'helius',
+  network: 'devnet',
+  outcome: 'ok',
+  estimatedCredits: 1,
+  durationMs: 42,
+  reason: null,
+  createdAt: paid.createdAt,
+}
+
+test('tool rows show name, status and estimated credits beside payments', () => {
+  const html = rows([tool, paid])
+  expect(html).toContain('get_balance')
+  expect(html).toContain('Succeeded')
+  expect(html).toContain('Helius')
+  expect(html).toContain('1 estimated credit')
+  expect(html).toContain('$0.01')
+  expect(html).toContain('Helius does not report a per-call cost')
+})
+
+test('tool detail labels estimated credits without implying a wallet charge', () => {
+  const html = detail(tool)
+  expect(html).toContain('get_balance')
+  expect(html).toContain('Succeeded')
+  expect(html).toContain('Estimated credits')
+  expect(html).toContain('Helius does not report a per-call cost')
+  expect(html).toContain('devnet')
+  expect(html).toContain('42 ms')
+  expect(html).not.toContain('$')
+  expect(html).not.toContain('Transaction')
+  expect(html).not.toContain('Endpoint answered')
+})
+
+test('failed tools keep their safe reason and estimate, including zero', () => {
+  const failedTool: ActivityItem = {
+    ...tool,
+    outcome: 'failed',
+    reason: 'provider_error',
+    estimatedCredits: 0,
+    network: null,
+  }
+  const html = rows([failedTool])
+  expect(html).toContain('Failed')
+  expect(html).toContain('provider_error')
+  expect(html).toContain('0 estimated credits')
+  expect(html).not.toContain('$')
+  expect(detail(failedTool)).not.toContain('devnet')
 })
