@@ -59,7 +59,8 @@ export function createPhoenixClient(opts: PhoenixOpts = {}) {
     try {
       response = await fetcher(url.toString(), {
         headers: { accept: 'application/json' },
-        redirect: 'error',
+        // Workers only support follow/manual. Reject redirects via status below.
+        redirect: 'manual',
         signal: AbortSignal.timeout(timeoutMs),
       })
     } catch (cause) {
