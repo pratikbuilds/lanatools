@@ -6,6 +6,7 @@ import { jsonSafe } from './format'
 import { getAccounts } from './tools/get-accounts'
 import { getTransactions } from './tools/get-transactions'
 import { getWalletHoldings } from './tools/get-wallet-holdings'
+import { getTokenInfo } from './tools/get-token-info'
 
 export { defineTool } from './tool'
 export type { HeliusTool } from './tool'
@@ -14,6 +15,7 @@ export const heliusTools = [
   getAccounts,
   getTransactions,
   getWalletHoldings,
+  getTokenInfo,
 ] as const
 export type HeliusOutcome =
   | { ok: true; result: Record<string, unknown>; credits: number }

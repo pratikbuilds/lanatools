@@ -1,0 +1,42 @@
+{
+  "jsonrpc": "2.0",
+  "id": "lanatools",
+  "result": [
+    {
+      "id": "F9Lw3ki3hJ7PF9HQXsBzoY8GyE6sPoEZZdXJBsTTD2rk",
+      "interface": "V1_NFT",
+      "content": { "metadata": { "name": "Fixture NFT", "symbol": "NFT" } },
+      "compression": { "compressed": true },
+      "grouping": [
+        {
+          "group_key": "collection",
+          "group_value": "J1S9H3QjnRtBbbuD4HjPV6RpRhwuk4zKbxsnCHuTgh9w",
+          "verified": false
+        }
+      ],
+      "creators": [
+        {
+          "address": "11111111111111111111111111111111",
+          "share": 100,
+          "verified": true
+        }
+      ],
+      "token_info": { "decimals": 0, "supply": 1 },
+      "mutable": false
+    },
+    null,
+    {
+      "id": "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+      "interface": "FungibleAsset",
+      "mint_extensions": {
+        "metadata": { "name": "Synthetic Token-2022 Fixture", "symbol": "FIX" }
+      },
+      "token_info": {
+        "decimals": 9,
+        "supply": 18446744073709551615,
+        "token_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "price_info": { "price_per_token": 0.25, "currency": "USD" }
+      }
+    }
+  ]
+}
