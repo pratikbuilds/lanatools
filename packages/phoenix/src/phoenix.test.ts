@@ -221,6 +221,91 @@ test('candles pass timeframe and limit through', async () => {
   })
 })
 
+test('a candle window keeps the newest candles and says it was truncated', async () => {
+  const candle = (hour: number) => ({
+    time: Date.UTC(2026, 9, 4, hour),
+    open: 1,
+    high: 1,
+    low: 1,
+    close: 1,
+    volume: 1,
+    volumeQuote: 1,
+    tradeCount: 1,
+  })
+  const { outcome, requests } = await run(
+    'phoenix_get_candles',
+    {
+      symbol: 'SOL',
+      limit: 2,
+      from: '2026-10-04T00:00:00Z',
+      to: '2026-10-04T03:00:00Z',
+    },
+    { '/v1/candles/SOL': [candle(0), candle(1), candle(2)] },
+  )
+  expect(Object.fromEntries(requests[0]?.searchParams ?? [])).toEqual({
+    timeframe: '1h',
+    limit: '2',
+    startTime: String(Date.UTC(2026, 9, 4, 0)),
+    endTime: String(Date.UTC(2026, 9, 4, 3)),
+  })
+  expect(result(outcome)).toMatchObject({
+    truncated: true,
+    candles: [
+      { time: '2026-10-04T01:00:00.000Z' },
+      { time: '2026-10-04T02:00:00.000Z' },
+    ],
+  })
+})
+
+test('a candle window Phoenix rejects as too long tells the agent how to fix it', async () => {
+  const { outcome } = await run(
+    'phoenix_get_candles',
+    {
+      symbol: 'SOL',
+      timeframe: '1m',
+      from: '2026-10-01T00:00:00Z',
+      to: '2026-10-03T00:00:00Z',
+    },
+    {
+      '/v1/candles/SOL': Response.json(
+        { error: 'Requested time range exceeds 2500 candles' },
+        { status: 400 },
+      ),
+    },
+  )
+  expect(outcome).toMatchObject({
+    ok: false,
+    error: {
+      code: 'invalid_input',
+      message: expect.stringContaining('larger timeframe'),
+    },
+  })
+})
+
+test('candle and history limits and windows are bounded', async () => {
+  const inputs: [string, unknown][] = [
+    ['phoenix_get_candles', { symbol: 'SOL', limit: 501 }],
+    [
+      'phoenix_get_candles',
+      {
+        symbol: 'SOL',
+        from: '2026-10-04T03:00:00Z',
+        to: '2026-10-04T00:00:00Z',
+      },
+    ],
+    ['phoenix_get_candles', { symbol: 'SOL', from: 'yesterday' }],
+    ['phoenix_get_history', { wallet: WALLET, type: 'trades', limit: 101 }],
+  ]
+  for (const [name, input] of inputs) {
+    const { outcome, requests } = await run(name, input, {})
+    expect(outcome).toMatchObject({
+      ok: false,
+      error: { code: 'invalid_input' },
+    })
+    expect(requests).toHaveLength(0)
+  }
+})
+
 test('account converts lots, estimates PnL at mark and splits margin modes', async () => {
   const { outcome } = await run(
     'phoenix_get_account',

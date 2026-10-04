@@ -15,7 +15,9 @@ spending-limit flow and needs its own design.
 | Network | Mainnet only, no `network` input | Phoenix has no devnet |
 | Access | Any active grant, no new scope | Public data, no key, no money moves (same as the catalog tools) |
 | Wallet input | Required address, any wallet | Defaulting to the user's embedded wallet can come later |
-| Defaults | Order book depth 10, candles 1h × 50, history 20 | Copied from Vulcan; no maximums, since Phoenix publishes none |
+| Defaults | Order book depth 10, candles 1h × 50, history 20 | Copied from Vulcan |
+| Maximums | Candles 500, history 100 per call | Keeps one result near 70 KB of agent context; history pages with a cursor |
+| Candle window | Optional `from`/`to` (ISO 8601) | Newest candles in the window, `truncated` when it held more; Phoenix rejects windows over 2500 candles |
 
 ## Tools
 
@@ -24,7 +26,7 @@ spending-limit flow and needs its own design.
 | `phoenix_list_markets` | — | Every market by 24h volume: price, change, volume, OI, funding, max leverage | `/v1/view/exchange/markets`, `/v1/markets/stats/latest` |
 | `phoenix_get_market` | `symbol` | Stats, fees, leverage tiers (tokens), OI cap, funding limits | `/v1/view/exchange/market/{s}`, `/v1/market/{s}/stats/latest` |
 | `phoenix_get_orderbook` | `symbol`, `depth?` | Bids, asks, mid, spread | `/v1/view/orderbook/{s}` |
-| `phoenix_get_candles` | `symbol`, `timeframe?`, `limit?` | OHLCV, oldest first | `/v1/candles/{s}` |
+| `phoenix_get_candles` | `symbol`, `timeframe?`, `limit?`, `from?`, `to?` | OHLCV, oldest first | `/v1/candles/{s}` |
 | `phoenix_get_account` | `wallet` | Collateral, positions with PnL at mark, open orders, per subaccount | `/v1/trader/state/{w}` (+ market routes when it has positions) |
 | `phoenix_get_history` | `wallet`, `type`, `symbol?`, `limit?`, `cursor?`, `resolution?` | trades, orders, funding, collateral or pnl, newest first | `/v1/trader/{w}/*-history`, `/v1/users/{w}/pnl` |
 

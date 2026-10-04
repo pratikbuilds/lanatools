@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { PhoenixError } from '../client'
 import {
   AllMarketStats,
   Candles,
@@ -160,11 +161,21 @@ export const getOrderbook = defineTool({
   },
 })
 
+// Each candle is about 140 bytes of tool output; 500 keeps a call near 70 KB.
+const MAX_CANDLES = 500
+
+const Time = (what: string) =>
+  z.iso
+    .datetime({ offset: true })
+    .optional()
+    .describe(`${what}, ISO 8601, e.g. 2026-10-01T00:00:00Z`)
+
 export const getCandles = defineTool({
   name: 'phoenix_get_candles',
   title: 'Read Phoenix price candles',
   description: [
-    'Reads recent OHLCV candles for one Phoenix perp market, oldest first. Volume is in tokens, volumeUsdc in USDC.',
+    'Reads OHLCV candles for one Phoenix perp market, oldest first. Volume is in tokens, volumeUsdc in USDC.',
+    `Without from or to it returns the most recent candles. Pass from and/or to for a time window; at most ${MAX_CANDLES} candles come back, the newest in the window, and truncated says the window held more.`,
     UNTRUSTED,
   ].join(' '),
   input: z
@@ -177,21 +188,50 @@ export const getCandles = defineTool({
         .number()
         .int()
         .min(1)
+        .max(MAX_CANDLES)
         .default(50)
-        .describe('Number of most recent candles'),
+        .describe('Number of candles'),
+      from: Time('Start of the window'),
+      to: Time('End of the window'),
     })
-    .strict(),
-  async run(client, { symbol, timeframe, limit }) {
+    .strict()
+    .refine(
+      (input) =>
+        !input.from ||
+        !input.to ||
+        Date.parse(input.from) < Date.parse(input.to),
+      'from must be before to',
+    ),
+  async run(client, { symbol, timeframe, limit, from, to }) {
     const candles = await forMarket(symbol, () =>
-      client.get(`/v1/candles/${encodeURIComponent(symbol)}`, Candles, {
-        timeframe,
-        limit,
-      }),
+      client
+        .get(`/v1/candles/${encodeURIComponent(symbol)}`, Candles, {
+          timeframe,
+          limit,
+          startTime: from ? Date.parse(from) : undefined,
+          endTime: to ? Date.parse(to) : undefined,
+        })
+        .catch((error: unknown) => {
+          // Phoenix answers 400 when a window spans more than 2500 candles.
+          if (
+            from &&
+            to &&
+            error instanceof PhoenixError &&
+            error.code === 'invalid_input'
+          )
+            throw new PhoenixError(
+              'invalid_input',
+              `Phoenix serves at most 2500 ${timeframe} candles per window; narrow from/to or use a larger timeframe`,
+            )
+          throw error
+        }),
     )
+    // Phoenix ignores limit when both ends of the window are set.
     return {
       symbol,
       timeframe,
-      candles: candles.map((candle) => ({
+      truncated: candles.length > limit,
+      candles: candles.slice(-limit).map((candle) => ({
         time: isoTime(candle.time),
         open: tidy(candle.open),
         high: tidy(candle.high),

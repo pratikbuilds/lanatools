@@ -189,7 +189,7 @@ export const getHistory = defineTool({
       symbol: MarketSymbol.optional().describe(
         'Only this market (trades, orders and funding)',
       ),
-      limit: z.number().int().min(1).default(20),
+      limit: z.number().int().min(1).max(100).default(20),
       cursor: z.string().min(1).optional(),
       resolution: z
         .enum(['5m', '15m', '1h', '4h', '1d', '1w', '1M'])
