@@ -73,3 +73,25 @@ bunx wrangler d1 execute DB --remote -c apps/api/wrangler.jsonc \
 For local verification, use `--local` and `apps/api/wrangler.local.jsonc`.
 The API tests use a throwaway D1 database; Playwright starts the local API
 Worker and tests the browser against it. No list-reading HTTP route is exposed.
+
+### Read-only chain tools
+
+`McpAccessService.runTool(grantId, userId, clientId, name, input)` is the
+API's generic entry point for `@lanatools/helius`. The API independently checks
+that all three identity fields match an active grant with `chain:read` before
+resolving the network or calling the provider. Existing grants must be
+re-authorized to add this scope.
+
+The shared Solana configuration verifies the RPC's genesis hash before use.
+Read tools support `SOLANA_NETWORK=devnet` or `mainnet`; payments remain
+strictly devnet-only. `SOLANA_RPC_URL` stays server-side, including any provider
+key in its query string. Verification failures and raw provider exceptions are
+replaced with fixed, agent-safe errors.
+
+Each authorized invocation attempts one `tool_activity` insert, including
+input, provider and network failures. Only identity, tool/provider, verified
+network (or null), status, estimated credits, error code, elapsed milliseconds
+and start time are recorded. Inputs and results are never stored. Refused
+identity/scope checks produce no activity row, so an unauthorized caller cannot
+create records under a supplied user ID. A failed ledger write emits a fixed
+log message and does not fail or repeat the provider request.

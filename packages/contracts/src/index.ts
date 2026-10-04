@@ -19,6 +19,7 @@ export const MCP_SCOPES = [
   'account:read',
   'payments:pay',
   'jupiter:read',
+  'chain:read',
 ] as const
 export type McpScope = (typeof MCP_SCOPES)[number]
 

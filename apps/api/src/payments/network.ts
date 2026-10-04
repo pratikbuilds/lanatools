@@ -1,12 +1,8 @@
 import { createSolanaRpc } from '@solana/kit'
+import { RPC_TIMEOUT_MS } from '../solana/network'
+import type { SolanaEnv } from '../solana/network'
 
-/** How long one RPC request may take. */
-export const RPC_TIMEOUT_MS = 10_000
-
-/**
- * The one Solana network agent payments run on. Everything network-specific
- * lives here; mainnet is deliberately absent until it is launched.
- */
+/** Payments remain devnet-only even when read-only tools support mainnet. */
 export type PaymentNetwork = {
   /** The network name MPP challenges and Pay Kit permissions use. */
   name: 'devnet'
@@ -17,60 +13,62 @@ export type PaymentNetwork = {
   usdcMint: string
 }
 
-const NETWORKS: Record<string, PaymentNetwork> = {
-  devnet: {
-    name: 'devnet',
-    caip2: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
-    genesisHash: 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG',
-    usdcMint: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
-  },
+const DEVNET: PaymentNetwork = {
+  name: 'devnet',
+  genesisHash: 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG',
+  caip2: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+  usdcMint: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
 }
 
-export type PaymentEnv = {
-  SOLANA_NETWORK: string
-  /**
-   * Must not be api.devnet.solana.com: the public RPC refuses Workers
-   * (any request with a CF-Worker header) with HTTP 403.
-   */
-  SOLANA_RPC_URL: string
-}
-
+export type PaymentEnv = SolanaEnv
 export type PaymentConfig = { network: PaymentNetwork; rpcUrl: string }
 
-// Checked once per isolate; a failed check is retried on the next call.
-let verified: Promise<void> | undefined
-let verifiedFor: string | undefined
+type GenesisReader = (rpcUrl: string) => Promise<string>
 
 /**
- * Resolves the configured network and proves the RPC serves it. A mainnet
- * RPC behind a devnet label could spend real funds, so a mismatch refuses
- * every payment rather than warning.
+ * Shares one in-flight or successful verification per configured RPC. Failed
+ * checks are retried on the next call. The injectable reader keeps tests off
+ * the network; production uses Kit and a bounded request.
  */
-export async function paymentConfig(env: PaymentEnv): Promise<PaymentConfig> {
-  const network = NETWORKS[env.SOLANA_NETWORK]
-  if (!network)
-    throw new Error(`Unsupported SOLANA_NETWORK ${env.SOLANA_NETWORK}`)
-  if (!env.SOLANA_RPC_URL) throw new Error('Set SOLANA_RPC_URL')
-  const key = `${network.name} ${env.SOLANA_RPC_URL}`
-  if (verifiedFor !== key || !verified) {
-    verifiedFor = key
-    verified = assertGenesis(env.SOLANA_RPC_URL, network).catch(
-      (error: unknown) => {
-        verified = undefined
-        throw error
-      },
-    )
+export function createPaymentConfig(readGenesis: GenesisReader = genesisHash) {
+  let cached: { key: string; verification: Promise<void> } | undefined
+  return async (env: PaymentEnv): Promise<PaymentConfig> => {
+    if (env.SOLANA_NETWORK !== 'devnet')
+      throw new Error('Payments only support Solana devnet')
+    const network = DEVNET
+    if (!env.SOLANA_RPC_URL) throw new Error('Set SOLANA_RPC_URL')
+    const rpcUrl = env.SOLANA_RPC_URL
+    const key = `${network.name} ${rpcUrl}`
+    if (cached?.key !== key) {
+      const verification = (async () => {
+        let genesis: string
+        try {
+          genesis = await readGenesis(rpcUrl)
+        } catch {
+          // SDK errors may contain the complete URL and its provider key.
+          throw new Error('Could not verify the Solana RPC network')
+        }
+        if (genesis !== network.genesisHash)
+          throw new Error(
+            'Solana RPC network does not match SOLANA_NETWORK; refusing to pay',
+          )
+      })()
+      cached = { key, verification }
+      void verification.catch(() => {
+        // A failed old request must not clear a newer configuration's check.
+        if (cached?.verification === verification) cached = undefined
+      })
+    }
+    await cached.verification
+    return { network, rpcUrl }
   }
-  await verified
-  return { network, rpcUrl: env.SOLANA_RPC_URL }
 }
 
-async function assertGenesis(rpcUrl: string, network: PaymentNetwork) {
-  const genesis = await createSolanaRpc(rpcUrl)
+async function genesisHash(rpcUrl: string) {
+  return createSolanaRpc(rpcUrl)
     .getGenesisHash()
     .send({ abortSignal: AbortSignal.timeout(RPC_TIMEOUT_MS) })
-  if (genesis !== network.genesisHash)
-    throw new Error(
-      `SOLANA_RPC_URL does not serve Solana ${network.name}; refusing to pay`,
-    )
 }
+
+/** Payments verify the RPC serves devnet before allowing funds to move. */
+export const paymentConfig = createPaymentConfig()

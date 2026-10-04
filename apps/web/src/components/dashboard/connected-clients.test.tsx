@@ -118,3 +118,14 @@ test('a client that cannot pay has no limit to change', () => {
   expect(html).not.toContain('Spending limit')
   expect(html).not.toContain('Spent')
 })
+
+test('Solana read access has the same plain label and grants no payment access', () => {
+  const chainOnly = { ...claude, scopes: ['chain:read'] }
+  expect(detail(chainOnly)).toContain('Read Solana data')
+  expect(detail(chainOnly)).not.toContain('Spending limit')
+  expect(table([chainOnly])).toContain('Cannot pay')
+  expect(
+    detail({ ...paying, scopes: [...paying.scopes, 'chain:read'] }),
+  ).toContain('Read Solana data')
+  expect(detail(claude)).not.toContain('Read Solana data')
+})

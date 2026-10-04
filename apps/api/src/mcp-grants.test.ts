@@ -199,3 +199,26 @@ test('older MCP callers can approve read-only access without a spending limit', 
   )
   expect(await useActiveGrant(db, paymentGrant)).toBe(false)
 })
+
+for (const scopes of [
+  ['chain:read'],
+  ['account:read', 'chain:read'],
+  ['payments:pay', 'chain:read'],
+]) {
+  test(`chain access consent activates ${scopes.join(' + ')}`, async () => {
+    const clientId = crypto.randomUUID()
+    const userId = crypto.randomUUID()
+    const handle = await startConsent(clientId, undefined, scopes)
+    expect((await pendingConsent(db, handle))?.scopes).toEqual(scopes)
+    const { grantId } = await prepareGrant(db, handle, clientId, userId)
+    const identity = { grantId, userId, clientId }
+    expect(await useActiveGrant(db, identity)).toBe(false)
+    const limit = scopes.includes('payments:pay') ? 1_000_000 : null
+    await activateGrant(db, handle, identity, limit)
+    expect(await useActiveGrant(db, identity)).toBe(true)
+    expect((await listClients(db, userId))[0]).toMatchObject({
+      scopes,
+      limitMicroUsd: limit ?? 0,
+    })
+  })
+}

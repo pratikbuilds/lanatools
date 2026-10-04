@@ -1,5 +1,6 @@
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import { PrivyClient } from '@privy-io/node'
+import { runHeliusTool } from '@lanatools/helius'
 import type { D1Database } from '@cloudflare/workers-types'
 import type { JupiterRequest } from '@lanatools/jupiter'
 import { readJupiter } from './jupiter'
@@ -17,6 +18,8 @@ import {
   useActiveGrant,
 } from './mcp-grants'
 import type { ConsentInput } from './mcp-grants'
+import { solanaConfig } from './solana/network'
+import { runTool } from './tools/run-tool'
 
 /** The MCP Worker's RPC surface for deleting OAuth tokens held in its KV. */
 export type McpTokenRevoker = {
@@ -170,6 +173,26 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
         return { ok: false, error: error.message }
       throw error
     }
+  }
+
+  /** Generic read-only tool execution; the API independently authorizes it. */
+  async runTool(
+    grantId: string,
+    userId: string,
+    clientId: string,
+    name: string,
+    input: unknown,
+  ) {
+    return runTool(
+      {
+        db: this.env.DB,
+        config: () => solanaConfig(this.env),
+        run: runHeliusTool,
+      },
+      { grantId, userId, clientId },
+      name,
+      input,
+    )
   }
 
   /** Returns the account for an active grant, or null once it is revoked. */

@@ -9,6 +9,7 @@ import {
   formatUsd,
   parseClientLimit,
 } from '@lanatools/contracts'
+import { Permissions } from './permissions'
 import logoUrl from '../../web/public/favicon.svg?url'
 import './styles.css'
 
@@ -131,37 +132,7 @@ function Connect() {
             <>
               <p className="client-note">Client name supplied by the app</p>
 
-              <div className="permission">
-                <span className="permission-label">
-                  {pending.scopes.length > 1
-                    ? 'Permissions requested'
-                    : 'Permission requested'}
-                </span>
-                {pending.scopes.includes('account:read') && (
-                  <strong>Read account identity</strong>
-                )}
-                {pending.scopes.includes('jupiter:read') && (
-                  <>
-                    <strong>Jupiter access</strong>
-                    <span>
-                      Read token information, discovery lists, reference prices,
-                      public-wallet portfolios and lending data, legacy orders,
-                      swap quotes and venue information.
-                    </span>
-                  </>
-                )}
-                {payments ? (
-                  <>
-                    <strong>Pay for requests from your wallet</strong>
-                    <span>
-                      USDC from your LanaTools payment wallet, only up to the
-                      limit you set below.
-                    </span>
-                  </>
-                ) : (
-                  <span>No wallet or payment access.</span>
-                )}
-              </div>
+              <Permissions scopes={pending.scopes} />
 
               {payments && (
                 <label className="limit">
