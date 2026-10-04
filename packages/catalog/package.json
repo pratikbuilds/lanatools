@@ -1,0 +1,16 @@
+{
+  "name": "@lanatools/catalog",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "sync": "bun scripts/sync.ts",
+    "search": "bun scripts/search.ts",
+    "eval": "bun scripts/eval.ts"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  }
+}
