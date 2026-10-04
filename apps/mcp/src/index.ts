@@ -23,6 +23,7 @@ import {
   localCatalog,
   searchCatalog,
 } from '@lanatools/catalog'
+import { phoenixTools, runPhoenixTool } from '@lanatools/phoenix'
 import { WorkerEntrypoint, env as bindings } from 'cloudflare:workers'
 import type {
   McpAccessService,
@@ -110,7 +111,7 @@ function createServer(
         return toolError('The pay.sh catalog is unavailable right now')
       }
     })
-  const catalogAnnotations = {
+  const readOnlyAnnotations = {
     readOnlyHint: true,
     destructiveHint: false,
     openWorldHint: true,
@@ -144,7 +145,7 @@ function createServer(
         'Call this before answering whether a kind of service is available; for a specific task, use search_catalog.',
         untrusted,
       ].join(' '),
-      annotations: catalogAnnotations,
+      annotations: readOnlyAnnotations,
     },
     () => fromCatalog(async () => listCatalog(localCatalog())),
   )
@@ -173,7 +174,7 @@ function createServer(
           .describe('Only search this category, e.g. finance or ai_ml'),
         max_results: z.number().int().min(1).max(10).default(5),
       }),
-      annotations: catalogAnnotations,
+      annotations: readOnlyAnnotations,
     },
     (input) =>
       fromCatalog(() =>
@@ -212,7 +213,7 @@ function createServer(
           .describe('An endpoint path from this provider, e.g. v1/fx/EURUSD'),
         method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).optional(),
       }),
-      annotations: catalogAnnotations,
+      annotations: readOnlyAnnotations,
     },
     (input) =>
       fromCatalog(async () => {
@@ -224,6 +225,26 @@ function createServer(
         return entry
       }),
   )
+  // Phoenix perps reads use Phoenix's public API: no key and no wallet
+  // signature, so any active grant may use them, like the catalog.
+  for (const tool of phoenixTools)
+    server.registerTool(
+      tool.name,
+      {
+        title: tool.title,
+        description: tool.description,
+        inputSchema: tool.input,
+        annotations: readOnlyAnnotations,
+      },
+      (input: unknown) =>
+        withGrant(null, async () => {
+          const outcome = await runPhoenixTool(tool.name, input)
+          if (!outcome.ok) return toolError(outcome.error.message)
+          return {
+            content: [{ type: 'text', text: JSON.stringify(outcome.result) }],
+          }
+        }),
+    )
   server.registerTool(
     'pay_http',
     {

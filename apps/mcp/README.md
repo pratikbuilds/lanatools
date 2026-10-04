@@ -39,6 +39,15 @@ Catalog text is third-party data and listed prices are hints. Catalog
 endpoints are paid on Solana mainnet, so these tools only discover them for
 now; paying them through LanaTools is separate work.
 
+## Reading Phoenix perps
+
+Six read-only tools come from `packages/phoenix`: `phoenix_list_markets`,
+`phoenix_get_market`, `phoenix_get_orderbook`, `phoenix_get_candles`,
+`phoenix_get_account` and `phoenix_get_history`. They call Phoenix's public
+mainnet API, need no key or secret, and need any active grant and no extra
+scope. Sizes come back in tokens and USDC, not Phoenix lots. See
+`specs/phoenix-read-tools.md`.
+
 ## Paying endpoints with `pay_http`
 
 `pay_http` requires the `payments:pay` scope. The consent page shows it and
@@ -131,7 +140,8 @@ new grant ID, so tokens issued before the revocation never work again.
 For a full signed-in check, run `bun run --cwd apps/mcp verify:local` and open
 the printed authorization URL in a browser. Sign in and approve the local
 verification client. The script exchanges the authorization code, initializes
-MCP, lists the tools, and calls `whoami` without printing credentials or IDs.
+MCP, lists the tools, and calls `whoami` and `phoenix_get_market` without
+printing credentials or IDs.
 Set `LANATOOLS_MCP_CLIENT_ID` to reuse a previously registered local client.
 
 `bun run --cwd apps/mcp verify:payments` connects an MCP SDK client with

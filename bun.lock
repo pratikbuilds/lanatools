@@ -39,6 +39,7 @@
         "@cloudflare/workers-oauth-provider": "1.1.0",
         "@lanatools/catalog": "workspace:*",
         "@lanatools/contracts": "workspace:*",
+        "@lanatools/phoenix": "workspace:*",
         "@modelcontextprotocol/server": "2.0.0",
         "@privy-io/react-auth": "^3.45.0",
         "agents": "0.24.0",
@@ -105,6 +106,13 @@
       "name": "@lanatools/contracts",
       "dependencies": {
         "arktype": "catalog:",
+      },
+    },
+    "packages/phoenix": {
+      "name": "@lanatools/phoenix",
+      "dependencies": {
+        "@solana/kit": "~6.10.0",
+        "zod": "4.4.3",
       },
     },
     "packages/testbed": {
@@ -427,6 +435,8 @@
     "@lanatools/contracts": ["@lanatools/contracts@workspace:packages/contracts"],
 
     "@lanatools/mcp": ["@lanatools/mcp@workspace:apps/mcp"],
+
+    "@lanatools/phoenix": ["@lanatools/phoenix@workspace:packages/phoenix"],
 
     "@lanatools/proof": ["@lanatools/proof@workspace:apps/proof"],
 

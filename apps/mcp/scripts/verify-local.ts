@@ -159,6 +159,34 @@ try {
     .parse(JSON.parse(called.result.content[0]?.text || ''))
   assert.equal(account.clientId, clientId)
   console.log('MCP_WHOAMI passed')
+  assert.ok(
+    listed.result.tools.some((tool) => tool.name === 'phoenix_get_market'),
+  )
+  const market = z
+    .object({
+      result: z.object({
+        isError: z.boolean().optional(),
+        content: z.array(z.object({ text: z.string().optional() })),
+      }),
+    })
+    .parse(
+      await mcp('tools/call', 4, {
+        name: 'phoenix_get_market',
+        arguments: { symbol: 'SOL' },
+      }),
+    )
+  assert.notEqual(
+    market.result.isError,
+    true,
+    market.result.content.map((item) => item.text).join(' '),
+  )
+  assert.equal(
+    z
+      .object({ symbol: z.string() })
+      .parse(JSON.parse(market.result.content[0]?.text || '')).symbol,
+    'SOL',
+  )
+  console.log('MCP_PHOENIX passed')
 } finally {
   server.stop(true)
 }
