@@ -11,6 +11,8 @@ export default [
       'playwright-report/**',
       'test-results/**',
       '**/*.config.js',
+      // Hand-written dashboard mocks, outside every tsconfig.
+      'docs/design/**',
     ],
   },
   ...tanstackConfig,
