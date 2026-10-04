@@ -60,6 +60,253 @@
       FIRST VIEWPORT: headline at poster scale, one paragraph, one action; the animated flow diagram fills the width below.
     -->
     <div id="app"></div>
+    <!--
+      Boot screen for the app pages. Sign-in and the dashboard wait on a
+      large bundle; until React renders, this paints the same frame they use
+      (header, page, status bar) in the visitor's theme, so the page opens
+      onto the app instead of the landing page's blue. React replaces it.
+    -->
+    <style>
+      html[data-boot] body:has(.boot) {
+        margin: 0;
+        background: var(--b-bg);
+      }
+      html[data-boot='light'] {
+        --b-bg: #f3efe6;
+        --b-line: #d6d0c2;
+        --b-line-2: #bfb7a4;
+        --b-text: #0a1f6e;
+        --b-text-2: #4a5480;
+        --b-text-3: #5f668c;
+        --b-hdr: #0b2fb2;
+        --b-hdr-line: transparent;
+        color-scheme: light;
+      }
+      html[data-boot='dark'] {
+        --b-bg: #08090c;
+        --b-line: #23272f;
+        --b-line-2: #343a46;
+        --b-text: #f3efe6;
+        --b-text-2: #aab1c5;
+        --b-text-3: #8a90a3;
+        --b-hdr: #0f1115;
+        --b-hdr-line: #23272f;
+        color-scheme: dark;
+      }
+      .boot {
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+        padding-bottom: 36px;
+        box-sizing: border-box;
+        color: var(--b-text);
+        font:
+          500 12px 'JetBrains Mono',
+          ui-monospace,
+          Menlo,
+          monospace;
+      }
+      .boot-hdr {
+        height: 60px;
+        border-bottom: 1px solid var(--b-hdr-line);
+        background: var(--b-hdr);
+      }
+      .boot-hdr div {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        max-width: 1100px;
+        height: 100%;
+        margin-inline: auto;
+        padding-inline: 32px;
+        box-sizing: border-box;
+        color: #f3efe6;
+        font-size: 17px;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+      }
+      .boot-hdr small {
+        color: #b5c1f0;
+        font-size: inherit;
+        font-weight: 500;
+      }
+      .boot-main {
+        display: grid;
+        flex: 1;
+        place-content: center;
+        justify-items: center;
+        gap: 22px;
+      }
+      /* The logo types itself: the prompt slides in, the cursor runs out
+         and blinks, then both clear and it starts again. */
+      .boot-logo path:last-of-type,
+      .boot-logo rect {
+        transform-box: fill-box;
+        transform-origin: left center;
+      }
+      .boot-logo path:last-of-type {
+        animation: boot-prompt 2.4s cubic-bezier(0.23, 1, 0.32, 1) infinite;
+      }
+      .boot-logo rect {
+        animation: boot-caret 2.4s cubic-bezier(0.23, 1, 0.32, 1) infinite;
+      }
+      /* A short bar running along a hairline. */
+      .boot-track {
+        position: relative;
+        width: 72px;
+        height: 2px;
+        overflow: hidden;
+        border-radius: 2px;
+        background: var(--b-line);
+      }
+      .boot-track::after {
+        content: '';
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 40%;
+        border-radius: inherit;
+        background: var(--b-text);
+        animation: boot-run 1.2s cubic-bezier(0.65, 0, 0.35, 1) infinite
+          alternate;
+      }
+      .boot-label {
+        margin: 0;
+        color: var(--b-text-3);
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .boot-bar {
+        position: fixed;
+        inset: auto 0 0;
+        display: flex;
+        height: 36px;
+        border-top: 1px solid var(--b-line);
+        background: var(--b-bg);
+        color: var(--b-text-2);
+      }
+      .boot-bar span {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 16px;
+        border-right: 1px solid var(--b-line);
+      }
+      .boot-bar i {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--b-line-2);
+      }
+      @keyframes boot-prompt {
+        0% {
+          opacity: 0;
+          transform: translateX(-8px);
+        }
+        15%,
+        85% {
+          opacity: 1;
+          transform: none;
+        }
+        100% {
+          opacity: 0;
+          transform: none;
+        }
+      }
+      @keyframes boot-caret {
+        0%,
+        15% {
+          opacity: 1;
+          transform: scaleX(0);
+        }
+        35%,
+        48%,
+        62%,
+        85% {
+          opacity: 1;
+          transform: none;
+        }
+        49%,
+        61% {
+          opacity: 0;
+          transform: none;
+        }
+        100% {
+          opacity: 0;
+          transform: none;
+        }
+      }
+      @keyframes boot-run {
+        from {
+          transform: translateX(0);
+        }
+        to {
+          transform: translateX(150%);
+        }
+      }
+      @media (max-width: 639px) {
+        .boot-hdr div {
+          padding-inline: 12px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .boot-logo *,
+        .boot-track::after {
+          animation: none !important;
+        }
+      }
+    </style>
+    <script>
+      ;(function () {
+        var path = location.pathname
+        var signIn = path === '/sign-in' || path.indexOf('/sign-in/') === 0
+        var dashboard =
+          path === '/dashboard' || path.indexOf('/dashboard/') === 0
+        if (!signIn && !dashboard) return
+
+        // The dashboard's theme: the visitor's pick, else the system's.
+        var theme
+        try {
+          theme = localStorage.getItem('lt-theme')
+        } catch (e) {}
+        if (theme !== 'light' && theme !== 'dark') {
+          theme = matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light'
+        }
+        document.documentElement.setAttribute('data-boot', theme)
+
+        function mark(size, className) {
+          return (
+            '<svg' +
+            (className ? ' class="' + className + '"' : '') +
+            ' width="' +
+            size +
+            '" height="' +
+            size +
+            '" viewBox="0 0 64 64" aria-hidden="true">' +
+            '<path d="M16 56h-4q-4 0-4-4V15q0-7 7-7h23l19 12.5V29L37 16H19.5q-3.5 0-3.5 3.5Z" fill="currentColor"/>' +
+            '<path d="M23 26l8 7-8 7" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+            '<rect x="35" y="41" width="15" height="5" rx="2.5" fill="#d9ff4a"/></svg>'
+          )
+        }
+
+        document.getElementById('app').innerHTML =
+          '<div class="boot">' +
+          '<header class="boot-hdr"><div>' +
+          mark(22) +
+          '<span>lanatools<small>.sh</small></span></div></header>' +
+          '<main class="boot-main" role="status">' +
+          mark(64, 'boot-logo') +
+          '<div class="boot-track" aria-hidden="true"></div>' +
+          '<p class="boot-label">' +
+          (signIn ? 'Preparing sign-in' : 'Opening your dashboard') +
+          '</p></main>' +
+          '<footer class="boot-bar"><span><i aria-hidden="true"></i>' +
+          (signIn ? 'Securing access' : 'Checking your account') +
+          '</span></footer></div>'
+      })()
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
