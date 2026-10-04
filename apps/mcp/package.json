@@ -19,7 +19,8 @@
     "agents": "0.24.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "zod": "4.4.3"
+    "zod": "4.4.3",
+    "@lanatools/helius": "workspace:*"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260901.1",
