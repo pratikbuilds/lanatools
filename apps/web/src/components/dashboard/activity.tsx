@@ -22,13 +22,14 @@ import {
   listActivityDays,
 } from '#/lib/activity'
 import type { ActivityFilter } from '#/lib/activity'
-import { listMcpClients } from '#/lib/mcp-clients'
 import { Drawer, DrawerFacts, DrawerHeader } from './drawer'
 import { useDashboardSession } from './session'
+import { useMcpClients } from './use-mcp-clients'
+import { PageHead, SectionHead } from './page-head'
 
 const DAY_MS = 86_400_000
 const ROW =
-  'grid grid-cols-[4.6rem_minmax(0,1fr)_auto] items-center gap-x-3 px-1 md:grid-cols-[4.6rem_6.5rem_minmax(0,1fr)_4rem_9rem] md:gap-x-5'
+  'grid grid-cols-[4rem_minmax(0,1fr)_auto] items-center gap-x-3 px-3.5 md:grid-cols-[5.5rem_minmax(0,1.7fr)_minmax(0,1fr)_4rem_10rem] md:gap-x-4 md:px-4'
 const PROTOCOL_LABELS = { mpp: 'MPP', x402: 'x402' }
 
 function clientName(item: ActivityItem) {
@@ -52,28 +53,26 @@ export function LatestActivity({ onViewAll }: { onViewAll: () => void }) {
   const items = latest.data?.items.slice(0, 5)
 
   return (
-    <section className="mt-10">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b-[1.5px] border-ink pb-3">
-        <h2 className="text-[15px] font-bold">Latest activity</h2>
+    <section className="mt-9" aria-label="Latest activity">
+      <SectionHead title="Latest activity">
         {items && items.length > 0 && (
           <button
             type="button"
-            className="text-[12.5px] font-semibold underline underline-offset-[3px]"
+            className="ml-auto text-[13px] text-fg-2 underline-offset-[3px] hover:text-fg hover:underline"
             onClick={onViewAll}
           >
-            View all activity
+            View all
           </button>
         )}
-      </div>
+      </SectionHead>
       {latest.isPending ? (
         <CallSkeleton />
       ) : latest.isError ? (
         <LoadError onRetry={() => void latest.refetch()} />
       ) : items && items.length > 0 ? (
-        <>
-          <CallHead />
+        <CallTable>
           <CallRows items={items} onOpen={setOpen} />
-        </>
+        </CallTable>
       ) : (
         <NoCalls />
       )}
@@ -104,63 +103,57 @@ export function ActivityPage({
     queryFn: () => listActivityDays(getAccessToken),
     refetchInterval: 15_000,
   })
-  const clients = useQuery({
-    queryKey: ['mcp-clients', userId],
-    queryFn: () => listMcpClients(getAccessToken),
-  })
+  const clients = useMcpClients()
   const [open, setOpen] = useState<ActivityItem>()
   const items = calls.data?.pages.flatMap((page) => page.items)
   const filtered = filter.client !== undefined || filter.outcome !== undefined
 
   return (
     <>
-      <h1 className="pt-9 text-[22px] font-bold tracking-[-0.03em]">
-        Activity
-      </h1>
-      <div className="flex flex-wrap items-end justify-between gap-x-14 gap-y-6 py-7">
-        <ActivityTotals totals={calls.data?.pages[0]?.totals} />
-        {days.data && <ActivityHeatmap days={days.data} />}
-      </div>
-      <p className="mb-4 text-[12px] text-mute">{CREDIT_ESTIMATE_NOTE}</p>
-      <div className="flex flex-wrap items-center gap-2.5 border-b-[1.5px] border-ink pb-3.5">
-        <div
-          role="group"
-          aria-label="Filter by outcome"
-          className="inline-flex max-w-full overflow-x-auto rounded-[6px] border-[1.5px] border-ink"
-        >
-          {[undefined, ...ACTIVITY_OUTCOMES].map((outcome) => (
-            <button
-              key={outcome ?? 'all'}
-              type="button"
-              aria-pressed={filter.outcome === outcome}
-              onClick={() => onFilter({ ...filter, outcome })}
-              className="h-[30px] shrink-0 border-r-[1.5px] border-ink bg-card px-3 text-[12.5px] last:border-r-0 aria-pressed:bg-ink aria-pressed:font-bold aria-pressed:text-card"
-            >
-              {outcome ? OUTCOME_LABELS[outcome] : 'All'}
-            </button>
-          ))}
+      <PageHead title="Activity" />
+      <div className="d-frame mt-5">
+        <div className="d-inset d-pane flex flex-wrap items-end justify-between gap-x-14 gap-y-6">
+          <ActivityTotals totals={calls.data?.pages[0]?.totals} />
+          {days.data && <ActivityHeatmap days={days.data} />}
         </div>
-        <select
-          aria-label="Filter by client"
-          value={filter.client ?? ''}
-          onChange={(event) =>
-            onFilter({ ...filter, client: event.target.value || undefined })
-          }
-          className="h-[33px] rounded-[6px] border-[1.5px] border-ink bg-card px-2 text-[12.5px] font-semibold"
-        >
-          <option value="">All clients</option>
-          {clients.data?.map((client) => (
-            <option key={client.clientId} value={client.clientId}>
-              {client.clientName ?? 'Unknown client'}
-            </option>
-          ))}
-          {/* A disconnected client is no longer listed but can still be filtered on. */}
-          {filter.client &&
-            !clients.data?.some((c) => c.clientId === filter.client) && (
-              <option value={filter.client}>{filter.client}</option>
-            )}
-        </select>
       </div>
+      <p className="mt-3 text-[12.5px] text-fg-3">{CREDIT_ESTIMATE_NOTE}</p>
+      <SectionHead title="Calls" className="mt-9">
+        <div className="flex w-full flex-wrap items-center gap-2.5 md:ml-auto md:w-auto">
+          <div role="group" aria-label="Filter by outcome" className="d-seg">
+            {[undefined, ...ACTIVITY_OUTCOMES].map((outcome) => (
+              <button
+                key={outcome ?? 'all'}
+                type="button"
+                aria-pressed={filter.outcome === outcome}
+                onClick={() => onFilter({ ...filter, outcome })}
+              >
+                {outcome ? OUTCOME_LABELS[outcome] : 'All'}
+              </button>
+            ))}
+          </div>
+          <select
+            aria-label="Filter by client"
+            value={filter.client ?? ''}
+            onChange={(event) =>
+              onFilter({ ...filter, client: event.target.value || undefined })
+            }
+            className="d-input cursor-pointer"
+          >
+            <option value="">All clients</option>
+            {clients.data?.map((client) => (
+              <option key={client.clientId} value={client.clientId}>
+                {client.clientName ?? 'Unknown client'}
+              </option>
+            ))}
+            {/* A disconnected client is no longer listed but can still be filtered on. */}
+            {filter.client &&
+              !clients.data?.some((c) => c.clientId === filter.client) && (
+                <option value={filter.client}>{filter.client}</option>
+              )}
+          </select>
+        </div>
+      </SectionHead>
 
       {calls.isPending ? (
         <CallSkeleton />
@@ -168,21 +161,22 @@ export function ActivityPage({
         <LoadError onRetry={() => void calls.refetch()} />
       ) : items && items.length > 0 ? (
         <>
-          <CallHead />
-          <CallRows items={items} onOpen={setOpen} byDay />
+          <CallTable>
+            <CallRows items={items} onOpen={setOpen} byDay />
+          </CallTable>
           {calls.hasNextPage ? (
             <LoadMore
               loading={calls.isFetchingNextPage}
               onReach={() => void calls.fetchNextPage()}
             />
           ) : (
-            <p className="pt-6 text-center text-[12px] text-mute">
+            <p className="pt-5 text-center font-mono text-[12px] text-fg-3">
               That is every call.
             </p>
           )}
         </>
       ) : filtered ? (
-        <p className="pt-6 text-center text-[12px] text-mute">
+        <p className="d-card px-4 py-[26px] text-center text-fg-3">
           No calls match these filters.
         </p>
       ) : (
@@ -211,8 +205,8 @@ export function ActivityTotals({
         ] as const
       ).map(([label, value]) => (
         <div key={label}>
-          <dt className="mb-1.5 text-[12px] text-mute">{label}</dt>
-          <dd className="text-[1.6rem] leading-[1.1] font-bold tracking-[-0.03em]">
+          <dt className="d-label mb-2">{label}</dt>
+          <dd className="font-mono text-[1.75rem] leading-[1.1] font-semibold tracking-[-0.04em]">
             {value ?? '—'}
           </dd>
         </div>
@@ -221,7 +215,7 @@ export function ActivityTotals({
   )
 }
 
-const HEAT = ['bg-rule', 'bg-paper-2', 'bg-paper-3', 'bg-blue', 'bg-ink']
+const HEAT = ['bg-panel-2', 'bg-heat-1', 'bg-heat-2', 'bg-heat-3', 'bg-heat-4']
 const CHART_DAY = new Intl.DateTimeFormat('en-US', {
   month: 'short',
   day: 'numeric',
@@ -256,28 +250,29 @@ export function ActivityHeatmap({
           <span
             key={cell.time}
             title={`${CHART_DAY.format(cell.time)}: ${cell.calls} ${cell.calls === 1 ? 'call' : 'calls'}, ${formatUsd(cell.spent)} spent`}
-            className={`size-[9px] rounded-[2px] ${HEAT[Math.ceil((cell.calls / most) * 4)] ?? 'bg-ink'}`}
+            className={`size-[9px] rounded-[2px] ${HEAT[Math.ceil((cell.calls / most) * 4)] ?? HEAT[4]}`}
           />
         ))}
       </div>
-      <figcaption className="mt-1.5 text-[12px] text-mute">
+      <figcaption className="d-label mt-2 normal-case">
         Calls per day, last {ACTIVITY_CHART_DAYS / 7} weeks
       </figcaption>
     </figure>
   )
 }
 
-function CallHead() {
+/** The calls' table: a hatched head over the rows. */
+function CallTable({ children }: { children: ReactNode }) {
   return (
-    <div
-      aria-hidden="true"
-      className={`${ROW} hidden h-[34px] border-b border-rule text-[12px] text-mute md:grid`}
-    >
-      <span>Time</span>
-      <span>Client</span>
-      <span>Request</span>
-      <span>Source</span>
-      <span className="text-right">Outcome</span>
+    <div className="d-card">
+      <div aria-hidden="true" className={`${ROW} d-th hidden min-h-9 md:grid`}>
+        <span className="d-label">Time</span>
+        <span className="d-label">Request</span>
+        <span className="d-label">Client</span>
+        <span className="d-label">Source</span>
+        <span className="d-label text-right">Outcome</span>
+      </div>
+      {children}
     </div>
   )
 }
@@ -304,48 +299,52 @@ export function CallRows({
         return (
           <li key={`${item.kind}:${item.id}`}>
             {heading && (
-              <h3 className="border-b border-rule px-1 pt-5 pb-2 text-[12px] font-bold">
+              <h3 className="d-label flex min-h-[30px] items-center border-t border-line bg-surface px-3.5 md:px-4">
                 {label}
               </h3>
             )}
             <button
               type="button"
               onClick={() => onOpen(item)}
-              className={`${ROW} min-h-[46px] w-full border-b border-rule py-2 text-left hover:bg-card`}
+              className={`${ROW} min-h-[54px] w-full cursor-pointer border-t border-line py-2 text-left hover:bg-surface`}
             >
-              <span className="text-[12px] text-mute">
+              <span className="font-mono text-[12px] text-fg-3">
                 {formatTime(item.createdAt)}
               </span>
-              <span className="hidden truncate md:block">
-                {clientName(item)}
-              </span>
               <span className="min-w-0">
-                <span className="block truncate text-mute">
-                  <b className="font-semibold text-ink">
+                <span className="block truncate">
+                  <b className="font-semibold">
                     {item.kind === 'tool' ? item.tool : callHost(item)}
                   </b>
-                  {item.kind === 'payment' && item.path}
+                  {item.kind === 'payment' && (
+                    <span className="ml-1.5 font-mono text-[12px] text-fg-3">
+                      {item.path}
+                    </span>
+                  )}
                 </span>
                 {item.reason && (
                   <span
-                    className={`block truncate text-[12px] ${item.outcome === 'refused' ? 'text-coral-ink' : 'text-mute'}`}
+                    className={`block truncate text-[12px] ${item.outcome === 'refused' ? 'text-warn' : 'text-fg-3'}`}
                   >
                     {item.reason}
                   </span>
                 )}
               </span>
-              <span className="hidden text-[12px] text-mute md:block">
+              <span className="hidden truncate text-fg-2 md:block">
+                {clientName(item)}
+              </span>
+              <span className="hidden font-mono text-[12px] text-fg-3 md:block">
                 {item.kind === 'tool'
                   ? item.provider === 'helius'
                     ? 'Helius'
                     : item.provider
                   : item.protocol && PROTOCOL_LABELS[item.protocol]}
               </span>
-              <span className="text-right text-[12.5px] whitespace-nowrap text-mute">
+              <span className="text-right font-mono text-[13px] whitespace-nowrap">
                 <Outcome item={item} />
                 {item.kind === 'tool' && (
                   <span
-                    className="block max-w-[9rem] text-[11px] whitespace-normal"
+                    className="ml-auto block max-w-[10rem] text-[11px] font-normal whitespace-normal text-fg-3"
                     title={CREDIT_ESTIMATE_NOTE}
                   >
                     {formatCredits(item.estimatedCredits)}
@@ -360,7 +359,7 @@ export function CallRows({
   )
 }
 
-/** Lime is money that moved, coral is a refusal, grey is neither. */
+/** Money that moved is bold, a refusal amber, a failure red, the rest faint. */
 function Outcome({ item }: { item: ActivityItem }) {
   if (
     item.kind === 'payment' &&
@@ -368,17 +367,22 @@ function Outcome({ item }: { item: ActivityItem }) {
     item.amountMicroUsd !== null
   )
     return (
-      <span className="rounded-[4px] bg-lime px-[7px] py-0.5 text-[13.5px] font-bold text-ink">
-        {formatUsd(item.amountMicroUsd)}
-      </span>
+      <span className="font-semibold">−{formatUsd(item.amountMicroUsd)}</span>
     )
   if (item.outcome === 'refused')
+    return <span className="font-semibold text-warn">Refused</span>
+  if (item.outcome === 'failed')
     return (
-      <span className="rounded-[4px] bg-coral px-[7px] py-0.5 font-bold text-ink">
-        Refused
+      <span className="font-semibold text-bad">
+        Failed
+        <span className="font-normal max-md:hidden"> · not charged</span>
       </span>
     )
-  return OUTCOME_LABELS[item.outcome]
+  return (
+    <span className="font-medium text-fg-3">
+      {OUTCOME_LABELS[item.outcome]}
+    </span>
+  )
 }
 
 function CallDrawer({
@@ -442,20 +446,20 @@ export function CallDetail({
         detail={`${clientName(item)}, ${dayLabel(item.createdAt, now)} at ${formatTime(item.createdAt)}`}
         onClose={onClose}
       />
-      <p className="text-[12px] text-mute">{OUTCOME_LABELS[item.outcome]}</p>
-      <p className="mt-1.5 mb-1 text-[3.2rem] leading-none font-bold tracking-[-0.05em]">
+      <p className="d-label">{OUTCOME_LABELS[item.outcome]}</p>
+      <p className="mt-3 mb-2 font-mono text-[3rem] leading-none font-semibold tracking-[-0.05em]">
         {item.kind === 'tool'
           ? item.estimatedCredits.toLocaleString('en-US')
           : formatUsd(item.amountMicroUsd ?? 0)}
       </p>
       {item.kind === 'tool' && (
-        <p className="mt-2 text-[12px] text-mute">
+        <p className="mt-2 text-[12px] text-fg-3">
           Estimated credits. Helius does not report a per-call cost.
         </p>
       )}
       {item.reason && (
         <p
-          className={`text-[12px] ${item.outcome === 'refused' ? 'text-coral-ink' : 'text-mute'}`}
+          className={`text-[12px] ${item.outcome === 'refused' ? 'text-warn' : 'text-fg-3'}`}
         >
           {item.reason}
         </p>
@@ -478,23 +482,23 @@ function Transaction({
   const { state, copy } = useCopy(signature)
   const url = explorerURL(network, signature)
   return (
-    <div className="mt-5">
-      <p className="text-[12px] text-mute">Transaction</p>
-      <p className="mt-1 font-semibold break-all">{signature}</p>
-      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-[12.5px] font-semibold">
+    <div className="mt-6">
+      <p className="d-label">Transaction</p>
+      <p className="d-well mt-2 text-[12.5px]">{signature}</p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         {url && (
           <a
             href={url}
             target="_blank"
             rel="noreferrer"
-            className="underline underline-offset-[3px]"
+            className="d-btn d-btn-sm"
           >
-            View on Solana Explorer
+            View on Solana Explorer ↗
           </a>
         )}
         <button
           type="button"
-          className="underline underline-offset-[3px]"
+          className="d-btn d-btn-sm"
           onClick={() => void copy()}
         >
           {copyLabel(state, 'Copy signature')}
@@ -527,21 +531,19 @@ function LoadMore({
   }, [loading, onReach])
 
   return (
-    <p ref={ref} className="pt-6 text-center text-[12px] text-mute">
+    <p ref={ref} className="pt-5 text-center font-mono text-[12px] text-fg-3">
       Loading older calls…
     </p>
   )
 }
 
 function CallSkeleton() {
-  return (
-    <span className="mt-3 block h-[140px] animate-pulse rounded-[8px] bg-card" />
-  )
+  return <span className="d-card block h-[140px] animate-pulse" />
 }
 
 function LoadError({ onRetry }: { onRetry: () => void }) {
   return (
-    <p role="alert" className="pt-5 text-[13px] text-coral-ink">
+    <p role="alert" className="text-[13px] text-bad">
       Could not load activity.{' '}
       <button
         type="button"
@@ -556,9 +558,9 @@ function LoadError({ onRetry }: { onRetry: () => void }) {
 
 function NoCalls() {
   return (
-    <div className="px-1 pt-10 pb-2 text-center">
-      <h3 className="text-[15px] font-bold">No calls yet</h3>
-      <p className="mt-1.5 text-[12px] text-mute">
+    <div className="d-empty">
+      <h3 className="font-mono text-[14px] font-semibold">No calls yet</h3>
+      <p className="mx-auto mt-1.5 max-w-[34rem] text-fg-3">
         Ask a connected client to read Solana data or call a paid endpoint. Tool
         calls show estimated credits; payments show what they cost.
       </p>

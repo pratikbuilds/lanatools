@@ -11,7 +11,8 @@ import type {
   BaseConnectedSolanaWallet,
   WalletListEntry,
 } from '@privy-io/react-auth'
-import { Wordmark } from '#/components/landing/brand'
+import { Frame } from '#/components/dashboard/frame'
+import { SolanaMark } from '#/components/dashboard/solana-mark'
 
 export const Route = createFileRoute('/sign-in')({ component: SignInRoute })
 
@@ -51,44 +52,39 @@ function GoogleMark() {
 
 function Page({ children }: { children: ReactNode }) {
   return (
-    <div className="on-paper flex min-h-screen flex-col bg-paper font-[system-ui] text-ink">
-      <header className="mx-auto flex w-full max-w-[75rem] items-center justify-between px-5 py-5 sm:px-8 sm:py-7">
-        <a
-          href="/"
-          aria-label="LanaTools home"
-          className="font-mono [&_.text-paper-2]:text-mute"
-        >
-          <Wordmark size={27} />
-        </a>
-        <a
-          href="/"
-          className="group flex items-center gap-2 text-xs font-medium text-mute transition-colors hover:text-blue"
-        >
+    <Frame
+      actions={
+        <a href="/" className="d-hdr-pill px-3 focus-visible:outline-lime">
           <span className="hidden sm:inline">Back to home</span>
           <span className="sm:hidden">Home</span>
-          <span
-            aria-hidden="true"
-            className="flex size-7 items-center justify-center rounded-full border border-ink/20 text-base leading-none transition-colors group-hover:border-blue"
-          >
-            ↗
-          </span>
+          <span aria-hidden="true">↗</span>
         </a>
-      </header>
-
-      <main className="mx-auto flex w-full max-w-[75rem] flex-1 items-center justify-center px-5 pb-7 pt-2 sm:px-8 sm:pb-10 lg:py-8">
-        <section
-          aria-label="Sign in"
-          className="w-full max-w-[34rem] rounded-[22px] border border-ink/10 bg-card px-6 py-9 shadow-[0_24px_72px_rgb(10_31_110_/_0.08)] sm:px-12 sm:py-12"
-        >
-          <div className="mx-auto w-full max-w-[25rem]">{children}</div>
-        </section>
-      </main>
-
-      <footer className="mx-auto flex w-full max-w-[75rem] justify-between gap-4 px-5 pb-6 font-mono text-[10px] tracking-wide text-mute sm:px-8">
-        <span>LANATOOLS / SECURE ACCESS</span>
-        <span>BUILT ON SOLANA</span>
-      </footer>
-    </div>
+      }
+      status={{
+        start: (
+          <span className="d-status" data-state="live">
+            <i aria-hidden="true" />
+            Secure access
+          </span>
+        ),
+        end: (
+          <span>
+            <SolanaMark />
+            Built on Solana
+          </span>
+        ),
+      }}
+      mainClassName="flex items-center justify-center py-6 sm:py-10"
+      // The card is narrow, so the art can come in close around it.
+      artColumn={560}
+    >
+      <section
+        aria-label="Sign in"
+        className="d-card w-full max-w-[30rem] px-5 py-6 sm:px-9 sm:py-9"
+      >
+        {children}
+      </section>
+    </Frame>
   )
 }
 
@@ -203,13 +199,11 @@ function SignInForm({
 }) {
   return (
     <>
-      <p className="font-mono text-[11px] font-semibold tracking-[0.15em] text-blue">
-        LANATOOLS / ACCOUNT
-      </p>
-      <h2 className="mt-4 text-[2.1rem] leading-tight font-semibold tracking-[-0.05em] sm:text-[2.5rem]">
+      <p className="d-label">Sign in · Create account</p>
+      <h2 className="mt-3 font-mono text-[1.6rem] leading-tight font-semibold tracking-[-0.04em] sm:text-[1.85rem]">
         Sign in to your workspace.
       </h2>
-      <p className="mt-3 text-sm leading-6 text-mute">
+      <p className="mt-2 text-fg-2">
         Sign in or create an account to manage your agents.
       </p>
 
@@ -217,70 +211,58 @@ function SignInForm({
         type="button"
         onClick={onGoogle}
         disabled={disabled}
-        className="mt-8 flex h-[54px] w-full items-center justify-center gap-3 rounded-xl border border-ink/20 bg-card text-sm font-semibold text-ink transition-all hover:-translate-y-0.5 hover:border-blue hover:shadow-[0_6px_18px_rgb(10_31_110_/_0.08)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+        className="d-btn mt-6 h-12 w-full gap-3 text-[13.5px]"
       >
         <GoogleMark />
         Continue with Google
       </button>
 
-      <div className="my-6 flex items-center gap-4">
-        <span className="h-px flex-1 bg-rule" />
-        <span className="font-mono text-[10px] font-medium tracking-wide text-mute">
-          OR CONTINUE WITH A WALLET
-        </span>
-        <span className="h-px flex-1 bg-rule" />
+      <div className="my-5 flex items-center gap-3">
+        <span className="h-px flex-1 bg-line" />
+        <span className="d-label">Or use a Solana wallet</span>
+        <span className="h-px flex-1 bg-line" />
       </div>
 
-      <div className="space-y-2">
+      <div className="overflow-hidden rounded-[10px] border border-line">
         {wallets.map(({ name, id, icon }) => (
           <button
             key={id}
             type="button"
             onClick={() => onWallet?.(id)}
             disabled={disabled}
-            className="flex h-14 w-full items-center justify-center gap-3 rounded-xl border border-ink/10 bg-paper/55 px-3 text-sm font-semibold text-ink transition-all hover:-translate-y-0.5 hover:border-blue/55 hover:bg-card hover:shadow-[0_6px_18px_rgb(10_31_110_/_0.08)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+            className="flex h-[54px] w-full cursor-pointer items-center gap-3 border-b border-line bg-panel px-3.5 text-left font-mono text-[13px] font-semibold hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
           >
             <img
               src={icon}
               alt=""
-              width="34"
-              height="34"
-              className="size-[34px] rounded-[9px] object-cover"
+              width="30"
+              height="30"
+              className="size-[30px] rounded-[8px] object-cover"
             />
-            <span>{name}</span>
+            <span className="flex-1">{name}</span>
+            <span aria-hidden="true" className="text-fg-3">
+              →
+            </span>
           </button>
         ))}
+        <button
+          type="button"
+          onClick={() => onWallet?.()}
+          disabled={disabled}
+          className="flex h-[46px] w-full cursor-pointer items-center justify-center gap-2 bg-surface px-3.5 font-mono text-[12.5px] font-medium text-fg-2 hover:text-fg disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <span>More Solana wallets</span>
+        </button>
       </div>
 
-      <button
-        type="button"
-        onClick={() => onWallet?.()}
-        disabled={disabled}
-        className="mt-2 flex h-14 w-full items-center justify-center gap-3 rounded-xl border border-dashed border-ink/20 px-3 text-sm font-semibold text-blue transition-colors hover:border-blue hover:bg-paper/60 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        <span
-          aria-hidden="true"
-          className="grid size-[34px] grid-cols-2 gap-[3px] rounded-[9px] bg-blue/8 p-[9px]"
-        >
-          <span className="rounded-[2px] bg-blue" />
-          <span className="rounded-[2px] bg-blue/50" />
-          <span className="rounded-[2px] bg-blue/50" />
-          <span className="rounded-[2px] bg-blue" />
-        </span>
-        <span>More Solana wallets</span>
-      </button>
-
-      <p className="mt-6 border-t border-rule pt-5 text-xs leading-5 text-mute">
+      <p className="mt-5 border-t border-line pt-4 text-[12.5px] text-fg-3">
         A wallet sign-in verifies ownership with a message. No funds move.
       </p>
-      <p
-        role="alert"
-        className="mt-4 text-xs leading-5 text-coral-ink empty:hidden"
-      >
+      <p role="alert" className="mt-3 text-[12.5px] text-bad empty:hidden">
         {message}
       </p>
       {loading && (
-        <p role="status" className="mt-4 text-xs text-mute">
+        <p role="status" className="mt-3 font-mono text-[12px] text-fg-3">
           Preparing sign-in…
         </p>
       )}

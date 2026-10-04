@@ -164,17 +164,6 @@ body {
   box-shadow: 1px 1px 0 0 var(--color-ink);
 }
 
-/* Dashboard controls sit flat; the offset shadow belongs to the landing page. */
-.btn-flat {
-  height: 34px;
-  font-size: 12.5px;
-  box-shadow: none;
-}
-.btn-flat:active {
-  transform: none;
-  box-shadow: none;
-}
-
 .chip {
   display: inline-flex;
   align-items: center;
@@ -290,5 +279,460 @@ body {
   .footer-rail::after {
     animation: none;
     display: none;
+  }
+}
+
+/*
+ * Dashboard and sign-in. Light is paper and ink; dark is the deep brand
+ * navy. The colours are tokens on `.dash`, so a theme is one attribute.
+ */
+@theme inline {
+  --color-surface: var(--d-bg);
+  --color-panel: var(--d-panel);
+  --color-panel-2: var(--d-panel-2);
+  --color-line: var(--d-line);
+  --color-line-2: var(--d-line-2);
+  --color-fg: var(--d-text);
+  --color-fg-2: var(--d-text-2);
+  --color-fg-3: var(--d-text-3);
+  --color-accent: var(--d-accent);
+  --color-on-accent: var(--d-on-accent);
+  --color-tick: var(--d-tick);
+  --color-live: var(--d-live);
+  --color-warn: var(--d-warn);
+  --color-bad: var(--d-bad);
+  --color-hdr: var(--d-hdr);
+  --color-hdr-line: var(--d-hdr-line);
+  --color-hdr-dim: var(--d-hdr-dim);
+  --color-heat-1: var(--d-heat-1);
+  --color-heat-2: var(--d-heat-2);
+  --color-heat-3: var(--d-heat-3);
+  --color-heat-4: var(--d-heat-4);
+}
+
+.dash {
+  --d-bg: #f3efe6;
+  --d-panel: #fffdf8;
+  --d-panel-2: #ebe6da;
+  --d-line: #d6d0c2;
+  --d-line-2: #bfb7a4;
+  --d-text: #0a1f6e;
+  --d-text-2: #4a5480;
+  --d-text-3: #5f668c;
+  --d-accent: #0b2fb2;
+  --d-on-accent: #f3efe6;
+  --d-tick: #0b2fb2;
+  --d-live: #1d8f55;
+  --d-live-glow: rgb(29 143 85 / 0.18);
+  --d-warn: #9a5b00;
+  --d-bad: #b8361a;
+  --d-on-bad: #fffdf8;
+  --d-focus: #0b2fb2;
+  --d-scrim: rgb(5 11 43 / 0.4);
+  --d-shadow: 0 12px 32px rgb(10 31 110 / 0.14);
+  --d-hatch-c: #ddd6c6;
+  --d-hdr: #0b2fb2;
+  --d-hdr-line: transparent;
+  --d-hdr-dim: #b5c1f0;
+  --d-pat: #d3c9b4;
+  --d-pat-acc: rgb(11 47 178 / 0.32);
+  --d-heat-1: #c9d1f2;
+  --d-heat-2: #8a9be0;
+  --d-heat-3: #0b2fb2;
+  --d-heat-4: #0a1f6e;
+  --d-hatch: repeating-linear-gradient(
+    135deg,
+    var(--d-hatch-c) 0 1px,
+    transparent 1px 7px
+  );
+  color-scheme: light;
+  background: var(--d-bg);
+  color: var(--d-text);
+  font-family: 'Inter Tight', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.dash[data-theme='dark'] {
+  --d-bg: #08090c;
+  --d-panel: #0f1115;
+  --d-panel-2: #171a21;
+  --d-line: #23272f;
+  --d-line-2: #343a46;
+  --d-text: #f3efe6;
+  --d-text-2: #aab1c5;
+  --d-text-3: #8a90a3;
+  --d-accent: #f3efe6;
+  --d-on-accent: #0a1f6e;
+  --d-tick: #b5c1f0;
+  --d-live: #d9ff4a;
+  --d-live-glow: rgb(217 255 74 / 0.25);
+  --d-warn: #f2c25c;
+  --d-bad: #ff8a70;
+  --d-on-bad: #08090c;
+  --d-focus: #d9ff4a;
+  --d-scrim: rgb(0 0 0 / 0.55);
+  --d-shadow: 0 12px 32px rgb(0 0 0 / 0.5);
+  --d-hatch-c: #1b1e25;
+  --d-hdr: #0f1115;
+  --d-hdr-line: #23272f;
+  --d-hdr-dim: #8d93a5;
+  --d-pat: #262a32;
+  --d-pat-acc: rgb(217 255 74 / 0.3);
+  --d-heat-1: #1f2a52;
+  --d-heat-2: #34478f;
+  --d-heat-3: #7f92dd;
+  --d-heat-4: #d9ff4a;
+  color-scheme: dark;
+}
+.dash :focus-visible {
+  outline-color: var(--d-focus);
+}
+/* The header is brand blue in the light theme, so its focus ring is lime. */
+.dash header :focus-visible {
+  outline-color: var(--color-lime);
+}
+
+/* Component classes sit under utilities, so a utility can still adjust one. */
+@layer components {
+  /* Small uppercase mono label, as on a ledger. */
+  .d-label {
+    font: 500 11px var(--font-mono);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--d-text-3);
+  }
+
+  /* Diagonal hatching: frames and table heads. */
+  .d-hatch {
+    background: var(--d-hatch);
+  }
+  .d-frame {
+    padding: 7px;
+    border: 1px dashed var(--d-line-2);
+    border-radius: 14px;
+    background: var(--d-hatch);
+  }
+  .d-th {
+    background: var(--d-hatch), var(--d-panel-2);
+  }
+
+  .d-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    height: 34px;
+    padding: 0 14px;
+    border: 1px solid var(--d-line-2);
+    border-radius: 9px;
+    background: var(--d-panel);
+    color: var(--d-text);
+    font: 600 13px var(--font-mono);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .d-btn:not(:disabled):hover {
+    border-color: var(--d-text-3);
+  }
+  .d-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+  .d-btn-primary {
+    border-color: var(--d-accent);
+    background: var(--d-accent);
+    color: var(--d-on-accent);
+  }
+  .d-btn-primary:not(:disabled):hover {
+    border-color: var(--d-accent);
+    opacity: 0.9;
+  }
+  .d-btn-danger {
+    border-color: var(--d-bad);
+    background: var(--d-bad);
+    color: var(--d-on-bad);
+  }
+  .d-btn-danger:not(:disabled):hover {
+    border-color: var(--d-bad);
+    opacity: 0.9;
+  }
+  /* Outlined: a destructive action that still asks first. */
+  .d-btn-danger-quiet {
+    color: var(--d-bad);
+  }
+  .d-btn-danger-quiet:not(:disabled):hover {
+    border-color: var(--d-bad);
+  }
+  .d-btn-sm {
+    height: 30px;
+    padding: 0 11px;
+    font-size: 12px;
+  }
+
+  .d-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 10px;
+    border: 1px solid var(--d-line);
+    border-radius: 8px;
+    background: var(--d-panel);
+    color: var(--d-text-2);
+    font: 500 12px var(--font-mono);
+    white-space: nowrap;
+  }
+
+  .d-input {
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--d-line);
+    border-radius: 8px;
+    background: var(--d-panel);
+    color: var(--d-text);
+    font-size: 13px;
+  }
+  .d-input::placeholder {
+    color: var(--d-text-3);
+  }
+
+  /* Segmented control: one pressed button in a tray. */
+  .d-seg {
+    display: inline-flex;
+    max-width: 100%;
+    overflow-x: auto;
+    padding: 3px;
+    border: 1px solid var(--d-line);
+    border-radius: 9px;
+    background: var(--d-panel);
+  }
+  .d-seg button {
+    flex-shrink: 0;
+    padding: 3px 10px;
+    border-radius: 6px;
+    color: var(--d-text-3);
+    font: 500 12px var(--font-mono);
+    cursor: pointer;
+  }
+  .d-seg button[aria-pressed='true'] {
+    background: var(--d-panel-2);
+    color: var(--d-text);
+    box-shadow: inset 0 0 0 1px var(--d-line-2);
+  }
+
+  /* A state colours whatever shows it: a status dot, a row of ticks. */
+  [data-state] {
+    --d-state: var(--d-line-2);
+  }
+  [data-state='live'] {
+    --d-state: var(--d-live);
+  }
+  [data-state='near'] {
+    --d-state: var(--d-warn);
+  }
+  [data-state='full'] {
+    --d-state: var(--d-bad);
+  }
+
+  /* A state as a dot and a word. Live pulses. */
+  .d-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--d-text-2);
+    font: 500 12px var(--font-mono);
+    white-space: nowrap;
+  }
+  .d-status i {
+    flex-shrink: 0;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--d-state);
+  }
+  .d-status[data-state='live'] {
+    color: var(--d-text);
+  }
+  .d-status[data-state='near'],
+  .d-status[data-state='full'] {
+    color: var(--d-state);
+  }
+  .d-status[data-state='live'] i {
+    box-shadow: 0 0 0 3px var(--d-live-glow);
+    animation: d-pulse 2s ease-in-out infinite;
+  }
+  @keyframes d-pulse {
+    50% {
+      box-shadow: 0 0 0 6px transparent;
+    }
+  }
+
+  /* Spent of limit as a row of ticks. */
+  .d-ticks {
+    display: flex;
+    gap: 2px;
+  }
+  .d-ticks i {
+    flex: 1;
+    height: 12px;
+    border-radius: 2px;
+    background: var(--d-panel-2);
+  }
+  .d-ticks i[data-on] {
+    background: var(--d-tick);
+  }
+  /* Only a warning colours the ticks; otherwise they stay brand. */
+  .d-ticks:is([data-state='near'], [data-state='full']) i[data-on] {
+    background: var(--d-state);
+  }
+
+  /* The page's column: content and header line up on it. */
+  .d-col {
+    width: 100%;
+    max-width: 1100px;
+    margin-inline: auto;
+  }
+
+  /* The fixed status bar: cells divided by hairlines. */
+  .d-status-bar {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 5;
+    display: flex;
+    height: 36px;
+    border-top: 1px solid var(--d-line);
+    background: var(--d-bg);
+    color: var(--d-text-2);
+    font: 500 12px var(--font-mono);
+  }
+  .d-status-bar > div {
+    display: flex;
+  }
+  .d-status-bar > div > * {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 16px;
+    white-space: nowrap;
+  }
+  .d-status-bar > div > * + * {
+    border-left: 1px solid var(--d-line);
+  }
+  .d-status-bar > div:first-child {
+    border-right: 1px solid var(--d-line);
+  }
+  .d-status-bar > div + div {
+    margin-left: auto;
+    border-left: 1px solid var(--d-line);
+  }
+
+  /* A round outlined control on the header bar. */
+  .d-hdr-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 34px;
+    border: 1.5px solid rgb(181 193 240 / 0.5);
+    border-radius: 999px;
+    color: var(--color-paper);
+    font: 500 12.5px var(--font-mono);
+  }
+  .d-hdr-pill:hover,
+  .d-hdr-pill[aria-expanded='true'] {
+    border-color: var(--color-paper);
+  }
+
+  /* Surfaces. */
+  .d-card {
+    overflow: hidden;
+    border: 1px solid var(--d-line);
+    border-radius: 10px;
+    background: var(--d-panel);
+  }
+  .d-inset {
+    overflow: hidden;
+    border: 1px solid var(--d-line);
+    border-radius: 9px;
+    background: var(--d-panel);
+  }
+  .d-pane {
+    position: relative;
+    min-width: 0;
+    padding: 24px;
+  }
+  @media (min-width: 40rem) {
+    .d-pane {
+      padding: 26px 28px;
+    }
+  }
+  /* A recessed box for an address, signature or snippet. */
+  .d-well {
+    padding: 9px 12px;
+    border: 1px solid var(--d-line);
+    border-radius: 8px;
+    background: var(--d-bg);
+    font: 500 13px var(--font-mono);
+    overflow-wrap: anywhere;
+  }
+  .d-empty {
+    padding: 26px 16px;
+    border: 1px dashed var(--d-line-2);
+    border-radius: 10px;
+    color: var(--d-text-3);
+    text-align: center;
+  }
+  .d-h2 {
+    font: 600 15px var(--font-mono);
+  }
+
+  /* Decorative side fields, faded towards the content. */
+  .d-side {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+  .d-side-l {
+    left: 0;
+    mask: linear-gradient(90deg, #000 40%, transparent);
+  }
+  .d-side-r {
+    right: 0;
+    mask: linear-gradient(270deg, #000 40%, transparent);
+  }
+  .d-side .flow {
+    fill: none;
+    stroke: var(--d-pat);
+    stroke-width: 1;
+    stroke-dasharray: 1.5 4;
+    stroke-linecap: round;
+  }
+  .d-side .fill {
+    fill: var(--d-pat);
+    opacity: 0.75;
+  }
+  .d-side .ic {
+    fill: none;
+    stroke: var(--d-pat);
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+  }
+  .d-side .ic.acc {
+    stroke: var(--d-pat-acc);
+  }
+  .d-side .ic .f {
+    fill: var(--d-pat);
+    stroke: none;
+  }
+  .d-side .ic.acc .f {
+    fill: var(--d-pat-acc);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .d-status[data-state='live'] i {
+      animation: none;
+    }
   }
 }
