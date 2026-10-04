@@ -57,6 +57,9 @@ enrichment, pagination, retries and MCP discovery/calls through an in-memory SDK
 transport. `apps/api/src/jupiter.test.ts` exercises local D1 scope enforcement,
 cross-client/owner isolation and revocation.
 
-Fixtures are synthetic examples, not live-response proof. Authenticated Jupiter
-responses remain unverified until the managed server key is available. Tests
-make no paid calls or transactions.
+Fixtures are synthetic examples. A separate authenticated live smoke check passed
+through an in-memory MCP client for query search, exact-mint search with eligibility,
+ranked/tag/recent discovery and SOL/USDC prices, covering all six implemented REST
+route templates. The key is configured only in the ignored local API Worker
+`.dev.vars`; production Worker configuration and the deployed OAuth flow were not
+verified by this smoke check. No transactions were created or submitted.
