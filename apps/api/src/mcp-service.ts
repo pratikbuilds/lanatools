@@ -10,12 +10,12 @@ import { paymentConfig } from './payments/network'
 import type { PaymentEnv } from './payments/network'
 import {
   activateGrant,
+  authorizeGrant,
   discardConsent,
   pendingConsent,
   prepareGrant,
   recordConsent,
   revokeGrant,
-  useActiveGrant,
 } from './mcp-grants'
 import type { ConsentInput } from './mcp-grants'
 import { solanaConfig } from './solana/network'
@@ -197,11 +197,11 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
 
   /** Returns the account for an active grant, or null once it is revoked. */
   async whoami(grantId: string, userId: string, clientId: string) {
-    const active = await useActiveGrant(this.env.DB, {
-      grantId,
-      userId,
-      clientId,
-    })
-    return active ? { userId, clientId } : null
+    const access = await authorizeGrant(
+      this.env.DB,
+      { grantId, userId, clientId },
+      null,
+    )
+    return access === 'active' ? { userId, clientId } : null
   }
 }

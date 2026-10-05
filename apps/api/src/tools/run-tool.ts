@@ -1,9 +1,9 @@
-import { and, eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
 import type { runHeliusTool } from '@lanatools/helius'
-import { mcpGrant, toolActivity } from '../db/schema'
-import type { GrantIdentity } from '../mcp-grants'
+import { toolActivity } from '../db/schema'
+import { authorizeGrant } from '../mcp-grants'
+import type { GrantAccess, GrantIdentity } from '../mcp-grants'
 import type { SolanaConfig, SolanaNetwork } from '../solana/network'
 
 type ProviderOutcome = Awaited<ReturnType<typeof runHeliusTool>>
@@ -64,39 +64,15 @@ export async function runTool(
 ): Promise<ToolOutcome> {
   const now = deps.now ?? Date.now
   const startedAt = now()
-  const db = drizzle(deps.db)
-  let grant: { scope: string; lastUsedAt: number | null } | undefined
+  let access: GrantAccess
   try {
-    grant = await db
-      .select({ scope: mcpGrant.scope, lastUsedAt: mcpGrant.lastUsedAt })
-      .from(mcpGrant)
-      .where(
-        and(
-          eq(mcpGrant.id, identity.grantId),
-          eq(mcpGrant.privyUserId, identity.userId),
-          eq(mcpGrant.clientId, identity.clientId),
-          eq(mcpGrant.status, 'active'),
-        ),
-      )
-      .get()
+    access = await authorizeGrant(deps.db, identity, 'chain:read', startedAt)
   } catch {
     // A database failure cannot establish permission. Fail closed, safely.
     return failed('upstream_error')
   }
-  if (!grant) return failed('unauthorized')
-  if (!grant.scope.split(' ').includes('chain:read'))
-    return failed('insufficient_scope')
-
-  if (!grant.lastUsedAt || startedAt - grant.lastUsedAt > 5 * 60_000) {
-    try {
-      await db
-        .update(mcpGrant)
-        .set({ lastUsedAt: startedAt })
-        .where(eq(mcpGrant.id, identity.grantId))
-    } catch {
-      console.error('Could not record MCP tool grant use')
-    }
-  }
+  if (access === 'revoked') return failed('unauthorized')
+  if (access === 'insufficient_scope') return failed('insufficient_scope')
 
   let network: SolanaNetwork['name'] | null = null
   let credits = 0
@@ -135,20 +111,22 @@ export async function runTool(
   }
 
   try {
-    await db.insert(toolActivity).values({
-      id: crypto.randomUUID(),
-      privyUserId: identity.userId,
-      clientId: identity.clientId,
-      grantId: identity.grantId,
-      provider: 'helius',
-      tool: validName ? name : 'invalid_tool',
-      network,
-      status: outcome.ok ? 'ok' : 'failed',
-      credits,
-      errorCode: outcome.ok ? null : outcome.error.code,
-      durationMs: Math.max(0, now() - startedAt),
-      createdAt: startedAt,
-    })
+    await drizzle(deps.db)
+      .insert(toolActivity)
+      .values({
+        id: crypto.randomUUID(),
+        privyUserId: identity.userId,
+        clientId: identity.clientId,
+        grantId: identity.grantId,
+        provider: 'helius',
+        tool: validName ? name : 'invalid_tool',
+        network,
+        status: outcome.ok ? 'ok' : 'failed',
+        credits,
+        errorCode: outcome.ok ? null : outcome.error.code,
+        durationMs: Math.max(0, now() - startedAt),
+        createdAt: startedAt,
+      })
   } catch {
     // D1 may include bound values in its errors. Log only a fixed diagnostic.
     console.error('Could not record tool activity')

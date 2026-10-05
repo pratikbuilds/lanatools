@@ -2,6 +2,7 @@ import { and, eq, inArray, isNull, lt } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
 import { paymentActivity, paymentSigner } from '../db/schema'
+import { hasScope, scopePattern } from '../mcp-grants'
 import type { GrantIdentity } from '../mcp-grants'
 import type { FixedCharge } from './challenge'
 
@@ -108,7 +109,7 @@ export async function reserve(
         and s.wallet_id = ?
       where g.id = ? and g.privy_user_id = ? and g.client_id = ?
         and g.status = 'active'
-        and (' ' || g.scope || ' ') like '% payments:pay %'
+        and (' ' || g.scope || ' ') like ?
         and g.limit_micro_usd - ${COMMITTED} >= ?
       returning id`,
     )
@@ -126,6 +127,7 @@ export async function reserve(
       identity.grantId,
       identity.userId,
       identity.clientId,
+      scopePattern('payments:pay'),
       amount,
     )
     .first<{ id: string }>()
@@ -151,7 +153,7 @@ export async function reservationRefusal(
       committed: number
     }>()
   if (grant?.status !== 'active') return 'This connection has been revoked'
-  if (!grant.scope.split(' ').includes('payments:pay'))
+  if (!hasScope(grant.scope, 'payments:pay'))
     return 'This connection is not allowed to make payments'
   const signer = await enabledSigner(database, identity.userId)
   if (signer?.walletId !== walletId)

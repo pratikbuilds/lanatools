@@ -42,12 +42,22 @@ export function scopeList(scope: string) {
   return scope.split(' ')
 }
 
+/** Whether a stored, space-separated grant scope includes `required`. */
+export function hasScope(scope: string, required: McpScope) {
+  return scopeList(scope).includes(required)
+}
+
+/** A LIKE pattern matching a stored grant scope that includes `required`. */
+export function scopePattern(required: McpScope) {
+  return `% ${required} %`
+}
+
 /**
  * Checks a spending limit the user approved. A payments grant needs one;
  * any other grant must not carry one.
  */
 function approvedLimit(scope: string, limitMicroUsd: number | null) {
-  if (!scopeList(scope).includes('payments:pay')) {
+  if (!hasScope(scope, 'payments:pay')) {
     if (limitMicroUsd !== null) throw new Error('Unexpected spending limit')
     return 0
   }
@@ -193,13 +203,20 @@ export async function activateGrant(
   if (!grant) throw new Error('MCP grant changed during authorization')
 }
 
-/** Whether the grant is active, recording the use when it is. */
-export async function useActiveGrant(
+/** Why a grant may or may not be used. */
+export type GrantAccess = 'active' | 'revoked' | 'insufficient_scope'
+
+/**
+ * The one check that a grant may be used: it is active, belongs to this user
+ * and client, and includes `requiredScope` (null allows any active grant).
+ * Records use when allowed. A database failure throws, so callers fail closed.
+ */
+export async function authorizeGrant(
   database: D1Database,
   { grantId, userId, clientId }: GrantIdentity,
+  requiredScope: McpScope | null,
   now = Date.now(),
-  requiredScope?: McpScope,
-) {
+): Promise<GrantAccess> {
   const db = drizzle(database)
   const grant = await db
     .select({ lastUsedAt: mcpGrant.lastUsedAt, scope: mcpGrant.scope })
@@ -213,9 +230,9 @@ export async function useActiveGrant(
       ),
     )
     .get()
-  if (!grant) return false
-  if (requiredScope && !scopeList(grant.scope).includes(requiredScope))
-    return false
+  if (!grant) return 'revoked'
+  if (requiredScope && !hasScope(grant.scope, requiredScope))
+    return 'insufficient_scope'
   if (!grant.lastUsedAt || now - grant.lastUsedAt > LAST_USED_INTERVAL) {
     // Last use is bookkeeping; failing to record it must not deny access.
     try {
@@ -233,7 +250,7 @@ export async function useActiveGrant(
       )
     }
   }
-  return true
+  return 'active'
 }
 
 export async function listClients(
@@ -328,7 +345,7 @@ export async function setClientLimit(
         eq(mcpGrant.id, grantId),
         eq(mcpGrant.privyUserId, userId),
         eq(mcpGrant.status, 'active'),
-        sql`(' ' || ${mcpGrant.scope} || ' ') like '% payments:pay %'`,
+        sql`(' ' || ${mcpGrant.scope} || ' ') like ${scopePattern('payments:pay')}`,
       ),
     )
     .returning({ id: mcpGrant.id })
