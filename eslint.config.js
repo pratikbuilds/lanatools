@@ -13,6 +13,10 @@ export default [
       '**/*.config.js',
       // Hand-written dashboard mocks, outside every tsconfig.
       'docs/design/**',
+      // Git-ignored local media work, outside every tsconfig.
+      'output/**',
+      // Local agent worktrees: whole copies of this repository.
+      '.claude/worktrees/**',
     ],
   },
   ...tanstackConfig,

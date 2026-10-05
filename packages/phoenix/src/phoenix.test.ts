@@ -162,6 +162,7 @@ test('an unknown market points the agent at phoenix_list_markets', async () => {
         'Phoenix has no market NOPE; call phoenix_list_markets for valid symbols',
       retryable: false,
     },
+    credits: 0,
   })
 })
 

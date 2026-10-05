@@ -12,15 +12,16 @@
     "@cloudflare/workers-oauth-provider": "1.1.0",
     "@lanatools/catalog": "workspace:*",
     "@lanatools/contracts": "workspace:*",
+    "@lanatools/helius": "workspace:*",
     "@lanatools/jupiter": "workspace:*",
     "@lanatools/phoenix": "workspace:*",
+    "@lanatools/toolkit": "workspace:*",
     "@modelcontextprotocol/server": "2.0.0",
     "@privy-io/react-auth": "^3.45.0",
     "agents": "0.24.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "zod": "4.4.3",
-    "@lanatools/helius": "workspace:*"
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260901.1",

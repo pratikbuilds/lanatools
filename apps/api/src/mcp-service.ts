@@ -1,26 +1,22 @@
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import { PrivyClient } from '@privy-io/node'
-import { runHeliusTool } from '@lanatools/helius'
 import type { D1Database } from '@cloudflare/workers-types'
-import type { JupiterRequest } from '@lanatools/jupiter'
-import { readJupiter } from './jupiter'
 import { PayHttpError, payHttp, payKitPayer } from './payments/pay-http'
 import type { PayHttpInput, PayHttpResult } from './payments/pay-http'
-import { paymentConfig } from './payments/network'
 import { signerStatus } from './payments/signer-setup'
-import type { PaymentEnv } from './payments/network'
 import {
   activateGrant,
+  authorizeGrant,
   discardConsent,
   pendingConsent,
   prepareGrant,
   recordConsent,
   revokeGrant,
-  useActiveGrant,
 } from './mcp-grants'
-import type { ConsentInput } from './mcp-grants'
-import { solanaConfig } from './solana/network'
-import { runTool } from './tools/run-tool'
+import type { ConsentInput, GrantIdentity } from './mcp-grants'
+import { paymentConfig } from './solana/network'
+import { callTool } from './tools/call-tool'
+import type { ProviderEnv } from './tools/providers'
 
 /** The MCP Worker's RPC surface for deleting OAuth tokens held in its KV. */
 export type McpTokenRevoker = {
@@ -31,9 +27,7 @@ export type McpTokenRevoker = {
   ) => Promise<void>
 }
 
-export type McpEnv = PaymentEnv & {
-  /** Server-managed Jupiter REST key; never exposed to MCP clients. */
-  JUPITER_API_KEY?: string
+export type McpEnv = ProviderEnv & {
   DB: D1Database
   PRIVY_APP_ID: string
   PRIVY_APP_SECRET: string
@@ -86,21 +80,11 @@ export async function revokeClient(
   return true
 }
 
+/**
+ * The MCP Worker's RPC surface. Every grant-scoped method takes the grant's
+ * identity as one object and authorizes it here: the API is the boundary.
+ */
 export class McpAccessService extends WorkerEntrypoint<McpEnv> {
-  async readJupiter(
-    grantId: string,
-    userId: string,
-    clientId: string,
-    request: JupiterRequest,
-  ) {
-    return readJupiter(
-      this.env.DB,
-      { grantId, userId, clientId },
-      request,
-      this.env.JUPITER_API_KEY,
-    )
-  }
-
   async recordConsent(input: ConsentInput) {
     await recordConsent(this.env.DB, input)
   }
@@ -123,19 +107,35 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
 
   async activateGrant(
     handle: string,
-    clientId: string,
-    userId: string,
-    grantId: string,
+    identity: GrantIdentity,
     toolScopes: string[],
     limitMicroUsd: number | null = null,
   ) {
     await activateGrant(
       this.env.DB,
       handle,
-      { grantId, userId, clientId },
+      identity,
       toolScopes,
       limitMicroUsd,
     )
+  }
+
+  /** Returns the account for an active grant, or null once it is revoked. */
+  async whoami(identity: GrantIdentity) {
+    const access = await authorizeGrant(this.env.DB, identity, null)
+    return access === 'active'
+      ? { userId: identity.userId, clientId: identity.clientId }
+      : null
+  }
+
+  /** The user's payment wallet address, or null before it is set up. */
+  async walletAddress(userId: string) {
+    return (await signerStatus(this.env.DB, userId)).walletAddress
+  }
+
+  /** Runs any provider tool, recording it in the client's activity. */
+  async callTool(identity: GrantIdentity, name: string, input: unknown) {
+    return callTool({ db: this.env.DB, env: this.env }, identity, name, input)
   }
 
   /**
@@ -144,9 +144,7 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
    * back as an agent-safe message rather than an exception.
    */
   async payHttp(
-    grantId: string,
-    userId: string,
-    clientId: string,
+    identity: GrantIdentity,
     input: PayHttpInput,
   ): Promise<
     { ok: true; result: PayHttpResult } | { ok: false; error: string }
@@ -167,7 +165,7 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
               wallet,
             })(request),
         },
-        { grantId, userId, clientId },
+        identity,
         input,
       )
       return { ok: true, result }
@@ -176,40 +174,5 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
         return { ok: false, error: error.message }
       throw error
     }
-  }
-
-  /** Generic read-only tool execution; the API independently authorizes it. */
-  async runTool(
-    grantId: string,
-    userId: string,
-    clientId: string,
-    name: string,
-    input: unknown,
-  ) {
-    return runTool(
-      {
-        db: this.env.DB,
-        config: () => solanaConfig(this.env),
-        run: runHeliusTool,
-      },
-      { grantId, userId, clientId },
-      name,
-      input,
-    )
-  }
-
-  /** Returns the account for an active grant, or null once it is revoked. */
-  async whoami(grantId: string, userId: string, clientId: string) {
-    const active = await useActiveGrant(this.env.DB, {
-      grantId,
-      userId,
-      clientId,
-    })
-    return active ? { userId, clientId } : null
-  }
-
-  /** The user's payment wallet address, or null before it is set up. */
-  async walletAddress(userId: string) {
-    return (await signerStatus(this.env.DB, userId)).walletAddress
   }
 }

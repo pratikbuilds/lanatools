@@ -75,16 +75,17 @@ without invented defaults. Unusable top-level responses produce sanitized
 errors; usable token records survive unexpected optional data. Eligibility
 failures remain visible in successful search results.
 
-`@lanatools/jupiter/mcp` exports registration and result formatting. Its injected
-executor must enforce access; the package does not grant access itself. The API
-checks the stored account/client/grant/scope before calling the package.
+The package exports `jupiter`, a `@lanatools/toolkit` provider. Register it on
+an MCP server with `registerTools` from `@lanatools/toolkit/mcp`. The host
+must enforce access; the package does not grant access itself. The LanaTools
+API checks the stored account/client/grant/scope before calling the package.
 Keys and provider error bodies never become agent inputs or results.
 
 ## Verification
 
 `bun test packages/jupiter/src` covers the 18 REST route templates, partial data,
 enrichment, pagination, retries and MCP discovery/calls through an in-memory SDK
-transport. `apps/api/src/jupiter.test.ts` exercises local D1 scope enforcement,
+transport. `apps/api/src/tools/call-tool.test.ts` exercises local D1 scope enforcement,
 cross-client/owner isolation and revocation.
 
 Fixtures are synthetic examples. Authenticated live checks passed for all 18 REST

@@ -9,7 +9,7 @@ import { reserve } from './ledger'
 import { testDatabase } from '../test-database'
 import { PayHttpError, payHttp } from './pay-http'
 import type { Payer, PayHttpDeps, PayHttpInput } from './pay-http'
-import type { PaymentNetwork } from './network'
+import type { PaymentNetwork } from '../solana/network'
 import { PolicyDeniedError } from './privy-signer'
 
 const DEVNET: PaymentNetwork = {
@@ -531,12 +531,19 @@ test('turning payments off or revoking the client blocks the next call', async (
   expect(payer).toHaveBeenCalledTimes(1)
 })
 
-test('a client without the payments scope cannot reserve', async () => {
+test('a client without the payments scope is refused before any request or record', async () => {
   const grant = await connectClient(50_000, { scope: 'account:read' })
   await enableSigner()
-  await expect(payHttp(deps(), grant, input())).rejects.toThrow(
-    'not allowed to make payments',
-  )
+  const fetch = mock(async () => new Response('free'))
+  await expect(
+    payHttp(
+      deps({ fetch: fetch as unknown as typeof globalThis.fetch }),
+      grant,
+      input(),
+    ),
+  ).rejects.toThrow('not allowed to make payments')
+  expect(fetch).not.toHaveBeenCalled()
+  expect(await activity()).toEqual([])
 })
 
 async function ageActivity(minutes: number) {

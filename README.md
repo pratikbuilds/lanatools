@@ -3,6 +3,20 @@
 Bun workspaces with a Hono API and React/Vite frontend using TanStack Router,
 TanStack Query, and Tailwind. Shared HTTP schemas live in `packages/contracts`.
 
+## Where things live
+
+| Path                                    | What it owns                                                     |
+| --------------------------------------- | ---------------------------------------------------------------- |
+| `packages/toolkit`                      | The provider contract (`ToolProvider`) and its MCP adapter       |
+| `packages/helius`, `jupiter`, `phoenix` | One provider each; usable in any project, no app imports         |
+| `packages/catalog`                      | The pay.sh paid-API catalog and search                           |
+| `packages/contracts`                    | Types shared by the API and web app                              |
+| `apps/api/src/tools`                    | Which providers LanaTools serves (`providers.ts`) and `callTool` |
+| `apps/api/src/mcp-grants.ts`            | Consent, grants and `authorizeGrant`, the one grant check        |
+| `apps/api/src/solana/network.ts`        | Solana network table and server network configuration            |
+| `apps/api/src/payments`                 | `call`: challenges, spending limits, signing and settlement      |
+| `apps/mcp`                              | OAuth and the MCP server; provider tools run in the API          |
+
 ## Development
 
 Install Bun **1.4.2** and Node.js **24 LTS**. Node runs the Vite/ESLint toolchain;

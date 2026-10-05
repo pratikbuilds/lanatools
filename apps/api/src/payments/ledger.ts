@@ -1,8 +1,9 @@
-import { and, eq, inArray, isNull, lt } from 'drizzle-orm'
+import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
-import { paymentActivity, paymentSigner } from '../db/schema'
-import type { GrantIdentity } from '../mcp-grants'
+import { mcpGrant, paymentActivity, paymentSigner } from '../db/schema'
+import { activeGrantFor, authorizeGrant, grantHasScope } from '../mcp-grants'
+import type { GrantAccess, GrantIdentity } from '../mcp-grants'
 import type { FixedCharge } from './challenge'
 
 export type CallTarget = { method: string; origin: string; path: string }
@@ -65,14 +66,20 @@ export async function enabledSigner(database: D1Database, userId: string) {
   )
 }
 
-// What a client has committed: settled spend plus held reservations.
-const COMMITTED = `(
+// What the grant's client has committed: settled spend plus held reservations.
+const COMMITTED = sql`(
   select coalesce(sum(case when a.status = 'paid' then a.settled_atomic else a.reserved_atomic end), 0)
   from payment_activity a
-  where a.privy_user_id = g.privy_user_id
-    and a.client_id = g.client_id
+  where a.privy_user_id = ${mcpGrant.privyUserId}
+    and a.client_id = ${mcpGrant.clientId}
     and a.status in ('paid', 'reserved', 'uncertain')
 )`
+
+/** Why a grant may not pay, in the words the agent sees. */
+export const GRANT_REFUSALS: Record<Exclude<GrantAccess, 'active'>, string> = {
+  revoked: 'This connection has been revoked',
+  insufficient_scope: 'This connection is not allowed to make payments',
+}
 
 /**
  * Reserves the charge against the client's remaining limit and opens its
@@ -94,41 +101,23 @@ export async function reserve(
 ) {
   const id = crypto.randomUUID()
   const amount = Number(charge.amount)
-  const row = await database
-    .prepare(
-      `insert into payment_activity (
-        id, privy_user_id, client_id, grant_id, method, origin, path,
-        protocol, status, network, mint, reserved_atomic, created_at
-      )
-      select ?, g.privy_user_id, g.client_id, g.id, ?, ?, ?, ?, 'reserved', ?, ?, ?, ?
-      from mcp_grant g
-      join payment_signer s
-        on s.privy_user_id = g.privy_user_id
-        and s.status = 'enabled'
-        and s.wallet_id = ?
-      where g.id = ? and g.privy_user_id = ? and g.client_id = ?
-        and g.status = 'active'
-        and (' ' || g.scope || ' ') like '% payments:pay %'
-        and g.limit_micro_usd - ${COMMITTED} >= ?
-      returning id`,
+  const row = await drizzle(database).get<{ id: string } | undefined>(sql`
+    insert into payment_activity (
+      id, privy_user_id, client_id, grant_id, method, origin, path,
+      protocol, status, network, mint, reserved_atomic, created_at
     )
-    .bind(
-      id,
-      target.method,
-      target.origin,
-      target.path,
-      charge.protocol,
-      charge.network,
-      charge.mint,
-      amount,
-      now,
-      walletId,
-      identity.grantId,
-      identity.userId,
-      identity.clientId,
-      amount,
-    )
-    .first<{ id: string }>()
+    select ${id}, ${mcpGrant.privyUserId}, ${mcpGrant.clientId}, ${mcpGrant.id},
+      ${target.method}, ${target.origin}, ${target.path}, ${charge.protocol},
+      'reserved', ${charge.network}, ${charge.mint}, ${amount}, ${now}
+    from ${mcpGrant}
+    join payment_signer s
+      on s.privy_user_id = ${mcpGrant.privyUserId}
+      and s.status = 'enabled'
+      and s.wallet_id = ${walletId}
+    where ${activeGrantFor(identity)}
+      and ${grantHasScope('payments:pay')}
+      and ${mcpGrant.limitMicroUsd} - ${COMMITTED} >= ${amount}
+    returning id`)
   return row?.id ?? null
 }
 
@@ -138,25 +127,21 @@ export async function reservationRefusal(
   identity: GrantIdentity,
   walletId: string,
 ) {
-  const grant = await database
-    .prepare(
-      `select g.status, g.scope, g.limit_micro_usd as "limit", ${COMMITTED} as committed
-      from mcp_grant g where g.id = ? and g.privy_user_id = ? and g.client_id = ?`,
-    )
-    .bind(identity.grantId, identity.userId, identity.clientId)
-    .first<{
-      status: string
-      scope: string
-      limit: number
-      committed: number
-    }>()
-  if (grant?.status !== 'active') return 'This connection has been revoked'
-  if (!grant.scope.split(' ').includes('payments:pay'))
-    return 'This connection is not allowed to make payments'
+  // The grant may have changed since payHttp checked it.
+  const access = await authorizeGrant(database, identity, 'payments:pay')
+  if (access !== 'active') return GRANT_REFUSALS[access]
   const signer = await enabledSigner(database, identity.userId)
   if (signer?.walletId !== walletId)
     return 'Payments are turned off for this wallet'
-  const remaining = Math.max(0, grant.limit - grant.committed)
+  const grant = await drizzle(database)
+    .select({
+      limit: mcpGrant.limitMicroUsd,
+      committed: sql<number>`${COMMITTED}`,
+    })
+    .from(mcpGrant)
+    .where(activeGrantFor(identity))
+    .get()
+  const remaining = Math.max(0, (grant?.limit ?? 0) - (grant?.committed ?? 0))
   return `The charge exceeds this client's remaining limit of ${remaining} micro-USD`
 }
 

@@ -1,50 +1,48 @@
 import { expect, test } from 'bun:test'
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client'
 import { McpServer } from '@modelcontextprotocol/server'
-import { JupiterClient } from './index'
-import { formatJupiterResult, registerJupiterTools } from './mcp'
+import { registerTools, toCallToolResult } from '@lanatools/toolkit/mcp'
+import { jupiter } from './index'
+import type { JupiterFetch } from './index'
 
 test('MCP discovers nine read-only schemas and calls them through the executor', async () => {
   const server = new McpServer({ name: 'jupiter-test', version: '1' })
-  const reader = new JupiterClient({
-    apiKey: 'server-key',
-    fetch: async (url) => {
-      const path = new URL(url).pathname
-      if (path === '/tokens/v2/search')
-        return Response.json(
-          new URL(url).searchParams.get('query') === 'JUP'
-            ? []
-            : [
-                {
-                  id: 'So11111111111111111111111111111111111111112',
-                  decimals: 9,
-                },
-                {
-                  id: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-                  decimals: 6,
-                },
-              ],
-        )
-      if (path === '/swap/v2/order')
-        return Response.json({
-          inputMint: 'So11111111111111111111111111111111111111112',
-          outputMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-          inAmount: '1000000000',
-          outAmount: '100000000',
-          routePlan: [],
-        })
-      if (path.includes('getTriggerOrders'))
-        return Response.json({ orders: [], hasMoreData: false })
-      if (path === '/price/v3')
-        return Response.json({
-          So11111111111111111111111111111111111111112: { usdPrice: 143.25 },
-        })
-      if (path === '/swap/v2/program-id-to-label') return Response.json({})
-      return Response.json([])
-    },
-  })
-  registerJupiterTools(server, async (request) =>
-    formatJupiterResult(await reader.read(request)),
+  const fetch: JupiterFetch = async (url) => {
+    const path = new URL(url).pathname
+    if (path === '/tokens/v2/search')
+      return Response.json(
+        new URL(url).searchParams.get('query') === 'JUP'
+          ? []
+          : [
+              {
+                id: 'So11111111111111111111111111111111111111112',
+                decimals: 9,
+              },
+              {
+                id: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+                decimals: 6,
+              },
+            ],
+      )
+    if (path === '/swap/v2/order')
+      return Response.json({
+        inputMint: 'So11111111111111111111111111111111111111112',
+        outputMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+        inAmount: '1000000000',
+        outAmount: '100000000',
+        routePlan: [],
+      })
+    if (path.includes('getTriggerOrders'))
+      return Response.json({ orders: [], hasMoreData: false })
+    if (path === '/price/v3')
+      return Response.json({
+        So11111111111111111111111111111111111111112: { usdPrice: 143.25 },
+      })
+    if (path === '/swap/v2/program-id-to-label') return Response.json({})
+    return Response.json([])
+  }
+  registerTools(server, jupiter.tools, (name, input) =>
+    jupiter.run(name, input, { apiKey: 'server-key', fetch }),
   )
   const client = new Client({ name: 'test-client', version: '1' })
   const [clientTransport, serverTransport] =
@@ -157,10 +155,10 @@ test('MCP errors expose the shared structured error contract', () => {
     message: 'Jupiter access required',
     retryable: false,
   }
-  const result = formatJupiterResult({ ok: false, error })
+  const result = toCallToolResult({ ok: false, error })
   expect(result.isError).toBe(true)
-  expect(result.structuredContent).toEqual(error)
+  expect(result.structuredContent).toEqual({ error })
   expect(result.content).toEqual([
-    { type: 'text', text: JSON.stringify(error) },
+    { type: 'text', text: JSON.stringify({ error }) },
   ])
 })

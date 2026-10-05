@@ -10,8 +10,9 @@ import {
   recordConsent,
   revokeGrant,
   setClientLimit,
-  useActiveGrant,
+  authorizeGrant,
 } from './mcp-grants'
+import { TOOL_SCOPES } from '@lanatools/contracts'
 import { testDatabase } from './test-database'
 
 let db: D1Database
@@ -66,22 +67,22 @@ test('an approved client is listed with its name and redirect host', async () =>
 
 test('use is recorded at most every five minutes', async () => {
   const grant = await connect('user-used', 'client-used')
-  expect(await useActiveGrant(db, grant, 1_000_000)).toBe(true)
-  expect(await useActiveGrant(db, grant, 1_060_000)).toBe(true)
+  expect(await authorizeGrant(db, grant, null, 1_000_000)).toBe('active')
+  expect(await authorizeGrant(db, grant, null, 1_060_000)).toBe('active')
   expect((await listClients(db, 'user-used'))[0]?.lastUsedAt).toBe(1_000_000)
-  await useActiveGrant(db, grant, 1_400_000)
+  await authorizeGrant(db, grant, null, 1_400_000)
   expect((await listClients(db, 'user-used'))[0]?.lastUsedAt).toBe(1_400_000)
 })
 
 test('only the owner can revoke, and revocation cuts off access', async () => {
   const grant = await connect('user-revoke', 'client-revoke')
   expect(await revokeGrant(db, 'intruder', grant.grantId)).toBeNull()
-  expect(await useActiveGrant(db, grant)).toBe(true)
+  expect(await authorizeGrant(db, grant, null)).toBe('active')
 
   expect(await revokeGrant(db, 'user-revoke', grant.grantId)).toBe(
     'client-revoke',
   )
-  expect(await useActiveGrant(db, grant)).toBe(false)
+  expect(await authorizeGrant(db, grant, null)).toBe('revoked')
   expect(await listClients(db, 'user-revoke')).toEqual([])
   expect(await revokeGrant(db, 'user-revoke', grant.grantId)).toBeNull()
 })
@@ -92,8 +93,8 @@ test('reconnecting after a revoke never revives the old grant', async () => {
   const renewed = await connect('user-again', 'client-again')
 
   expect(renewed.grantId).not.toBe(old.grantId)
-  expect(await useActiveGrant(db, old)).toBe(false)
-  expect(await useActiveGrant(db, renewed)).toBe(true)
+  expect(await authorizeGrant(db, old, null)).toBe('revoked')
+  expect(await authorizeGrant(db, renewed, null)).toBe('active')
   expect((await listClients(db, 'user-again')).map((c) => c.grantId)).toEqual([
     renewed.grantId,
   ])
@@ -117,7 +118,7 @@ test('a disconnect during another approval stays disconnected', async () => {
   await expect(
     activateGrant(db, handle, { ...grant, grantId: pending.grantId }, [], null),
   ).rejects.toThrow('MCP grant changed during authorization')
-  expect(await useActiveGrant(db, grant)).toBe(false)
+  expect(await authorizeGrant(db, grant, null)).toBe('revoked')
   expect(await listClients(db, 'user-race')).toEqual([])
 })
 
@@ -209,10 +210,14 @@ for (const scopes of [
     const handle = await startConsent(clientId)
     const { grantId } = await prepareGrant(db, handle, clientId, userId)
     const identity = { grantId, userId, clientId }
-    expect(await useActiveGrant(db, identity)).toBe(false)
+    expect(await authorizeGrant(db, identity, null)).toBe('revoked')
     const limit = scopes.includes('payments:pay') ? 1_000_000 : null
     await activateGrant(db, handle, identity, scopes, limit)
-    expect(await useActiveGrant(db, identity)).toBe(true)
+    expect(await authorizeGrant(db, identity, null)).toBe('active')
+    for (const scope of TOOL_SCOPES)
+      expect(await authorizeGrant(db, identity, scope)).toBe(
+        scopes.includes(scope) ? 'active' : 'insufficient_scope',
+      )
     expect((await listClients(db, userId))[0]).toMatchObject({
       scopes: ['account:read', ...scopes],
       limitMicroUsd: limit ?? 0,

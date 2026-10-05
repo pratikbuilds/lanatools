@@ -3,13 +3,19 @@
 `@lanatools/helius` owns tool schemas, provider requests, safe errors and agent-facing output. It has no OAuth, database, Cloudflare bindings, user identity or payment logic.
 
 ```ts
-const outcome = await runHeliusTool(
+import { helius } from '@lanatools/helius'
+
+const outcome = await helius.run(
   'get_accounts',
   { addresses },
   { rpcUrl, fetch },
 )
-// { ok: true, result, credits } or { ok: false, error: { code, message }, credits }
+// { ok: true, result, credits } or { ok: false, error: { code, message, retryable }, credits }
 ```
+
+`helius` is a [`@lanatools/toolkit`](../toolkit/README.md) provider, so any
+MCP server can register its tools with `registerTools`. `runHeliusTool` is the
+same function as `helius.run`.
 
 The server supplies its existing `SOLANA_RPC_URL`; agents cannot choose a network or URL. Read tools trust the server's network configuration without a genesis-hash probe; payments independently verify that their RPC serves devnet. API keys never enter output, exceptions, or tool descriptions.
 

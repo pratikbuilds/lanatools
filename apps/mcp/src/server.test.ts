@@ -24,22 +24,13 @@ async function connect(
     walletAddress: mock<ServerDependencies['api']['walletAddress']>(
       async () => address,
     ),
-    readJupiter: mock<ServerDependencies['api']['readJupiter']>(async () => ({
-      ok: false,
-      error: {
-        code: 'upstream_unavailable',
-        message: 'Test upstream unavailable',
-        retryable: true,
-      },
-    })),
     payHttp: mock<ServerDependencies['api']['payHttp']>(async () => ({
       ok: false,
       error: 'Not a payment test',
     })),
-    runTool: mock<ServerDependencies['api']['runTool']>(async () => ({
+    callTool: mock<ServerDependencies['api']['callTool']>(async () => ({
       ok: true,
       result: { accounts: [] },
-      credits: 1,
     })),
   }
   const revokeClient = mock<ServerDependencies['revokeClient']>(() => {})
@@ -108,7 +99,7 @@ test('a client without helius:read is not shown the Helius tools and cannot call
       .catch(() => ({ isError: true }))
     expect(result.isError).toBe(true)
     expect(session.api.whoami).not.toHaveBeenCalled()
-    expect(session.api.runTool).not.toHaveBeenCalled()
+    expect(session.api.callTool).not.toHaveBeenCalled()
   } finally {
     await session.close()
   }
@@ -116,6 +107,14 @@ test('a client without helius:read is not shown the Helius tools and cannot call
 
 test('a revoked grant is refused and its OAuth tokens are scheduled for revocation', async () => {
   const session = await connect(['helius:read'], false)
+  session.api.callTool.mockImplementationOnce(async () => ({
+    ok: false,
+    error: {
+      code: 'unauthorized',
+      message: 'Connection revoked',
+      retryable: false,
+    },
+  }))
   try {
     const result = await session.client.callTool({
       name: 'get_accounts',
@@ -123,10 +122,14 @@ test('a revoked grant is refused and its OAuth tokens are scheduled for revocati
     })
     expect(result.isError).toBe(true)
     expect(result.structuredContent).toEqual({
-      error: { code: 'unauthorized', message: 'Connection revoked' },
+      error: {
+        code: 'unauthorized',
+        message: 'Connection revoked',
+        retryable: false,
+      },
     })
     expect(session.revokeClient).toHaveBeenCalledWith(identity)
-    expect(session.api.runTool).not.toHaveBeenCalled()
+    expect(session.api.whoami).not.toHaveBeenCalled()
   } finally {
     await session.close()
   }
@@ -147,7 +150,7 @@ test('invalid identities are refused before API calls', async () => {
       ).isError,
     ).toBe(true)
     expect(session.api.whoami).not.toHaveBeenCalled()
-    expect(session.api.runTool).not.toHaveBeenCalled()
+    expect(session.api.callTool).not.toHaveBeenCalled()
   } finally {
     await session.close()
   }
@@ -167,7 +170,7 @@ test('invalid addresses and caller-selected networks fail before any API call', 
       expect(result.isError).toBe(true)
     }
     expect(session.api.whoami).not.toHaveBeenCalled()
-    expect(session.api.runTool).not.toHaveBeenCalled()
+    expect(session.api.callTool).not.toHaveBeenCalled()
   } finally {
     await session.close()
   }
@@ -185,14 +188,12 @@ test('valid calls forward identity and inputs and return matching JSON and struc
     expect(result.content).toEqual([
       { type: 'text', text: JSON.stringify(result.structuredContent) },
     ])
-    expect(session.api.runTool).toHaveBeenCalledTimes(1)
-    expect(session.api.runTool.mock.calls[0]?.slice(0, 4)).toEqual([
-      identity.grantId,
-      identity.userId,
-      identity.clientId,
+    expect(session.api.callTool).toHaveBeenCalledTimes(1)
+    expect(session.api.callTool.mock.calls[0]?.slice(0, 2)).toEqual([
+      identity,
       'get_accounts',
     ])
-    expect(session.api.runTool.mock.calls[0]?.[4]).toMatchObject({
+    expect(session.api.callTool.mock.calls[0]?.[2]).toMatchObject({
       addresses: [address],
     })
     expect(session.revokeClient).not.toHaveBeenCalled()
@@ -208,10 +209,13 @@ test('valid calls forward identity and inputs and return matching JSON and struc
 test('API errors retain their code while unexpected RPC failures never expose details', async () => {
   const session = await connect()
   try {
-    session.api.runTool.mockImplementationOnce(async () => ({
+    session.api.callTool.mockImplementationOnce(async () => ({
       ok: false,
-      error: { code: 'rate_limited', message: 'Try again later' },
-      credits: 0,
+      error: {
+        code: 'rate_limited',
+        message: 'Try again later',
+        retryable: true,
+      },
     }))
     const refused = await session.client.callTool({
       name: 'get_accounts',
@@ -219,12 +223,16 @@ test('API errors retain their code while unexpected RPC failures never expose de
     })
     expect(refused.isError).toBe(true)
     expect(refused.structuredContent).toEqual({
-      error: { code: 'rate_limited', message: 'Try again later' },
+      error: {
+        code: 'rate_limited',
+        message: 'Try again later',
+        retryable: true,
+      },
     })
     expect(refused.content).toEqual([
       { type: 'text', text: JSON.stringify(refused.structuredContent) },
     ])
-    session.api.runTool.mockImplementationOnce(async () => {
+    session.api.callTool.mockImplementationOnce(async () => {
       throw new Error('provider.example/?api-key=never-leak-this')
     })
     const failed = await session.client.callTool({
@@ -238,8 +246,8 @@ test('API errors retain their code while unexpected RPC failures never expose de
       throw new Error('another-secret')
     })
     const unavailable = await session.client.callTool({
-      name: 'get_accounts',
-      arguments: { addresses: [address] },
+      name: 'list_catalog',
+      arguments: {},
     })
     expect(unavailable.isError).toBe(true)
     expect(JSON.stringify(unavailable)).not.toContain('another-secret')
@@ -258,27 +266,22 @@ test('every exported tool dispatches to the API through the shared grant boundar
         arguments: fixtures.get(tool.name)!.input,
       })
       expect(result.isError).not.toBe(true)
-      expect(session.api.runTool.mock.calls.at(-1)?.slice(0, 4)).toEqual([
-        identity.grantId,
-        identity.userId,
-        identity.clientId,
+      expect(session.api.callTool.mock.calls.at(-1)?.slice(0, 2)).toEqual([
+        identity,
         tool.name,
       ])
     }
-    expect(session.api.whoami).toHaveBeenCalledTimes(heliusTools.length)
-    expect(session.api.runTool).toHaveBeenCalledTimes(heliusTools.length)
+    // The API authorizes provider calls; the MCP Worker does not ask twice.
+    expect(session.api.whoami).not.toHaveBeenCalled()
+    expect(session.api.callTool).toHaveBeenCalledTimes(heliusTools.length)
   } finally {
     await session.close()
   }
 })
 
 test('each client sees the catalog and only the tool families it was given', async () => {
-  const families = {
-    jupiter: (names: string[]) =>
-      names.filter((name) => name.startsWith('jupiter_')).length,
-    phoenix: (names: string[]) =>
-      names.filter((name) => name.startsWith('phoenix_')).length,
-  }
+  const count = (names: string[], prefix: string) =>
+    names.filter((name) => name.startsWith(prefix)).length
   const list = async (scopes: string[]) => {
     const session = await connect(scopes)
     try {
@@ -288,24 +291,18 @@ test('each client sees the catalog and only the tool families it was given', asy
     }
   }
   const catalogOnly = await list(['account:read'])
-  expect(catalogOnly).toEqual(
-    expect.arrayContaining([
-      'whoami',
-      'list_catalog',
-      'search_catalog',
-      'get_catalog_entry',
-    ]),
+  expect(catalogOnly.sort()).toEqual(
+    ['get_catalog_entry', 'list_catalog', 'search_catalog', 'whoami'].sort(),
   )
-  expect(catalogOnly).toHaveLength(4)
 
   const jupiter = await list(['account:read', 'jupiter:read'])
-  expect(families.jupiter(jupiter)).toBe(9)
-  expect(families.phoenix(jupiter)).toBe(0)
+  expect(count(jupiter, 'jupiter_')).toBe(9)
+  expect(count(jupiter, 'phoenix_')).toBe(0)
   expect(jupiter).not.toContain('call')
 
   const phoenix = await list(['account:read', 'phoenix:read'])
-  expect(families.phoenix(phoenix)).toBeGreaterThan(0)
-  expect(families.jupiter(phoenix)).toBe(0)
+  expect(count(phoenix, 'phoenix_')).toBeGreaterThan(0)
+  expect(count(phoenix, 'jupiter_')).toBe(0)
 
   const pay = await list(['account:read', 'payments:pay'])
   expect(pay).toContain('call')
@@ -320,11 +317,7 @@ test('catalog tools work for any active grant', async () => {
       arguments: {},
     })
     expect(result.isError).not.toBe(true)
-    expect(session.api.whoami).toHaveBeenCalledWith(
-      identity.grantId,
-      identity.userId,
-      identity.clientId,
-    )
+    expect(session.api.whoami).toHaveBeenCalledWith(identity)
   } finally {
     await session.close()
   }
@@ -356,6 +349,40 @@ test('whoami returns the account, client and payment wallet address', async () =
       arguments: {},
     })
     expect(JSON.stringify(unset.content)).toContain('\\"walletAddress\\":null')
+  } finally {
+    await session.close()
+  }
+})
+
+test('Jupiter and Phoenix calls go through the API like every provider', async () => {
+  const session = await connect(['jupiter:read', 'phoenix:read'])
+  try {
+    session.api.callTool.mockImplementationOnce(async () => ({
+      ok: true,
+      result: { source: 'jupiter', data: { venues: {} } },
+      summary: 'Returned 0 venue labels.',
+    }))
+    const venues = await session.client.callTool({
+      name: 'jupiter_get_swap_venues',
+      arguments: {},
+    })
+    expect(venues.content).toEqual([
+      { type: 'text', text: 'Returned 0 venue labels.' },
+      { type: 'text', text: JSON.stringify(venues.structuredContent) },
+    ])
+    await session.client.callTool({
+      name: 'phoenix_get_market',
+      arguments: { symbol: 'SOL' },
+    })
+    expect(session.api.callTool.mock.calls.map(([, name]) => name)).toEqual([
+      'jupiter_get_swap_venues',
+      'phoenix_get_market',
+    ])
+    const denied = await session.client
+      .callTool({ name: 'get_accounts', arguments: { addresses: [address] } })
+      .catch(() => ({ isError: true }))
+    expect(denied.isError).toBe(true)
+    expect(session.api.callTool).toHaveBeenCalledTimes(2)
   } finally {
     await session.close()
   }

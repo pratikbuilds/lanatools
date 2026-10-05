@@ -7,7 +7,7 @@ import type {
 } from '@lanatools/contracts'
 import type { PrivyClient } from '@privy-io/node'
 import { paymentSigner } from '../db/schema'
-import type { PaymentNetwork } from './network'
+import type { PaymentNetwork } from '../solana/network'
 
 const COMPUTE_BUDGET = 'ComputeBudget111111111111111111111111111111'
 const MEMO = 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'

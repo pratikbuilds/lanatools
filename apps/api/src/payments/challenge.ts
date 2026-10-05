@@ -1,5 +1,5 @@
 import { Challenge } from 'mppx'
-import type { PaymentNetwork } from './network'
+import type { PaymentNetwork } from '../solana/network'
 
 export type Protocol = 'mpp' | 'x402'
 

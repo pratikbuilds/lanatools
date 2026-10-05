@@ -1,4 +1,5 @@
 import type { z } from 'zod'
+import { defineProvider } from '@lanatools/toolkit'
 import { PhoenixError, createPhoenixClient } from './client'
 import type { PhoenixClient, PhoenixErrorCode, PhoenixOpts } from './client'
 import type { PhoenixTool } from './tool'
@@ -25,10 +26,11 @@ export const phoenixTools = [
 ] as const
 
 export type PhoenixOutcome =
-  | { ok: true; result: unknown }
+  | { ok: true; result: unknown; credits: 0 }
   | {
       ok: false
       error: { code: PhoenixErrorCode; message: string; retryable: boolean }
+      credits: 0
     }
 
 function runTool<TSchema extends z.ZodObject>(
@@ -60,6 +62,7 @@ export async function runPhoenixTool(
     return {
       ok: true,
       result: await runTool(tool, createPhoenixClient(opts), input ?? {}),
+      credits: 0,
     }
   } catch (error) {
     if (error instanceof PhoenixError)
@@ -70,6 +73,7 @@ export async function runPhoenixTool(
           message: error.message,
           retryable: error.retryable,
         },
+        credits: 0,
       }
     console.error(
       JSON.stringify({
@@ -85,6 +89,14 @@ export async function runPhoenixTool(
         message: 'Phoenix read failed',
         retryable: false,
       },
+      credits: 0,
     }
   }
 }
+
+/** Phoenix perps reads from its public API: no key and no wallet signature. */
+export const phoenix = defineProvider<PhoenixOpts>({
+  name: 'phoenix',
+  tools: phoenixTools,
+  run: runPhoenixTool,
+})

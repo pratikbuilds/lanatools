@@ -156,9 +156,7 @@ const defaultHandler = {
             () =>
               env.API.activateGrant(
                 handle,
-                approved.request.clientId,
-                userId,
-                grantId,
+                { grantId, userId, clientId: approved.request.clientId },
                 body.data.scopes,
                 limitMicroUsd,
               ),
@@ -221,10 +219,9 @@ const oauthOptions: OAuthProviderOptions<McpEnv> = {
     const identity = Identity.safeParse(props)
     if (!identity.success)
       throw new OAuthError('invalid_grant', { description: 'Unknown grant' })
-    const { grantId, userId, clientId } = identity.data
     let active: unknown
     try {
-      active = await (bindings as McpEnv).API.whoami(grantId, userId, clientId)
+      active = await (bindings as McpEnv).API.whoami(identity.data)
     } catch {
       throw new OAuthError('temporarily_unavailable', {
         description: 'Try again shortly',
