@@ -8,28 +8,29 @@ export const TOOL_FAMILIES: Record<
 > = {
   'helius:read': {
     title: 'Helius',
-    detail:
-      'Read Solana data: token info, wallet holdings, accounts and transaction history.',
+    detail: 'Read Solana tokens, wallets and transactions',
   },
   'payments:pay': {
     title: 'Pay',
-    detail:
-      'Call paid APIs and pay them in USDC from your LanaTools wallet, up to the limit you set.',
+    detail: 'Pay for APIs in USDC from your LanaTools wallet',
   },
   'jupiter:read': {
     title: 'Jupiter',
-    detail:
-      'Token search and reference prices, swap quotes and venues, public-wallet portfolios, lending data and legacy orders.',
+    detail: 'Read token prices, swap quotes and lending data',
   },
   'phoenix:read': {
     title: 'Phoenix',
-    detail: 'Perps markets, order books, candles and public account history.',
+    detail: 'Read perps markets, order books and candles',
   },
 }
 
+const PAY: ToolScope = 'payments:pay'
+// Pay comes last, so its limit closes the list instead of splitting it.
+const ROWS: ToolScope[] = [...TOOL_SCOPES.filter((each) => each !== PAY), PAY]
+
 /**
- * The tool families the user lets this client use, one switch each. The
- * catalog and the account ID are always included and cannot be switched off.
+ * The tool families the user lets this client use, one checkbox each. The
+ * catalog and the account ID are always included and cannot be left out.
  */
 export function ToolAccess({
   selected,
@@ -40,7 +41,7 @@ export function ToolAccess({
   selected: readonly ToolScope[]
   onChange: (selected: ToolScope[]) => void
   disabled?: boolean
-  /** Shown under Pay while it is on: where the user sets the limit. */
+  /** Shown under Pay while it is ticked: where the user sets the limit. */
   payLimit?: ReactNode
 }) {
   function toggle(scope: ToolScope) {
@@ -52,60 +53,64 @@ export function ToolAccess({
   }
 
   return (
-    <div className="d-card">
-      <p className="d-th flex min-h-9 items-center justify-between gap-3 px-4">
-        <span className="d-label">Tools this app can use</span>
-        <span className="font-mono text-[11.5px] text-fg-3">
-          {selected.length} of {TOOL_SCOPES.length} on
-        </span>
-      </p>
-      <ul>
-        {TOOL_SCOPES.map((scope) => {
+    <>
+      {/* One grid for every row, so the names share a column. */}
+      <ul className="gap-x-3 sm:grid sm:grid-cols-[auto_auto_1fr]">
+        {ROWS.map((scope) => {
           const on = selected.includes(scope)
-          const money = scope === 'payments:pay'
           return (
-            <li key={scope} className="border-t border-line px-4 py-3">
-              <div className="flex items-start gap-3">
-                <span className="min-w-0 flex-1">
-                  <strong
-                    id={`tool-${scope}`}
-                    className="flex items-center gap-2 font-semibold"
+            <li
+              key={scope}
+              className="sm:col-span-3 sm:grid sm:grid-cols-subgrid"
+            >
+              <label className="-mx-2 grid cursor-pointer grid-cols-[auto_1fr] items-baseline gap-x-3 rounded-[8px] px-2 py-2 hover:bg-panel-2 has-disabled:cursor-wait sm:col-span-3 sm:grid-cols-subgrid">
+                <span className="relative row-span-2 grid size-[18px] place-items-center self-start sm:row-span-1 sm:translate-y-[2px]">
+                  <input
+                    type="checkbox"
+                    name={scope}
+                    aria-labelledby={`tool-${scope}`}
+                    aria-describedby={`tool-${scope}-detail`}
+                    checked={on}
+                    disabled={disabled}
+                    onChange={() => toggle(scope)}
+                    className="peer size-full cursor-pointer appearance-none rounded-[5px] border border-line-2 bg-surface checked:border-accent checked:bg-accent disabled:cursor-wait"
+                  />
+                  <svg
+                    viewBox="0 0 16 16"
+                    aria-hidden="true"
+                    className="pointer-events-none absolute size-3.5 fill-none stroke-on-accent stroke-2 opacity-0 peer-checked:opacity-100"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   >
-                    {TOOL_FAMILIES[scope].title}
-                    {money && (
-                      <span className="rounded-full border border-warn px-1.5 font-mono text-[10.5px] font-medium text-warn">
-                        moves money
-                      </span>
-                    )}
-                  </strong>
-                  <span
-                    id={`tool-${scope}-detail`}
-                    className="mt-0.5 block text-[13px] text-fg-2"
-                  >
-                    {TOOL_FAMILIES[scope].detail}
-                  </span>
+                    <path d="M3.5 8.5l3 3 6-7" />
+                  </svg>
                 </span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={on}
-                  aria-labelledby={`tool-${scope}`}
-                  aria-describedby={`tool-${scope}-detail`}
-                  disabled={disabled}
-                  onClick={() => toggle(scope)}
-                  className={`relative mt-0.5 h-[26px] w-11 shrink-0 cursor-pointer rounded-full border border-line-2 bg-panel-2 transition-colors after:absolute after:top-[3px] after:left-[3px] after:size-[18px] after:rounded-full after:bg-fg-3 after:transition-transform disabled:cursor-wait aria-checked:after:translate-x-[18px] aria-checked:after:bg-on-accent motion-reduce:transition-none motion-reduce:after:transition-none ${money ? 'aria-checked:border-warn aria-checked:bg-warn' : 'aria-checked:border-accent aria-checked:bg-accent'}`}
-                />
-              </div>
-              {money && on && payLimit}
+                <strong
+                  id={`tool-${scope}`}
+                  className="font-mono text-[13.5px] font-semibold"
+                >
+                  {TOOL_FAMILIES[scope].title}
+                </strong>
+                <span
+                  id={`tool-${scope}-detail`}
+                  className="col-start-2 text-[13px] text-fg-2 sm:col-start-3"
+                >
+                  {TOOL_FAMILIES[scope].detail}
+                </span>
+              </label>
+              {scope === PAY && on && (
+                <div className="pb-1 pl-[30px] sm:col-span-2 sm:col-start-2 sm:pl-0">
+                  {payLimit}
+                </div>
+              )}
             </li>
           )
         })}
-        <li className="d-hatch border-t border-line px-4 py-3 text-[13px] text-fg-2">
-          <strong className="font-semibold text-fg">Always included:</strong>{' '}
-          searching the pay.sh catalog of paid APIs, and seeing which LanaTools
-          account and wallet it is connected to.
-        </li>
       </ul>
-    </div>
+      <p className="mt-2.5 text-[12.5px] text-fg-3">
+        Always included: searching the pay.sh catalog of paid APIs, and seeing
+        your account and wallet address.
+      </p>
+    </>
   )
 }
