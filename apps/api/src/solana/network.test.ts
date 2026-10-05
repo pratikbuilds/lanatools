@@ -1,6 +1,10 @@
 import { expect, mock, test } from 'bun:test'
-import { createPaymentConfig, paymentConfig } from '../payments/network'
-import { SOLANA_NETWORKS, solanaConfig } from './network'
+import {
+  SOLANA_NETWORKS,
+  createPaymentConfig,
+  paymentConfig,
+  solanaConfig,
+} from './network'
 
 const DEVNET = {
   SOLANA_NETWORK: 'devnet',

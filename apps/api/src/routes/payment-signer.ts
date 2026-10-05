@@ -8,7 +8,7 @@ import type {
 } from '@lanatools/contracts'
 import { privyClient } from '../mcp-service'
 import type { McpEnv } from '../mcp-service'
-import { paymentConfig } from '../payments/network'
+import { paymentConfig } from '../solana/network'
 import {
   SignerSetupError,
   confirmSigner,

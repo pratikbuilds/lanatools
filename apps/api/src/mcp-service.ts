@@ -6,8 +6,6 @@ import type { JupiterRequest } from '@lanatools/jupiter'
 import { readJupiter } from './jupiter'
 import { PayHttpError, payHttp, payKitPayer } from './payments/pay-http'
 import type { PayHttpInput, PayHttpResult } from './payments/pay-http'
-import { paymentConfig } from './payments/network'
-import type { PaymentEnv } from './payments/network'
 import {
   activateGrant,
   authorizeGrant,
@@ -18,7 +16,8 @@ import {
   revokeGrant,
 } from './mcp-grants'
 import type { ConsentInput } from './mcp-grants'
-import { solanaConfig } from './solana/network'
+import { paymentConfig, solanaConfig } from './solana/network'
+import type { SolanaEnv } from './solana/network'
 import { runTool } from './tools/run-tool'
 
 /** The MCP Worker's RPC surface for deleting OAuth tokens held in its KV. */
@@ -30,7 +29,7 @@ export type McpTokenRevoker = {
   ) => Promise<void>
 }
 
-export type McpEnv = PaymentEnv & {
+export type McpEnv = SolanaEnv & {
   /** Server-managed Jupiter REST key; never exposed to MCP clients. */
   JUPITER_API_KEY?: string
   DB: D1Database

@@ -25,7 +25,7 @@ import {
   settle,
 } from './ledger'
 import type { CallTarget } from './ledger'
-import type { PaymentConfig } from './network'
+import type { PaymentConfig } from '../solana/network'
 import {
   OutboundRequestError,
   REQUEST_TIMEOUT_MS,

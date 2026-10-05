@@ -9,7 +9,7 @@ import { reserve } from './ledger'
 import { testDatabase } from '../test-database'
 import { PayHttpError, payHttp } from './pay-http'
 import type { Payer, PayHttpDeps, PayHttpInput } from './pay-http'
-import type { PaymentNetwork } from './network'
+import type { PaymentNetwork } from '../solana/network'
 import { PolicyDeniedError } from './privy-signer'
 
 const DEVNET: PaymentNetwork = {

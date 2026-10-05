@@ -10,7 +10,7 @@ import {
   prepareSigner,
   signerStatus,
 } from './signer-setup'
-import type { PaymentNetwork } from './network'
+import type { PaymentNetwork } from '../solana/network'
 
 let db: D1Database
 let dispose: () => Promise<void>
