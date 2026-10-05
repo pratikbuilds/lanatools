@@ -6,19 +6,32 @@ The API Worker owns the Privy verification and D1 records for pending consent
 and account grants. MCP clients never receive a wallet key or Privy token.
 
 The Worker also serves a small Privy consent page at `/connect` on the same
-origin as OAuth. The page shows the requested access and the registered
-callback host. It cannot create a grant without the browser-bound OAuth consent
-cookie and a verified Privy access token.
+origin as OAuth. It cannot create a grant without the browser-bound OAuth
+consent cookie and a verified Privy access token.
 
-`whoami` requires an `account:read` token and an active grant and returns
-the Privy user ID and OAuth client ID.
+## Tool families and consent
+
+Each tool family has one scope, and the user picks them per client on the
+consent page: **Helius** (`helius:read`) and **Pay** (`payments:pay`) start on,
+**Jupiter** (`jupiter:read`) and **Phoenix** (`phoenix:read`) start off. The
+scopes a client asks for in `/authorize` are ignored; `approveConsent` issues
+the token with the user's choice plus `account:read`, and the API stores the
+same list on the grant. Turning Pay on asks for a spending limit.
+
+The catalog tools and `whoami` have no family and every client gets them.
+A client only sees the families it was given in `tools/list`, and every call
+is checked again against the token and, for Helius, Jupiter and Pay, the stored
+grant. To change a client's families, the user disconnects it and connects it
+again.
+
+`whoami` returns the Privy user ID, the OAuth client ID and the user's payment
+wallet address, which is null until the user sets one up.
 
 ## Jupiter reads
 
 All nine Jupiter tools (token research, portfolio, lending, legacy orders,
-quote-only swaps and venue metadata) require `jupiter:read`. Consent shows **Jupiter access** without a spending limit
-or wallet-signature flow. Existing clients must request the scope and obtain
-consent; account-only or payments-only access does not authorize Jupiter reads.
+quote-only swaps and venue metadata) require `jupiter:read`, with no spending
+limit or wallet-signature flow.
 
 Definitions and REST adapters live in `packages/jupiter`. Like every provider
 tool, a call goes through the API's `callTool`, which checks the current stored
@@ -38,11 +51,10 @@ wallet authentication are outside the agreed scope.
 
 ## Reading Solana data
 
-The `chain:read` OAuth scope grants access to every read-only tool exported by
-[`@lanatools/helius`](../../packages/helius/README.md). A client can request it
-alone or alongside `account:read` and `payments:pay`. Consent and the dashboard
-label it **Read Solana data**; it does not authorize wallet signing or payments.
-Disconnecting the grant blocks every call immediately, including calls using an
+The `helius:read` scope grants access to every read-only tool exported by
+[`@lanatools/helius`](../../packages/helius/README.md). Consent and the
+dashboard label it **Helius**; it does not authorize wallet signing or
+payments. Disconnecting the grant blocks every call immediately, including calls using an
 unexpired OAuth access token.
 
 `src/server.ts` registers every provider in the API's `PROVIDERS` list
@@ -63,8 +75,8 @@ tool's inputs, outputs, provider behavior and credit accounting.
 `packages/catalog`. They read the committed copy of the
 [pay.sh catalog](https://github.com/solana-foundation/pay-skills) in
 `packages/catalog/data/catalog.json`; refresh it with `bun run catalog:sync`.
-They need any active grant and no extra scope, because they read public
-listings and move no money.
+They need any active grant and no scope, because they read public listings and
+move no money.
 
 - `list_catalog` groups every provider by category.
 - `search_catalog` ranks providers and endpoints for a task with TypeSafe's
@@ -88,14 +100,14 @@ now; paying them through LanaTools is separate work.
 Six read-only tools come from `packages/phoenix`: `phoenix_list_markets`,
 `phoenix_get_market`, `phoenix_get_orderbook`, `phoenix_get_candles`,
 `phoenix_get_account` and `phoenix_get_history`. They call Phoenix's public
-mainnet API, need no key or secret, and need any active grant and no extra
-scope. They run through the API like the other providers, so they appear in
-activity. Sizes come back in tokens and USDC, not Phoenix lots. See
+mainnet API, need no key or secret, and require `phoenix:read`. They run
+through the API like the other providers, so they appear in activity. Sizes
+come back in tokens and USDC, not Phoenix lots. See
 `specs/phoenix-read-tools.md`.
 
-## Paying endpoints with `pay_http`
+## Paying endpoints with `call`
 
-`pay_http` requires the `payments:pay` scope. The consent page shows it and
+`call` requires the `payments:pay` scope. When Pay is on, the consent page
 asks the user for a USD spending limit for that client; the limit is stored on
 the grant and can be edited in the dashboard. The caller names an https
 endpoint and a `max_usd`. The API Worker (`apps/api/src/payments/`) then:
@@ -119,7 +131,7 @@ request.
 
 The signer records the wallet's signature and the transaction's blockhash on
 the activity row before the signed transaction can leave the Worker, and
-refuses to sign for a row that is no longer reserved. Each `pay_http` call
+refuses to sign for a row that is no longer reserved. Each `call` request
 first resolves the client's reservations older than five minutes, so a call
 cut off midway does not hold the limit forever: a row with no recorded
 transaction is released; a signed row stays held while its blockhash is
@@ -233,7 +245,7 @@ OAuth run, ledger check, log scan and `bun run check` separately in PR evidence;
 never claim a live pass without configured credentials and user approval.
 
 `bun run --cwd apps/mcp verify:payments` connects an MCP SDK client with
-`payments:pay` and calls `pay_http` against the hosted devnet merchant
+`payments:pay` and calls `call` against the hosted devnet merchant
 (`https://devnet-merchant-production.up.railway.app/api/v1`): refusals first,
 then MPP and x402 on `/fixed` and the Privy denial on `/policy-denied`. Fund
 the wallet with devnet USDC first. Pass `refusals` to skip spending, and set

@@ -46,7 +46,7 @@ import type { ChainOutcome, Settlement } from './settlement'
 
 // Pay Kit probes again, then sends the paid request; both share this budget.
 const PAYMENT_TIMEOUT_MS = 45_000
-// Longer than any pay_http call (45 s to pay, 60 s to finalize), so a
+// Longer than any `call` tool call (45 s to pay, 60 s to finalize), so a
 // reservation this old belongs to a call that has ended.
 const RECONCILE_AFTER_MS = 5 * 60_000
 

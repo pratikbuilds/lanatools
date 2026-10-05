@@ -72,11 +72,9 @@ const pendingBody = z
   .object({
     clientName: z.string(),
     clientId: z.string(),
-    scopes: z.tuple([z.literal('account:read')]),
   })
   .parse(await pending.json())
 assert.equal(pendingBody.clientName, 'LanaTools smoke test')
-assert.deepEqual(pendingBody.scopes, ['account:read'])
 assert.equal(pendingBody.clientId, client.client_id)
 
 const wrongOrigin = await fetch(consent, {

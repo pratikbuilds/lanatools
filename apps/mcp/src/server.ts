@@ -18,7 +18,10 @@ import type { GrantIdentity } from './identity'
 
 /** RPC-only dependencies keep the tool server runnable without a Worker. */
 export type ServerDependencies = {
-  api: Pick<McpAccessService, 'whoami' | 'payHttp' | 'callTool'>
+  api: Pick<
+    McpAccessService,
+    'whoami' | 'walletAddress' | 'payHttp' | 'callTool'
+  >
   typesafeApiKey: string | undefined
   revokeClient: (identity: GrantIdentity) => void
 }
@@ -44,6 +47,9 @@ export function createServer(
   scopes: string[],
 ) {
   const identity = Identity.safeParse(props)
+  // A client is only shown the tool families the user allowed it; every call
+  // is still checked against its scope here and again in the API.
+  const allows = (scope: string | null) => !scope || scopes.includes(scope)
 
   // Tools served here check the grant through the API first, so a revoked
   // grant cannot reach one even while its access token has not expired yet.
@@ -113,7 +119,7 @@ export function createServer(
     'whoami',
     {
       description:
-        'Show which LanaTools account and client this connection uses',
+        "Show which LanaTools account and client this connection uses, and the user's payment wallet address (null until the user sets one up)",
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -121,9 +127,22 @@ export function createServer(
       },
     },
     () =>
-      withGrant('account:read', ({ userId, clientId }) => ({
-        content: [{ type: 'text', text: JSON.stringify({ userId, clientId }) }],
-      })),
+      withGrant('account:read', async ({ userId, clientId }) => {
+        let walletAddress: string | null
+        try {
+          walletAddress = await dependencies.api.walletAddress(userId)
+        } catch {
+          return toolError(SERVICE_UNAVAILABLE)
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({ userId, clientId, walletAddress }),
+            },
+          ],
+        }
+      }),
   )
   server.registerTool(
     'list_catalog',
@@ -214,80 +233,83 @@ export function createServer(
         return entry
       }),
   )
-  server.registerTool(
-    'pay_http',
-    {
-      title: 'Pay for an HTTP request',
-      description: [
-        "Calls an https endpoint the user gave you. If it answers HTTP 402 with a fixed MPP or x402 charge, pays it in USDC from the user's LanaTools wallet and returns the endpoint's response.",
-        "The charge must not exceed max_usd or this client's remaining spending limit.",
-        'A response that is not UTF-8 text, such as an image, comes back base64-encoded with bodyEncoding "base64".',
-        'Never repeat a call whose payment is reported as uncertain: it may already have been paid.',
-      ].join(' '),
-      inputSchema: z.object({
-        url: z.url().describe('The https endpoint to call'),
-        method: z.enum(['GET', 'POST']).default('GET'),
-        headers: z
-          .record(z.string(), z.string())
-          .optional()
-          .describe(
-            'Optional request headers: accept, accept-language, content-type, user-agent',
-          ),
-        body: z
-          .union([
-            z.string(),
-            z.record(z.string(), z.unknown()),
-            z.array(z.unknown()),
-          ])
-          .optional()
-          .describe('POST body: text, or JSON sent as application/json'),
-        protocol: z
-          .enum(['auto', 'mpp', 'x402'])
-          .default('auto')
-          .describe('Payment protocol; auto prefers MPP when both are offered'),
-        max_usd: z
-          .string()
-          .refine(
-            (value) => parseUsd(value) !== null,
-            'A USD amount such as "0.05"',
-          )
-          .describe(
-            'The most you agree to pay for this call, in USD, e.g. "0.05"',
-          ),
-      }),
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: true,
-        idempotentHint: false,
-        openWorldHint: true,
+  if (allows('payments:pay'))
+    server.registerTool(
+      'call',
+      {
+        title: 'Call an HTTP endpoint, paying if it asks',
+        description: [
+          "Calls an https endpoint the user gave you. If it answers HTTP 402 with a fixed MPP or x402 charge, pays it in USDC from the user's LanaTools wallet and returns the endpoint's response.",
+          "The charge must not exceed max_usd or this client's remaining spending limit.",
+          'A response that is not UTF-8 text, such as an image, comes back base64-encoded with bodyEncoding "base64".',
+          'Never repeat a call whose payment is reported as uncertain: it may already have been paid.',
+        ].join(' '),
+        inputSchema: z.object({
+          url: z.url().describe('The https endpoint to call'),
+          method: z.enum(['GET', 'POST']).default('GET'),
+          headers: z
+            .record(z.string(), z.string())
+            .optional()
+            .describe(
+              'Optional request headers: accept, accept-language, content-type, user-agent',
+            ),
+          body: z
+            .union([
+              z.string(),
+              z.record(z.string(), z.unknown()),
+              z.array(z.unknown()),
+            ])
+            .optional()
+            .describe('POST body: text, or JSON sent as application/json'),
+          protocol: z
+            .enum(['auto', 'mpp', 'x402'])
+            .default('auto')
+            .describe(
+              'Payment protocol; auto prefers MPP when both are offered',
+            ),
+          max_usd: z
+            .string()
+            .refine(
+              (value) => parseUsd(value) !== null,
+              'A USD amount such as "0.05"',
+            )
+            .describe(
+              'The most you agree to pay for this call, in USD, e.g. "0.05"',
+            ),
+        }),
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: true,
+          idempotentHint: false,
+          openWorldHint: true,
+        },
       },
-    },
-    (input) =>
-      withGrant('payments:pay', async (grant) => {
-        const outcome = await dependencies.api.payHttp(grant, {
-          url: input.url,
-          method: input.method,
-          headers: input.headers,
-          body: input.body,
-          protocol: input.protocol,
-          maxUsd: input.max_usd,
-        })
-        if (!outcome.ok)
-          return toolError({
-            code: 'payment_refused',
-            message: outcome.error,
-            retryable: false,
+      (input) =>
+        withGrant('payments:pay', async (grant) => {
+          const outcome = await dependencies.api.payHttp(grant, {
+            url: input.url,
+            method: input.method,
+            headers: input.headers,
+            body: input.body,
+            protocol: input.protocol,
+            maxUsd: input.max_usd,
           })
-        return {
-          content: [{ type: 'text', text: JSON.stringify(outcome.result) }],
-        }
-      }),
-  )
+          if (!outcome.ok)
+            return toolError({
+              code: 'payment_refused',
+              message: outcome.error,
+              retryable: false,
+            })
+          return {
+            content: [{ type: 'text', text: JSON.stringify(outcome.result) }],
+          }
+        }),
+    )
   // Provider tools run in the API, which authorizes, runs and records each
   // call; adding a provider there registers its tools here. The MCP SDK
   // validates input against each tool's schema first, and the token's scopes
   // are checked here before any API call.
-  for (const provider of PROVIDERS)
+  for (const provider of PROVIDERS.filter((each) => allows(each.scope)))
     registerTools(server, provider.tools, async (name, input) => {
       if (provider.scope && !scopes.includes(provider.scope))
         return {

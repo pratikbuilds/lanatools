@@ -47,7 +47,7 @@ function denied(access: Exclude<GrantAccess, 'active'>, scope: string | null) {
     ok: false,
     error: {
       code: 'insufficient_scope',
-      message: `This client needs ${scope} access. Reconnect it to approve access.`,
+      message: `This client does not have ${scope} access. Reconnect it and allow it on the consent screen.`,
       retryable: false,
     },
   } as const

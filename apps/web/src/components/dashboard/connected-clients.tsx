@@ -12,11 +12,18 @@ import { useDashboardSession } from './session'
 import { mcpClientsKey, useMcpClients } from './use-mcp-clients'
 import { useWalletBalances } from './wallet-panel'
 
-const SCOPE_LABELS: Record<string, string> = {
-  'account:read': 'See your LanaTools account ID',
-  'chain:read': 'Read Solana data',
-  'payments:pay': 'Pay from your wallet within its limit',
-  'jupiter:read': 'Read Jupiter token information and prices',
+// account:read is on every grant, so it is not listed as a tool.
+const TOOL_LABELS: Record<string, string> = {
+  'helius:read': 'Helius',
+  'payments:pay': 'Pay within its limit',
+  'jupiter:read': 'Jupiter',
+  'phoenix:read': 'Phoenix',
+}
+
+/** The tool families a client may use; the catalog is always included. */
+function toolsOf(client: McpClient) {
+  const tools = client.scopes.flatMap((scope) => TOOL_LABELS[scope] ?? [])
+  return [...tools, 'pay.sh catalog'].join(', ')
 }
 
 const ROW =
@@ -404,10 +411,7 @@ export function ClientDetail({
   const [confirming, setConfirming] = useState(false)
   const name = clientName(client)
   const facts: Array<[string, ReactNode]> = [
-    [
-      'Can',
-      client.scopes.map((scope) => SCOPE_LABELS[scope] ?? scope).join(', '),
-    ],
+    ['Tools', toolsOf(client)],
     ['Estimated credits', client.estimatedCredits.toLocaleString('en-US')],
     ['Connected', timeAgo(client.connectedAt, now)],
     [

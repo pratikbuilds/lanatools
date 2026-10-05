@@ -75,7 +75,7 @@ try {
     response_type: 'code',
     client_id: clientId,
     redirect_uri: callback,
-    scope: chain ? 'account:read chain:read' : 'account:read',
+    scope: chain ? 'account:read helius:read' : 'account:read',
     state,
     code_challenge: challenge,
     code_challenge_method: 'S256',

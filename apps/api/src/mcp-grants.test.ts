@@ -12,6 +12,7 @@ import {
   setClientLimit,
   authorizeGrant,
 } from './mcp-grants'
+import { TOOL_SCOPES } from '@lanatools/contracts'
 import { testDatabase } from './test-database'
 
 let db: D1Database
@@ -26,7 +27,6 @@ afterAll(() => dispose())
 async function startConsent(
   clientId: string,
   redirectUri = 'https://claude.ai/api/mcp/auth_callback',
-  scopes = ['account:read'],
 ) {
   const handle = crypto.randomUUID()
   await recordConsent(db, {
@@ -34,7 +34,6 @@ async function startConsent(
     clientId,
     clientName: 'Claude',
     redirectUri,
-    scopes,
   })
   return handle
 }
@@ -42,7 +41,7 @@ async function startConsent(
 async function connect(userId: string, clientId: string) {
   const handle = await startConsent(clientId)
   const { grantId } = await prepareGrant(db, handle, clientId, userId)
-  await activateGrant(db, handle, { grantId, userId, clientId }, null)
+  await activateGrant(db, handle, { grantId, userId, clientId }, [], null)
   return { grantId, userId, clientId }
 }
 
@@ -117,38 +116,70 @@ test('a disconnect during another approval stays disconnected', async () => {
 
   await revokeGrant(db, 'user-race', grant.grantId)
   await expect(
-    activateGrant(db, handle, { ...grant, grantId: pending.grantId }, null),
+    activateGrant(db, handle, { ...grant, grantId: pending.grantId }, [], null),
   ).rejects.toThrow('MCP grant changed during authorization')
   expect(await authorizeGrant(db, grant, null)).toBe('revoked')
   expect(await listClients(db, 'user-race')).toEqual([])
 })
 
-test('consent accepts only known scopes, each once', async () => {
-  for (const scopes of [[], ['wallet:drain'], ['account:read', 'account:read']])
+test('a grant takes only tool families, each once, and always has account:read', async () => {
+  for (const scopes of [
+    ['wallet:drain'],
+    ['account:read'],
+    ['chain:read'],
+    ['helius:read', 'helius:read'],
+  ]) {
+    const handle = await startConsent('client-scopes')
+    const { grantId } = await prepareGrant(
+      db,
+      handle,
+      'client-scopes',
+      'user-scopes',
+    )
     await expect(
-      startConsent('client-scopes', undefined, scopes),
-    ).rejects.toThrow('Unsupported access request')
-  const handle = await startConsent('client-scopes', undefined, [
+      activateGrant(
+        db,
+        handle,
+        { grantId, userId: 'user-scopes', clientId: 'client-scopes' },
+        scopes,
+      ),
+    ).rejects.toThrow('Unsupported tool access')
+  }
+  const handle = await startConsent('client-scopes')
+  expect(await pendingConsent(db, handle)).toEqual({
+    clientName: 'Claude',
+    clientId: 'client-scopes',
+    redirectUri: 'https://claude.ai/api/mcp/auth_callback',
+  })
+  const { grantId } = await prepareGrant(
+    db,
+    handle,
+    'client-scopes',
+    'user-scopes',
+  )
+  await activateGrant(
+    db,
+    handle,
+    { grantId, userId: 'user-scopes', clientId: 'client-scopes' },
+    ['phoenix:read', 'jupiter:read'],
+  )
+  expect((await listClients(db, 'user-scopes'))[0]?.scopes).toEqual([
     'account:read',
-    'payments:pay',
-  ])
-  expect((await pendingConsent(db, handle))?.scopes).toEqual([
-    'account:read',
-    'payments:pay',
+    'jupiter:read',
+    'phoenix:read',
   ])
 })
 
 test('a payments grant needs the limit the user approved', async () => {
-  const scopes = ['account:read', 'payments:pay']
-  const handle = await startConsent('client-pay', undefined, scopes)
+  const handle = await startConsent('client-pay')
   const { grantId } = await prepareGrant(db, handle, 'client-pay', 'user-pay')
   const grant = { grantId, userId: 'user-pay', clientId: 'client-pay' }
-  await expect(activateGrant(db, handle, grant, null)).rejects.toThrow(
-    'Set a spending limit',
-  )
-  await activateGrant(db, handle, grant, 2_500_000)
+  await expect(
+    activateGrant(db, handle, grant, ['payments:pay'], null),
+  ).rejects.toThrow('Set a spending limit')
+  await activateGrant(db, handle, grant, ['payments:pay'], 2_500_000)
   const [client] = await listClients(db, 'user-pay')
-  expect(client?.scopes).toEqual(scopes)
+  expect(client?.scopes).toEqual(['account:read', 'payments:pay'])
   expect(client?.limitMicroUsd).toBe(2_500_000)
 
   expect(await setClientLimit(db, 'intruder', grantId, 9_000_000)).toBe(false)
@@ -160,71 +191,35 @@ test('a grant without payments cannot carry or change a limit', async () => {
   const handle = await startConsent('client-read')
   const { grantId } = await prepareGrant(db, handle, 'client-read', 'user-read')
   const grant = { grantId, userId: 'user-read', clientId: 'client-read' }
-  await expect(activateGrant(db, handle, grant, 1_000_000)).rejects.toThrow(
-    'Unexpected spending limit',
-  )
-  await activateGrant(db, handle, grant, null)
+  await expect(
+    activateGrant(db, handle, grant, ['helius:read'], 1_000_000),
+  ).rejects.toThrow('Unexpected spending limit')
+  await activateGrant(db, handle, grant, ['helius:read'], null)
   expect(await setClientLimit(db, 'user-read', grantId, 1_000_000)).toBe(false)
 })
 
-test('older MCP callers can approve read-only access without a spending limit', async () => {
-  const handle = await startConsent('legacy-read')
-  const { grantId } = await prepareGrant(
-    db,
-    handle,
-    'legacy-read',
-    'legacy-user',
-  )
-  const grant = { grantId, userId: 'legacy-user', clientId: 'legacy-read' }
-  await activateGrant(db, handle, grant)
-  expect(await authorizeGrant(db, grant, null)).toBe('active')
-  expect((await listClients(db, 'legacy-user'))[0]).toMatchObject({
-    clientName: 'Claude',
-    limitMicroUsd: 0,
-  })
-
-  const paymentHandle = await startConsent('legacy-pay', undefined, [
-    'payments:pay',
-  ])
-  const payment = await prepareGrant(
-    db,
-    paymentHandle,
-    'legacy-pay',
-    'legacy-user',
-  )
-  const paymentGrant = {
-    grantId: payment.grantId,
-    userId: 'legacy-user',
-    clientId: 'legacy-pay',
-  }
-  await expect(activateGrant(db, paymentHandle, paymentGrant)).rejects.toThrow(
-    'Set a spending limit',
-  )
-  expect(await authorizeGrant(db, paymentGrant, null)).toBe('revoked')
-})
-
 for (const scopes of [
-  ['chain:read'],
-  ['account:read', 'chain:read'],
-  ['payments:pay', 'chain:read'],
+  [],
+  ['helius:read'],
+  ['helius:read', 'payments:pay'],
+  ['jupiter:read', 'phoenix:read'],
 ]) {
-  test(`chain access consent activates ${scopes.join(' + ')}`, async () => {
+  test(`consent activates ${scopes.join(' + ') || 'catalog only'}`, async () => {
     const clientId = crypto.randomUUID()
     const userId = crypto.randomUUID()
-    const handle = await startConsent(clientId, undefined, scopes)
-    expect((await pendingConsent(db, handle))?.scopes).toEqual(scopes)
+    const handle = await startConsent(clientId)
     const { grantId } = await prepareGrant(db, handle, clientId, userId)
     const identity = { grantId, userId, clientId }
     expect(await authorizeGrant(db, identity, null)).toBe('revoked')
     const limit = scopes.includes('payments:pay') ? 1_000_000 : null
-    await activateGrant(db, handle, identity, limit)
+    await activateGrant(db, handle, identity, scopes, limit)
     expect(await authorizeGrant(db, identity, null)).toBe('active')
-    expect(await authorizeGrant(db, identity, 'chain:read')).toBe('active')
-    expect(await authorizeGrant(db, identity, 'jupiter:read')).toBe(
-      'insufficient_scope',
-    )
+    for (const scope of TOOL_SCOPES)
+      expect(await authorizeGrant(db, identity, scope)).toBe(
+        scopes.includes(scope) ? 'active' : 'insufficient_scope',
+      )
     expect((await listClients(db, userId))[0]).toMatchObject({
-      scopes,
+      scopes: ['account:read', ...scopes],
       limitMicroUsd: limit ?? 0,
     })
   })

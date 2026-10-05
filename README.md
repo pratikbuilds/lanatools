@@ -14,7 +14,7 @@ TanStack Query, and Tailwind. Shared HTTP schemas live in `packages/contracts`.
 | `apps/api/src/tools`                    | Which providers LanaTools serves (`providers.ts`) and `callTool` |
 | `apps/api/src/mcp-grants.ts`            | Consent, grants and `authorizeGrant`, the one grant check        |
 | `apps/api/src/solana/network.ts`        | Solana network table and server network configuration            |
-| `apps/api/src/payments`                 | `pay_http`: challenges, spending limits, signing and settlement  |
+| `apps/api/src/payments`                 | `call`: challenges, spending limits, signing and settlement      |
 | `apps/mcp`                              | OAuth and the MCP server; provider tools run in the API          |
 
 ## Development

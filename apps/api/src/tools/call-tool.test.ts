@@ -37,7 +37,7 @@ beforeEach(() => {
 })
 
 async function connect({
-  scope = 'chain:read',
+  scope = 'helius:read',
   status = 'active',
 }: {
   scope?: string
@@ -75,11 +75,11 @@ const defaultRun: ConfiguredProvider['run'] = async () => ({
   credits: 1,
 })
 
-/** One stub provider with a `stub_tool`, needing chain:read like Helius. */
+/** One stub provider with a `stub_tool`, needing helius:read like Helius. */
 function dependencies(options: StubOptions = {}): CallToolDeps {
   const provider: HostedProvider = {
     name: 'stub',
-    scope: 'chain:read',
+    scope: 'helius:read',
     tools: [
       {
         name: 'stub_tool',
@@ -295,8 +295,14 @@ test('grant, user and client identity must all match before any provider request
   expect(await rows()).toEqual([])
 })
 
-test('chain:read is independently required as an exact approved scope', async () => {
-  for (const scope of ['account:read', 'payments:pay', 'chain:read-extra']) {
+test('helius:read is independently required as an exact approved scope', async () => {
+  for (const scope of [
+    'account:read',
+    'payments:pay',
+    'phoenix:read',
+    'chain:read',
+    'helius:read-extra',
+  ]) {
     const identity = await connect({ scope })
     const run = mock(defaultRun)
     const config = mock(async () => {})
@@ -380,11 +386,10 @@ async function consent(scopes: string[]) {
     clientId,
     clientName: 'Provider test',
     redirectUri: 'https://client.example/callback',
-    scopes,
   })
   const { grantId } = await prepareGrant(db, handle, clientId, owner)
   const identity = { grantId, clientId, userId: owner }
-  await activateGrant(db, handle, identity)
+  await activateGrant(db, handle, identity, scopes)
   return identity
 }
 
@@ -406,7 +411,7 @@ test('Jupiter needs the stored jupiter:read scope, bound to the grant owner and 
     callTool(served(fetcher), identity, 'jupiter_search_tokens', {
       query: 'JUP',
     })
-  const account = await consent(['account:read'])
+  const account = await consent([])
   expect(await call(account)).toMatchObject({
     ok: false,
     error: { code: 'insufficient_scope' },
@@ -456,7 +461,7 @@ test('a missing Jupiter key fails without fetching or requiring user credentials
 })
 
 test('Jupiter and Phoenix calls are recorded in activity like Helius', async () => {
-  const grant = await consent(['jupiter:read'])
+  const grant = await consent(['jupiter:read', 'phoenix:read'])
   const fetcher = async (url: string) => {
     const path = new URL(url).pathname
     if (path === '/swap/v2/program-id-to-label') return Response.json({})

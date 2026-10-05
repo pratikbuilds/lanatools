@@ -100,8 +100,7 @@ test('the header totals what every client has spent', () => {
 
 test('managing a client shows what it can do, its limit, and a way to disconnect', () => {
   const html = detail(paying)
-  expect(html).toContain('See your LanaTools account ID')
-  expect(html).toContain('Pay from your wallet within its limit')
+  expect(html).toContain('Pay within its limit, pay.sh catalog')
   expect(html).toContain('3 days ago')
   expect(html).toContain('Spending limit')
   expect(html).toContain('Save limit')
@@ -120,15 +119,18 @@ test('a client that cannot pay has no limit to change', () => {
   expect(html).not.toContain('Spent')
 })
 
-test('Solana read access has the same plain label and grants no payment access', () => {
-  const chainOnly = { ...claude, scopes: ['chain:read'] }
-  expect(detail(chainOnly)).toContain('Read Solana data')
-  expect(detail(chainOnly)).not.toContain('Spending limit')
-  expect(table([chainOnly])).toContain('Cannot pay')
+test('the drawer lists the tool families a client may use, and always the catalog', () => {
+  const heliusOnly = { ...claude, scopes: ['account:read', 'helius:read'] }
+  expect(detail(heliusOnly)).toContain('Helius, pay.sh catalog')
+  expect(detail(heliusOnly)).not.toContain('Spending limit')
+  expect(table([heliusOnly])).toContain('Cannot pay')
   expect(
-    detail({ ...paying, scopes: [...paying.scopes, 'chain:read'] }),
-  ).toContain('Read Solana data')
-  expect(detail(claude)).not.toContain('Read Solana data')
+    detail({ ...paying, scopes: [...paying.scopes, 'phoenix:read'] }),
+  ).toContain('Pay within its limit, Phoenix, pay.sh catalog')
+  expect(detail({ ...claude, scopes: ['account:read'] })).toContain(
+    'pay.sh catalog',
+  )
+  expect(detail(claude)).not.toContain('Helius, ')
 })
 
 test('each client shows its own credits as estimates, whether or not it can pay', () => {

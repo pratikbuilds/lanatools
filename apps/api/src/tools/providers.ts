@@ -59,7 +59,7 @@ function host<TOptions>(
  * server registers its tools and `callTool` authorizes, runs and records them.
  */
 export const PROVIDERS: readonly HostedProvider[] = [
-  host(helius, 'chain:read', async (env) => {
+  host(helius, 'helius:read', async (env) => {
     const config = await solanaConfig(env)
     return { network: config.network.name, options: { rpcUrl: config.rpcUrl } }
   }),
@@ -68,8 +68,7 @@ export const PROVIDERS: readonly HostedProvider[] = [
     network: 'mainnet',
     options: { apiKey: env.JUPITER_API_KEY ?? '', fetch: fetcher },
   })),
-  // Phoenix reads a public API with no key, so any active grant may use it.
-  host(phoenix, null, async (_env, fetcher) => ({
+  host(phoenix, 'phoenix:read', async (_env, fetcher) => ({
     network: 'mainnet',
     options: { fetch: fetcher },
   })),

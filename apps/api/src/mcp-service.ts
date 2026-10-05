@@ -3,6 +3,7 @@ import { PrivyClient } from '@privy-io/node'
 import type { D1Database } from '@cloudflare/workers-types'
 import { PayHttpError, payHttp, payKitPayer } from './payments/pay-http'
 import type { PayHttpInput, PayHttpResult } from './payments/pay-http'
+import { signerStatus } from './payments/signer-setup'
 import {
   activateGrant,
   authorizeGrant,
@@ -107,9 +108,16 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
   async activateGrant(
     handle: string,
     identity: GrantIdentity,
+    toolScopes: string[],
     limitMicroUsd: number | null = null,
   ) {
-    await activateGrant(this.env.DB, handle, identity, limitMicroUsd)
+    await activateGrant(
+      this.env.DB,
+      handle,
+      identity,
+      toolScopes,
+      limitMicroUsd,
+    )
   }
 
   /** Returns the account for an active grant, or null once it is revoked. */
@@ -118,6 +126,11 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
     return access === 'active'
       ? { userId: identity.userId, clientId: identity.clientId }
       : null
+  }
+
+  /** The user's payment wallet address, or null before it is set up. */
+  async walletAddress(userId: string) {
+    return (await signerStatus(this.env.DB, userId)).walletAddress
   }
 
   /** Runs any provider tool, recording it in the client's activity. */
