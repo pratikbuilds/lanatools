@@ -144,7 +144,7 @@ Kit. Restart the YAML merchant after editing its spec. The page offers fixed
 MPP and x402 payment checks. Ctrl-C on the proof server archives wallets and
 attempts to delete policies and the key quorum.
 
-## Hosted staging
+## Hosted app
 
 The site, API, and MCP server run as Cloudflare Workers. `lanatools.sh`
 serves the Vite build and forwards `/api/*` to `lanatools-api`, which is also
@@ -157,10 +157,10 @@ Worker Previews for other branches. MCP builds only `master`; it has no
 branch previews. See [MCP build settings](apps/mcp/README.md#automatic-deployment)
 for its commands and required build variable.
 
-This is staging on Solana devnet; sandbox is for local development and
-automated tests only. Cloudflare calls the `master` environment "Production".
-Set the web build variable `VITE_SOLANA_NETWORK=devnet` to match the API's
-`SOLANA_NETWORK=devnet`.
+The hosted app runs on Solana mainnet and pays real USDC; local development
+and CI use devnet. Cloudflare calls the `master` environment "Production".
+Set the web build variable `VITE_SOLANA_NETWORK=mainnet` to match the API's
+`SOLANA_NETWORK=mainnet`.
 
 Each Worker builds and deploys independently. GitHub's full `Check` workflow
 runs separately and does not gate these deployments. API deployment applies

@@ -87,10 +87,17 @@ function mppCharge(
       amount: request.amount,
       mint: request.currency,
       recipient: request.recipient,
-      network: request.methodDetails?.network ?? 'mainnet',
+      network: mppNetwork(request.methodDetails?.network),
     },
     network,
   )
+}
+
+/** MPP omits the network for mainnet, and Pay Kit also calls it mainnet-beta. */
+function mppNetwork(network: unknown) {
+  return network === undefined || network === 'mainnet-beta'
+    ? 'mainnet'
+    : network
 }
 
 type X402Requirement = {

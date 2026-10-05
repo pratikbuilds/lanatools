@@ -89,8 +89,9 @@ an active grant is defined once in `mcp-grants.ts` (`activeGrantFor`,
 its limit check stays one atomic statement.
 
 `src/solana/network.ts` holds the Solana configuration. Payments verify the
-RPC's genesis hash before use. Read tools support `SOLANA_NETWORK=devnet` or `mainnet`; payments remain
-strictly devnet-only. `SOLANA_RPC_URL` stays server-side, including any provider
+RPC's genesis hash before use. Read tools and payments both follow
+`SOLANA_NETWORK` (`devnet` or `mainnet`); payments only pay USDC on that
+network. `SOLANA_RPC_URL` stays server-side, including any provider
 key in its query string. Verification failures and raw provider exceptions are
 replaced with fixed, agent-safe errors.
 

@@ -20,8 +20,8 @@ jobs:
       - run: bunx playwright install --with-deps chromium
       - run: bun run check
         env:
-          # CI builds and tests the dashboard against the Surfpool sandbox.
-          VITE_SOLANA_NETWORK: sandbox
+          # CI builds the dashboard for devnet, like the local API.
+          VITE_SOLANA_NETWORK: devnet
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

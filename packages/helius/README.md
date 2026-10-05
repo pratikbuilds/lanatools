@@ -17,7 +17,7 @@ const outcome = await helius.run(
 MCP server can register its tools with `registerTools`. `runHeliusTool` is the
 same function as `helius.run`.
 
-The server supplies its existing `SOLANA_RPC_URL`; agents cannot choose a network or URL. Read tools trust the server's network configuration without a genesis-hash probe; payments independently verify that their RPC serves devnet. API keys never enter output, exceptions, or tool descriptions.
+The server supplies its existing `SOLANA_RPC_URL`; agents cannot choose a network or URL. Read tools trust the server's network configuration without a genesis-hash probe; payments independently verify that their RPC serves the configured network. API keys never enter output, exceptions, or tool descriptions.
 
 ## Read order
 

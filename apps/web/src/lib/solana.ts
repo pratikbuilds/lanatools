@@ -1,63 +1,44 @@
-import { address, createSolanaRpc } from '@solana/kit'
+import { address } from '@solana/kit'
 import type { Address } from '@solana/kit'
-import { NETWORKS, checkNetworkEnv, checkRpcNetwork } from './networks'
+import { WalletBalances } from '@lanatools/contracts'
+import { authorized } from './mcp-clients'
+import type { GetAccessToken } from './mcp-clients'
+import { NETWORKS, checkNetworkEnv } from './networks'
 
 function lookupNetwork() {
   // Builds must name a network (see vite.config.ts); dev servers and tests
-  // fall back to the sandbox.
-  const { id, rpcURL } = checkNetworkEnv({
-    VITE_SOLANA_NETWORK: import.meta.env.VITE_SOLANA_NETWORK ?? 'sandbox',
-    VITE_SOLANA_RPC_URL: import.meta.env.VITE_SOLANA_RPC_URL,
+  // fall back to devnet, like the local API.
+  const { id } = checkNetworkEnv({
+    VITE_SOLANA_NETWORK: import.meta.env.VITE_SOLANA_NETWORK ?? 'devnet',
   })
-  return {
-    ...NETWORKS[id],
-    id,
-    rpcURL,
-    usdcMint: address(NETWORKS[id].usdcMint),
-  }
+  return { ...NETWORKS[id], id, usdcMint: address(NETWORKS[id].usdcMint) }
 }
 
 export const NETWORK = lookupNetwork()
 
-const rpc = createSolanaRpc(NETWORK.rpcURL)
-
-let networkCheck: Promise<void> | undefined
-
-/**
- * Confirms once that the RPC serves the network the page names, so an RPC
- * override for another network cannot show its balances under this label.
- */
-function verifyNetwork() {
-  networkCheck ??= checkRpcNetwork(NETWORK.rpcURL, NETWORK.id)
-  // Let a failed check run again on the next balance read.
-  networkCheck.catch(() => {
-    networkCheck = undefined
-  })
-  return networkCheck
-}
-
 export const SOL_DECIMALS = 9
 export const USDC_DECIMALS = 6
 
-/** Reads native SOL and USDC balances, in base units, at confirmed commitment. */
-export async function getWalletBalances(owner: Address) {
-  await verifyNetwork()
-  const [sol, usdcAccounts] = await Promise.all([
-    rpc.getBalance(owner, { commitment: 'confirmed' }).send(),
-    rpc
-      .getTokenAccountsByOwner(
-        owner,
-        { mint: NETWORK.usdcMint },
-        { encoding: 'jsonParsed', commitment: 'confirmed' },
-      )
-      .send(),
-  ])
-  const usdc = usdcAccounts.value.reduce(
-    (sum, { account }) =>
-      sum + BigInt(account.data.parsed.info.tokenAmount.amount),
-    0n,
+/**
+ * Reads native SOL and USDC balances, in base units, through the API. The
+ * API reports its network; balances from another network are never shown
+ * under this page's label.
+ */
+export async function getWalletBalances(
+  getAccessToken: GetAccessToken,
+  owner: Address,
+) {
+  const response = await fetch(
+    `/api/wallet/balances?owner=${encodeURIComponent(owner)}`,
+    { headers: await authorized(getAccessToken) },
   )
-  return { sol: sol.value, usdc }
+  if (!response.ok) throw new Error('Could not read the wallet balance.')
+  const balances = WalletBalances.assert(await response.json())
+  if (balances.network !== NETWORK.id)
+    throw new Error(
+      `The server reads Solana ${balances.network}, but this page shows ${NETWORK.label}.`,
+    )
+  return { sol: BigInt(balances.sol), usdc: BigInt(balances.usdc) }
 }
 
 /**
