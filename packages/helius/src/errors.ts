@@ -20,5 +20,9 @@ export class HeliusError extends Error {
 }
 export function safeError(error: unknown) {
   const code = error instanceof HeliusError ? error.code : 'upstream_error'
-  return { code, message: messages[code] }
+  return {
+    code,
+    message: messages[code],
+    retryable: code === 'rate_limited' || code === 'timeout',
+  }
 }

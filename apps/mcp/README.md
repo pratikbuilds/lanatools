@@ -20,9 +20,9 @@ quote-only swaps and venue metadata) require `jupiter:read`. Consent shows **Jup
 or wallet-signature flow. Existing clients must request the scope and obtain
 consent; account-only or payments-only access does not authorize Jupiter reads.
 
-Definitions and REST adapters live in `packages/jupiter`. MCP passes the grant
-identity through the API service binding; the API checks the current stored
-grant/scope and supplies `JUPITER_API_KEY`. Put the key in ignored
+Definitions and REST adapters live in `packages/jupiter`. Like every provider
+tool, a call goes through the API's `callTool`, which checks the current stored
+grant/scope, supplies `JUPITER_API_KEY` and records the call in activity. Put the key in ignored
 `apps/api/.dev.vars` locally. For the hosted API, provision it with
 `bunx wrangler secret put JUPITER_API_KEY -c apps/api/wrangler.jsonc`.
 No key is stored in the MCP Worker, browser or agent arguments.
@@ -45,12 +45,15 @@ label it **Read Solana data**; it does not authorize wallet signing or payments.
 Disconnecting the grant blocks every call immediately, including calls using an
 unexpired OAuth access token.
 
-`src/server.ts` registers the package registry in one loop, with read-only,
-idempotent, open-world and non-destructive annotations. Input validation runs
-before any API RPC. Tool results contain the same JSON in text and
-`structuredContent`; failures carry a safe `error.code` and `error.message`.
-The API Worker chooses the server-configured network, keeps the Helius key, enforces the
-grant again, and records provider credits in `tool_activity`. The MCP Worker
+`src/server.ts` registers every provider in the API's `PROVIDERS` list
+(`apps/api/src/tools/providers.ts`) with `registerTools` from
+`@lanatools/toolkit/mcp`, using read-only, idempotent, open-world and
+non-destructive annotations. Input validation and the token scope check run
+before any API RPC. Tool results contain the JSON in text and
+`structuredContent` (objects only), after an optional summary; failures carry
+a safe `error.code`, `error.message` and `error.retryable`. The API Worker
+chooses the server-configured network, keeps the Helius key, enforces the
+grant, and records provider credits in `tool_activity`. The MCP Worker
 has no Helius key or caller-selectable network. See the package README for each
 tool's inputs, outputs, provider behavior and credit accounting.
 
@@ -86,7 +89,8 @@ Six read-only tools come from `packages/phoenix`: `phoenix_list_markets`,
 `phoenix_get_market`, `phoenix_get_orderbook`, `phoenix_get_candles`,
 `phoenix_get_account` and `phoenix_get_history`. They call Phoenix's public
 mainnet API, need no key or secret, and need any active grant and no extra
-scope. Sizes come back in tokens and USDC, not Phoenix lots. See
+scope. They run through the API like the other providers, so they appear in
+activity. Sizes come back in tokens and USDC, not Phoenix lots. See
 `specs/phoenix-read-tools.md`.
 
 ## Paying endpoints with `pay_http`

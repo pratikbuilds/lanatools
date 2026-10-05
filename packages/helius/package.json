@@ -6,6 +6,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@lanatools/toolkit": "workspace:*",
     "@solana/kit": "~6.10.0",
     "@solana/rpc-spec-types": "~6.10.0",
     "zod": "4.4.3"

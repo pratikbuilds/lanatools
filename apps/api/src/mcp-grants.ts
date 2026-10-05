@@ -42,12 +42,45 @@ export function scopeList(scope: string) {
   return scope.split(' ')
 }
 
+/** Whether a stored, space-separated grant scope includes `required`. */
+export function hasScope(scope: string, required: McpScope) {
+  return scopeList(scope).includes(required)
+}
+
+/*
+ * What counts as an active grant, defined once. Every grant query, including
+ * the payment ledger's reservation, builds its condition from these.
+ */
+
+/** The user's active grants. */
+export function activeGrantsOf(userId: string) {
+  return and(eq(mcpGrant.privyUserId, userId), eq(mcpGrant.status, 'active'))
+}
+
+/** One of the user's active grants, for dashboard actions. */
+export function activeGrantOwnedBy(userId: string, grantId: string) {
+  return and(eq(mcpGrant.id, grantId), activeGrantsOf(userId))
+}
+
+/** The active grant an MCP connection names: its grant, user and client. */
+export function activeGrantFor({ grantId, userId, clientId }: GrantIdentity) {
+  return and(
+    activeGrantOwnedBy(userId, grantId),
+    eq(mcpGrant.clientId, clientId),
+  )
+}
+
+/** The grant's stored scope includes `required`. */
+export function grantHasScope(required: McpScope) {
+  return sql`(' ' || ${mcpGrant.scope} || ' ') like ${`% ${required} %`}`
+}
+
 /**
  * Checks a spending limit the user approved. A payments grant needs one;
  * any other grant must not carry one.
  */
 function approvedLimit(scope: string, limitMicroUsd: number | null) {
-  if (!scopeList(scope).includes('payments:pay')) {
+  if (!hasScope(scope, 'payments:pay')) {
     if (limitMicroUsd !== null) throw new Error('Unexpected spending limit')
     return 0
   }
@@ -193,47 +226,47 @@ export async function activateGrant(
   if (!grant) throw new Error('MCP grant changed during authorization')
 }
 
-/** Whether the grant is active, recording the use when it is. */
-export async function useActiveGrant(
+/** Why a grant may or may not be used. */
+export type GrantAccess = 'active' | 'revoked' | 'insufficient_scope'
+
+/**
+ * The one check that a grant may be used: it is active, belongs to this user
+ * and client, and includes `requiredScope` (null allows any active grant).
+ * Records use when allowed. A database failure throws, so callers fail closed.
+ */
+export async function authorizeGrant(
   database: D1Database,
-  { grantId, userId, clientId }: GrantIdentity,
+  identity: GrantIdentity,
+  requiredScope: McpScope | null,
   now = Date.now(),
-  requiredScope?: McpScope,
-) {
+): Promise<GrantAccess> {
   const db = drizzle(database)
   const grant = await db
     .select({ lastUsedAt: mcpGrant.lastUsedAt, scope: mcpGrant.scope })
     .from(mcpGrant)
-    .where(
-      and(
-        eq(mcpGrant.id, grantId),
-        eq(mcpGrant.privyUserId, userId),
-        eq(mcpGrant.clientId, clientId),
-        eq(mcpGrant.status, 'active'),
-      ),
-    )
+    .where(activeGrantFor(identity))
     .get()
-  if (!grant) return false
-  if (requiredScope && !scopeList(grant.scope).includes(requiredScope))
-    return false
+  if (!grant) return 'revoked'
+  if (requiredScope && !hasScope(grant.scope, requiredScope))
+    return 'insufficient_scope'
   if (!grant.lastUsedAt || now - grant.lastUsedAt > LAST_USED_INTERVAL) {
     // Last use is bookkeeping; failing to record it must not deny access.
     try {
       await db
         .update(mcpGrant)
         .set({ lastUsedAt: now })
-        .where(eq(mcpGrant.id, grantId))
+        .where(eq(mcpGrant.id, identity.grantId))
     } catch (error) {
       console.error(
         JSON.stringify({
           message: 'Could not record MCP grant use',
-          grantId,
+          grantId: identity.grantId,
           error: error instanceof Error ? error.message : String(error),
         }),
       )
     }
   }
-  return true
+  return 'active'
 }
 
 export async function listClients(
@@ -292,7 +325,7 @@ export async function listClients(
     .from(mcpGrant)
     .leftJoin(totals, eq(totals.clientId, mcpGrant.clientId))
     .leftJoin(toolTotals, eq(toolTotals.clientId, mcpGrant.clientId))
-    .where(and(eq(mcpGrant.privyUserId, userId), eq(mcpGrant.status, 'active')))
+    .where(activeGrantsOf(userId))
     .orderBy(desc(mcpGrant.createdAt))
   return rows.map((row) => ({
     grantId: row.grantId,
@@ -324,12 +357,7 @@ export async function setClientLimit(
     .update(mcpGrant)
     .set({ limitMicroUsd })
     .where(
-      and(
-        eq(mcpGrant.id, grantId),
-        eq(mcpGrant.privyUserId, userId),
-        eq(mcpGrant.status, 'active'),
-        sql`(' ' || ${mcpGrant.scope} || ' ') like '% payments:pay %'`,
-      ),
+      and(activeGrantOwnedBy(userId, grantId), grantHasScope('payments:pay')),
     )
     .returning({ id: mcpGrant.id })
   return !!grant
@@ -345,13 +373,7 @@ export async function revokeGrant(
   const [grant] = await drizzle(database)
     .update(mcpGrant)
     .set({ status: 'revoked', revokedAt: now })
-    .where(
-      and(
-        eq(mcpGrant.id, grantId),
-        eq(mcpGrant.privyUserId, userId),
-        eq(mcpGrant.status, 'active'),
-      ),
-    )
+    .where(activeGrantOwnedBy(userId, grantId))
     .returning({ clientId: mcpGrant.clientId })
   return grant?.clientId ?? null
 }

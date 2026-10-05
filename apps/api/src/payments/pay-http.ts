@@ -9,6 +9,7 @@ import {
   createPayKitClient,
   usd,
 } from '@solana/pay-kit/client'
+import { authorizeGrant } from '../mcp-grants'
 import type { GrantIdentity } from '../mcp-grants'
 import { ChargeRefusedError, parseFixedCharge } from './challenge'
 import type { FixedCharge, Protocol } from './challenge'
@@ -20,12 +21,13 @@ import {
   NoLongerOpenError,
   recordSigning,
   release,
+  GRANT_REFUSALS,
   reservationRefusal,
   reserve,
   settle,
 } from './ledger'
 import type { CallTarget } from './ledger'
-import type { PaymentConfig } from './network'
+import type { PaymentConfig } from '../solana/network'
 import {
   OutboundRequestError,
   REQUEST_TIMEOUT_MS,
@@ -109,6 +111,10 @@ export async function payHttp(
   identity: GrantIdentity,
   input: PayHttpInput,
 ): Promise<PayHttpResult> {
+  // The API is the boundary: check the stored grant before any request. A
+  // refused grant records nothing, so a caller cannot write rows for others.
+  const access = await authorizeGrant(deps.db, identity, 'payments:pay')
+  if (access !== 'active') throw new PayHttpError(GRANT_REFUSALS[access])
   const fetcher = deps.fetch ?? fetch
   const maxAtomic = parseUsd(input.maxUsd)
   if (maxAtomic === null)
