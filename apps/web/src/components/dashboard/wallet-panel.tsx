@@ -14,6 +14,7 @@ import { Drawer, DrawerFacts, DrawerHeader } from './drawer'
 import { Modal } from './modal'
 import { SolanaShine } from './solana-shine'
 import { SplitPanel } from './split-panel'
+import { useDashboardSession } from './session'
 
 export function CreateWallet() {
   const { createWallet } = useCreateWallet()
@@ -51,10 +52,11 @@ export function CreateWallet() {
  * until the user has a wallet.
  */
 export function useWalletBalances(walletAddress: string | null) {
+  const { getAccessToken } = useDashboardSession()
   return useQuery({
     queryKey: ['balances', NETWORK.id, walletAddress],
     queryFn: walletAddress
-      ? () => getWalletBalances(address(walletAddress))
+      ? () => getWalletBalances(getAccessToken, address(walletAddress))
       : skipToken,
     refetchInterval: 15_000,
   })

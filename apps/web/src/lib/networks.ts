@@ -1,36 +1,14 @@
-import { createSolanaRpc } from '@solana/kit'
-
-const MAINNET_GENESIS = '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d'
-const MAINNET_USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
-
-// Each network pairs an RPC with the USDC mint that exists on it. Sending
+// Each network pairs a label with the USDC mint that exists on it. Sending
 // USDC on the wrong network loses it, so the page always names the network.
-// The genesis hash and Surfpool marker let the page confirm that an RPC
-// really serves the network it is labelled as.
+// Balances come from the API, which reports the network it reads.
 export const NETWORKS = {
-  sandbox: {
-    label: 'Surfpool sandbox',
-    rpcURL: 'https://402.surfnet.dev:8899',
-    // Surfpool forks mainnet: same genesis hash and USDC mint.
-    usdcMint: MAINNET_USDC,
-    genesisHash: MAINNET_GENESIS,
-    surfpool: true,
-  },
   devnet: {
     label: 'Solana devnet',
-    rpcURL: 'https://api.devnet.solana.com',
     usdcMint: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
-    genesisHash: 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG',
-    surfpool: false,
   },
   mainnet: {
     label: 'Solana mainnet',
-    // The public mainnet RPC refuses token-account queries, so mainnet
-    // needs VITE_SOLANA_RPC_URL.
-    rpcURL: null,
-    usdcMint: MAINNET_USDC,
-    genesisHash: MAINNET_GENESIS,
-    surfpool: false,
+    usdcMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
   },
 } as const
 
@@ -41,9 +19,9 @@ export function isNetworkId(value: string): value is NetworkId {
 }
 
 /**
- * Checks the build-time network settings. Builds must name a network: a
- * default could show sandbox balances on a production page, where real
- * deposits would never appear.
+ * Checks the build-time network setting. Builds must name a network: a
+ * default could show devnet labels on a mainnet page, where real deposits
+ * would go to the wrong place.
  */
 export function checkNetworkEnv(env: Record<string, string | undefined>) {
   const id = env.VITE_SOLANA_NETWORK
@@ -52,28 +30,5 @@ export function checkNetworkEnv(env: Record<string, string | undefined>) {
       `Set VITE_SOLANA_NETWORK to one of ${Object.keys(NETWORKS).join(', ')}`,
     )
   }
-  const rpcURL = env.VITE_SOLANA_RPC_URL ?? NETWORKS[id].rpcURL
-  if (!rpcURL) {
-    throw new Error(`Set VITE_SOLANA_RPC_URL for ${NETWORKS[id].label}`)
-  }
-  return { id, rpcURL }
-}
-
-/**
- * Confirms that an RPC serves the named network, so an RPC for another
- * network cannot show its balances under this label.
- */
-export async function checkRpcNetwork(rpcURL: string, id: NetworkId) {
-  const rpc = createSolanaRpc(rpcURL)
-  const [genesisHash, version] = await Promise.all([
-    rpc.getGenesisHash().send(),
-    rpc.getVersion().send(),
-  ])
-  const surfpool = 'surfnet-version' in version
-  if (
-    genesisHash !== NETWORKS[id].genesisHash ||
-    surfpool !== NETWORKS[id].surfpool
-  ) {
-    throw new Error(`${rpcURL} does not serve ${NETWORKS[id].label}`)
-  }
+  return { id }
 }

@@ -89,9 +89,29 @@ test('RPC exceptions are redacted and unsupported labels never make a request', 
   expect(read).toHaveBeenCalledTimes(1)
 })
 
-test('payments still reject mainnet before contacting an RPC', async () => {
-  for (const network of ['mainnet', 'mainnet-beta', 'testnet'])
+test('payments use the network SOLANA_NETWORK names, verified by genesis hash', async () => {
+  const read = mock(async () => '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d')
+  const config = createPaymentConfig(read)
+  expect(await config(MAINNET)).toEqual({
+    network: {
+      name: 'mainnet',
+      genesisHash: '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d',
+      caip2: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+      usdcMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+    },
+    rpcUrl: MAINNET.SOLANA_RPC_URL,
+  })
+  // A devnet RPC configured as mainnet never pays.
+  await expect(
+    createPaymentConfig(
+      async () => 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG',
+    )(MAINNET),
+  ).rejects.toThrow('does not match SOLANA_NETWORK')
+})
+
+test('payments reject unknown networks before contacting an RPC', async () => {
+  for (const network of ['mainnet-beta', 'testnet'])
     await expect(
       paymentConfig({ SOLANA_NETWORK: network, SOLANA_RPC_URL: 'not-a-url' }),
-    ).rejects.toThrow('Payments only support Solana devnet')
+    ).rejects.toThrow('Unsupported SOLANA_NETWORK')
 })

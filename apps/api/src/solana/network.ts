@@ -23,10 +23,10 @@ export type SolanaEnv = {
 }
 export type SolanaConfig = { network: SolanaNetwork; rpcUrl: string }
 
-/** Payments remain devnet-only even when read-only tools support mainnet. */
+/** A network LanaTools pays on: the one SOLANA_NETWORK names. */
 export type PaymentNetwork = {
   /** The network name MPP challenges and Pay Kit permissions use. */
-  name: 'devnet'
+  name: SolanaNetwork['name']
   /** The CAIP-2 ID x402 challenges use. */
   caip2: string
   genesisHash: string
@@ -35,11 +35,20 @@ export type PaymentNetwork = {
 }
 export type PaymentConfig = { network: PaymentNetwork; rpcUrl: string }
 
-const DEVNET_PAYMENTS: PaymentNetwork = {
-  name: 'devnet',
-  genesisHash: 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG',
-  caip2: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
-  usdcMint: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
+// x402 names a Solana network by the first 32 characters of its genesis hash.
+export const PAYMENT_NETWORKS: Record<SolanaNetwork['name'], PaymentNetwork> = {
+  devnet: {
+    name: 'devnet',
+    genesisHash: 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG',
+    caip2: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+    usdcMint: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
+  },
+  mainnet: {
+    name: 'mainnet',
+    genesisHash: '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d',
+    caip2: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+    usdcMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+  },
 }
 
 function readRPCURL(env: SolanaEnv) {
@@ -47,12 +56,16 @@ function readRPCURL(env: SolanaEnv) {
   return env.SOLANA_RPC_URL
 }
 
-/** Read tools use the server configuration without an extra RPC probe. */
-export async function solanaConfig(env: SolanaEnv): Promise<SolanaConfig> {
+function readNetwork(env: SolanaEnv): SolanaNetwork['name'] {
   if (env.SOLANA_NETWORK !== 'devnet' && env.SOLANA_NETWORK !== 'mainnet')
     throw new Error('Unsupported SOLANA_NETWORK')
+  return env.SOLANA_NETWORK
+}
+
+/** Read tools use the server configuration without an extra RPC probe. */
+export async function solanaConfig(env: SolanaEnv): Promise<SolanaConfig> {
   return {
-    network: SOLANA_NETWORKS[env.SOLANA_NETWORK],
+    network: SOLANA_NETWORKS[readNetwork(env)],
     rpcUrl: readRPCURL(env),
   }
 }
@@ -67,9 +80,7 @@ type GenesisReader = (rpcUrl: string) => Promise<string>
 export function createPaymentConfig(readGenesis: GenesisReader = genesisHash) {
   let cached: { key: string; verification: Promise<void> } | undefined
   return async (env: SolanaEnv): Promise<PaymentConfig> => {
-    if (env.SOLANA_NETWORK !== 'devnet')
-      throw new Error('Payments only support Solana devnet')
-    const network = DEVNET_PAYMENTS
+    const network = PAYMENT_NETWORKS[readNetwork(env)]
     const url = readRPCURL(env)
     const key = `${network.name} ${url}`
     if (cached?.key !== key) {
@@ -103,5 +114,5 @@ async function genesisHash(rpcUrl: string) {
     .send({ abortSignal: AbortSignal.timeout(RPC_TIMEOUT_MS) })
 }
 
-/** Payments verify the RPC serves devnet before allowing funds to move. */
+/** Payments verify the RPC serves their network before funds can move. */
 export const paymentConfig = createPaymentConfig()

@@ -198,6 +198,17 @@ export const ActivityDays = type({
 })
 export type ActivityDays = typeof ActivityDays.infer
 
+/**
+ * A wallet's balances on the API's network, in base units as decimal strings
+ * (lamports and USDC's six decimals).
+ */
+export const WalletBalances = type({
+  network: "'devnet' | 'mainnet'",
+  sol: 'string.integer',
+  usdc: 'string.integer',
+})
+export type WalletBalances = typeof WalletBalances.infer
+
 /** Whether LanaTools may sign agent payments from the user's wallet. */
 export const PaymentSignerStatus = type({
   status: "'none' | 'pending' | 'enabled' | 'disabled'",
