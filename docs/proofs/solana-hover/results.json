@@ -1,0 +1,66 @@
+{
+  "testedAt": "2026-10-05T05:12:24.494Z",
+  "scope": "Actual WalletPanel component and application stylesheet in local Vite harness; seeded balance, no live wallet or RPC",
+  "results": [
+    {
+      "name": "Hover over balance label keeps all logo animations off",
+      "passed": true
+    },
+    {
+      "name": "Logo remains faint outside hover",
+      "passed": true
+    },
+    {
+      "name": "Hover over logo starts flow, glitter, shine and settle",
+      "passed": true
+    },
+    {
+      "name": "Hovered logo shows the colour layer",
+      "passed": true
+    },
+    {
+      "name": "Logo does not move or resize",
+      "passed": true
+    },
+    {
+      "name": "Flow actually progresses across animation frames",
+      "passed": true
+    },
+    {
+      "name": "Leaving the logo stops every animation",
+      "passed": true
+    },
+    {
+      "name": "Leaving the logo restores its faint watermark",
+      "passed": true
+    },
+    {
+      "name": "Hover again restarts animation",
+      "passed": true
+    },
+    {
+      "name": "Reduced motion disables all logo animations",
+      "passed": true
+    },
+    {
+      "name": "Reduced motion displays static brand colours",
+      "passed": true
+    },
+    {
+      "name": "Dark theme panel hover stays idle",
+      "passed": true
+    },
+    {
+      "name": "Dark theme logo hover animates",
+      "passed": true
+    },
+    {
+      "name": "Touch devices keep the logo static",
+      "passed": true
+    },
+    {
+      "name": "Wallet panel renders without runtime errors",
+      "passed": true
+    }
+  ]
+}
