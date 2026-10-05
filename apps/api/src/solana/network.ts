@@ -42,7 +42,7 @@ const DEVNET_PAYMENTS: PaymentNetwork = {
   usdcMint: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
 }
 
-function rpcUrl(env: SolanaEnv) {
+function readRPCURL(env: SolanaEnv) {
   if (!env.SOLANA_RPC_URL) throw new Error('Set SOLANA_RPC_URL')
   return env.SOLANA_RPC_URL
 }
@@ -53,7 +53,7 @@ export async function solanaConfig(env: SolanaEnv): Promise<SolanaConfig> {
     throw new Error('Unsupported SOLANA_NETWORK')
   return {
     network: SOLANA_NETWORKS[env.SOLANA_NETWORK],
-    rpcUrl: rpcUrl(env),
+    rpcUrl: readRPCURL(env),
   }
 }
 
@@ -70,7 +70,7 @@ export function createPaymentConfig(readGenesis: GenesisReader = genesisHash) {
     if (env.SOLANA_NETWORK !== 'devnet')
       throw new Error('Payments only support Solana devnet')
     const network = DEVNET_PAYMENTS
-    const url = rpcUrl(env)
+    const url = readRPCURL(env)
     const key = `${network.name} ${url}`
     if (cached?.key !== key) {
       const verification = (async () => {

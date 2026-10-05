@@ -13,7 +13,10 @@
   },
   "dependencies": {
     "@lanatools/contracts": "workspace:*",
+    "@lanatools/helius": "workspace:*",
     "@lanatools/jupiter": "workspace:*",
+    "@lanatools/phoenix": "workspace:*",
+    "@lanatools/toolkit": "workspace:*",
     "@privy-io/node": "^0.35.0",
     "@solana/keychain-privy": "1.4.0",
     "@solana/kit": "~6.10.0",
@@ -21,11 +24,11 @@
     "arktype": "catalog:",
     "drizzle-orm": "0.45.2",
     "hono": "4.13.8",
-    "mppx": "^0.11.0",
-    "@lanatools/helius": "workspace:*"
+    "mppx": "^0.11.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260901.1",
-    "drizzle-kit": "0.31.10"
+    "drizzle-kit": "0.31.10",
+    "zod": "4.4.3"
   }
 }

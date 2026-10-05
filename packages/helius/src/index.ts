@@ -1,3 +1,4 @@
+import { defineProvider } from '@lanatools/toolkit'
 import { createHeliusClient } from './client'
 import type { HeliusOptions } from './client'
 import { HeliusError, safeError } from './errors'
@@ -23,7 +24,7 @@ export type HeliusOutcome =
   | { ok: true; result: Record<string, unknown>; credits: number }
   | {
       ok: false
-      error: { code: HeliusErrorCode; message: string }
+      error: { code: HeliusErrorCode; message: string; retryable: boolean }
       credits: number
     }
 export async function runHeliusTool(
@@ -51,3 +52,10 @@ export async function runHeliusTool(
     return { ok: false, error: safeError(error), credits: client?.credits ?? 0 }
   }
 }
+
+/** Solana chain reads through a Helius RPC URL, which may hold a key. */
+export const helius = defineProvider<HeliusOptions>({
+  name: 'helius',
+  tools: heliusTools,
+  run: runHeliusTool,
+})

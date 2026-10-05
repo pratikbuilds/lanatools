@@ -22,11 +22,15 @@ uses `lanatools-production` through `wrangler.jsonc`. Apply new migrations with
 smoke routes to the local Worker only. `src/index.ts` still serves the API on Bun
 for the existing health test and manual startup; it does not have D1.
 
-## Jupiter reads
+## Provider tools
 
-`McpAccessService.readJupiter` executes all nine read tools through
-`@lanatools/jupiter`. It verifies the current grant's account, client, active
-status and `jupiter:read` scope before any provider call. Supply `JUPITER_API_KEY`
+`src/tools/providers.ts` lists every provider the API serves (`helius`,
+`jupiter`, `phoenix`), with the grant scope each needs and its server
+configuration. Adding a provider is one entry there; the MCP Worker registers
+its tools from the same list. `McpAccessService.callTool(identity, name, input)`
+runs any of them through `callTool` in `src/tools/call-tool.ts`.
+
+Jupiter tools need `jupiter:read`. Supply `JUPITER_API_KEY`
 as an API Worker secret (ignored `.dev.vars` locally). A missing server key
 returns a configuration error without asking the user for credentials.
 This adds no database migration or wallet-authentication flow.
@@ -76,19 +80,19 @@ Worker and tests the browser against it. No list-reading HTTP route is exposed.
 
 ### Read-only chain tools
 
-`McpAccessService.runTool(grantId, userId, clientId, name, input)` is the
-API's generic entry point for `@lanatools/helius`. The API independently checks
-that all three identity fields match an active grant with `chain:read` before
-resolving the network or calling the provider. Existing grants must be
+Helius tools need `chain:read`. `callTool` independently checks that all three
+identity fields match an active grant with the provider's scope (through
+`authorizeGrant`, the one grant check) before resolving the network or calling
+the provider. Existing grants must be
 re-authorized to add this scope.
 
-The shared Solana configuration verifies the RPC's genesis hash before use.
-Read tools support `SOLANA_NETWORK=devnet` or `mainnet`; payments remain
+`src/solana/network.ts` holds the Solana configuration. Payments verify the
+RPC's genesis hash before use. Read tools support `SOLANA_NETWORK=devnet` or `mainnet`; payments remain
 strictly devnet-only. `SOLANA_RPC_URL` stays server-side, including any provider
 key in its query string. Verification failures and raw provider exceptions are
 replaced with fixed, agent-safe errors.
 
-Each authorized invocation attempts one `tool_activity` insert, including
+Each authorized invocation of any provider attempts one `tool_activity` insert, including
 input, provider and network failures. Only identity, tool/provider, verified
 network (or null), status, estimated credits, error code, elapsed milliseconds
 and start time are recorded. Inputs and results are never stored. Refused

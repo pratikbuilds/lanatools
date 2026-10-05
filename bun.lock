@@ -21,6 +21,8 @@
         "@lanatools/contracts": "workspace:*",
         "@lanatools/helius": "workspace:*",
         "@lanatools/jupiter": "workspace:*",
+        "@lanatools/phoenix": "workspace:*",
+        "@lanatools/toolkit": "workspace:*",
         "@privy-io/node": "^0.35.0",
         "@solana/keychain-privy": "1.4.0",
         "@solana/kit": "~6.10.0",
@@ -33,6 +35,7 @@
       "devDependencies": {
         "@cloudflare/workers-types": "5.20260901.1",
         "drizzle-kit": "0.31.10",
+        "zod": "4.4.3",
       },
     },
     "apps/mcp": {
@@ -44,6 +47,7 @@
         "@lanatools/helius": "workspace:*",
         "@lanatools/jupiter": "workspace:*",
         "@lanatools/phoenix": "workspace:*",
+        "@lanatools/toolkit": "workspace:*",
         "@modelcontextprotocol/server": "2.0.0",
         "@privy-io/react-auth": "^3.45.0",
         "agents": "0.24.0",
@@ -117,6 +121,7 @@
     "packages/helius": {
       "name": "@lanatools/helius",
       "dependencies": {
+        "@lanatools/toolkit": "workspace:*",
         "@solana/kit": "~6.10.0",
         "@solana/rpc-spec-types": "~6.10.0",
         "zod": "4.4.3",
@@ -125,17 +130,19 @@
     "packages/jupiter": {
       "name": "@lanatools/jupiter",
       "dependencies": {
-        "@modelcontextprotocol/server": "2.0.0",
+        "@lanatools/toolkit": "workspace:*",
         "@solana/kit": "~6.10.0",
         "zod": "4.4.3",
       },
       "devDependencies": {
         "@modelcontextprotocol/client": "2.0.0",
+        "@modelcontextprotocol/server": "2.0.0",
       },
     },
     "packages/phoenix": {
       "name": "@lanatools/phoenix",
       "dependencies": {
+        "@lanatools/toolkit": "workspace:*",
         "@solana/kit": "~6.10.0",
         "zod": "4.4.3",
       },
@@ -150,6 +157,16 @@
         "@solana/kit": "~6.10.0",
         "@solana/pay-kit": "0.12.0",
         "mppx": "^0.11.0",
+      },
+    },
+    "packages/toolkit": {
+      "name": "@lanatools/toolkit",
+      "dependencies": {
+        "@modelcontextprotocol/server": "2.0.0",
+        "zod": "4.4.3",
+      },
+      "devDependencies": {
+        "@modelcontextprotocol/client": "2.0.0",
       },
     },
   },
@@ -470,6 +487,8 @@
     "@lanatools/proof": ["@lanatools/proof@workspace:apps/proof"],
 
     "@lanatools/testbed": ["@lanatools/testbed@workspace:packages/testbed"],
+
+    "@lanatools/toolkit": ["@lanatools/toolkit@workspace:packages/toolkit"],
 
     "@lanatools/web": ["@lanatools/web@workspace:apps/web"],
 

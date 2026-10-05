@@ -7,14 +7,16 @@ injected `fetch`. It needs no API key and no wallet signature, and it has no
 signer, database or app imports. See [the spec](../../specs/phoenix-read-tools.md).
 
 ```ts
-import { runPhoenixTool } from '@lanatools/phoenix'
+import { phoenix } from '@lanatools/phoenix'
 
-const outcome = await runPhoenixTool('phoenix_get_market', { symbol: 'SOL' })
+const outcome = await phoenix.run('phoenix_get_market', { symbol: 'SOL' }, {})
 ```
 
-`runPhoenixTool` never throws. It returns `{ ok: true, result }` or
-`{ ok: false, error: { code, message, retryable } }`, without Phoenix's raw
-error body.
+`phoenix` is a [`@lanatools/toolkit`](../toolkit/README.md) provider, so any
+MCP server can register its tools with `registerTools`. `run` never throws. It
+returns `{ ok: true, result, credits: 0 }` or
+`{ ok: false, error: { code, message, retryable }, credits: 0 }`, without
+Phoenix's raw error body.
 
 ## Units
 
