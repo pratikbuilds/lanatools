@@ -739,7 +739,7 @@ body:has(.dash[data-theme='dark']) {
     fill: var(--d-pat-acc);
   }
 
-  /* The Solana watermark: faint until its host is hovered, then alive
+  /* The Solana watermark: faint until the logo is hovered, then alive
      inside its own shape. Colour flows, glitter blinks, a shine sweeps.
      Only colour, opacity and what is inside the mark change; it never
      moves or grows. Hover only means something with a real pointer, so
@@ -763,22 +763,22 @@ body:has(.dash[data-theme='dark']) {
     opacity: 0;
   }
   @media (hover: hover) and (pointer: fine) {
-    .sol-shine-host:hover .sol-shine-mute {
+    .sol-shine:hover .sol-shine-mute {
       opacity: 0;
     }
-    .sol-shine-host:hover .sol-shine-colour {
+    .sol-shine:hover .sol-shine-colour {
       opacity: 1;
     }
-    .sol-shine-host:hover .sol-shine-real {
+    .sol-shine:hover .sol-shine-real {
       animation: sol-settle 7s var(--ease-in-out) infinite;
     }
-    .sol-shine-host:hover .sol-shine-flow {
+    .sol-shine:hover .sol-shine-flow {
       animation: sol-flow 3s linear infinite;
     }
-    .sol-shine-host:hover .sol-shine-speck {
+    .sol-shine:hover .sol-shine-speck {
       animation: sol-speck 2s var(--ease-in-out) infinite;
     }
-    .sol-shine-host:hover .sol-shine-sweep {
+    .sol-shine:hover .sol-shine-sweep {
       animation: sol-sweep 2.4s var(--ease-in-out) infinite;
     }
   }
@@ -848,8 +848,7 @@ body:has(.dash[data-theme='dark']) {
     .d-status[data-state='live'] i {
       animation: none;
     }
-    .sol-shine-host:hover
-      :is(.sol-shine-flow, .sol-shine-speck, .sol-shine-sweep) {
+    .sol-shine:hover :is(.sol-shine-flow, .sol-shine-speck, .sol-shine-sweep) {
       animation: none;
     }
     /* The modal fades without growing. */
@@ -858,7 +857,7 @@ body:has(.dash[data-theme='dark']) {
       transition: opacity 200ms var(--ease-out);
     }
     /* Without motion, just the real colours. */
-    .sol-shine-host:hover .sol-shine-real {
+    .sol-shine:hover .sol-shine-real {
       animation: none;
       opacity: 1;
     }

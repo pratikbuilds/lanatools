@@ -83,7 +83,6 @@ export function WalletPanel({ walletAddress }: { walletAddress: string }) {
   return (
     <section className="mt-5">
       <SplitPanel
-        leftClassName="sol-shine-host"
         left={
           <>
             <p className="d-label">Available</p>

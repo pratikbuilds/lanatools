@@ -13,7 +13,7 @@ const SPECKS = Array.from({ length: 70 }, (_, i) => ({
 }))
 
 /**
- * The Solana mark as a faint watermark that, while its host is hovered,
+ * The Solana mark as a faint watermark that, while the logo itself is hovered,
  * comes alive inside its own shape: the Solana colours flow through the
  * bars like foil, specks of glitter blink and a shine sweeps across, then
  * it settles into the mark's real colours for a moment and starts again. The
