@@ -83,7 +83,10 @@ Worker and tests the browser against it. No list-reading HTTP route is exposed.
 Helius tools need `chain:read`. `callTool` independently checks that all three
 identity fields match an active grant with the provider's scope (through
 `authorizeGrant`, the one grant check) before resolving the network or calling
-the provider. Existing grants must be
+the provider. `payHttp` runs the same check before any request. What counts as
+an active grant is defined once in `mcp-grants.ts` (`activeGrantFor`,
+`activeGrantOwnedBy`, `grantHasScope`); the payment reservation reuses it so
+its limit check stays one atomic statement. Existing grants must be
 re-authorized to add this scope.
 
 `src/solana/network.ts` holds the Solana configuration. Payments verify the
