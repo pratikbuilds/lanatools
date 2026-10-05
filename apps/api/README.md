@@ -78,9 +78,8 @@ Worker and tests the browser against it. No list-reading HTTP route is exposed.
 
 `McpAccessService.runTool(grantId, userId, clientId, name, input)` is the
 API's generic entry point for `@lanatools/helius`. The API independently checks
-that all three identity fields match an active grant with `chain:read` before
-resolving the network or calling the provider. Existing grants must be
-re-authorized to add this scope.
+that all three identity fields match an active grant with `helius:read` before
+resolving the network or calling the provider.
 
 The shared Solana configuration verifies the RPC's genesis hash before use.
 Read tools support `SOLANA_NETWORK=devnet` or `mainnet`; payments remain

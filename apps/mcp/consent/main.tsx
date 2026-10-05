@@ -4,12 +4,13 @@ import ReactDOM from 'react-dom/client'
 import { useEffect, useState } from 'react'
 import { z } from 'zod'
 import {
+  DEFAULT_TOOL_SCOPES,
   MAX_CLIENT_LIMIT_MICRO_USD,
-  MCP_SCOPES,
   formatUsd,
   parseClientLimit,
 } from '@lanatools/contracts'
-import { Permissions } from './permissions'
+import type { ToolScope } from '@lanatools/contracts'
+import { ToolAccess } from './permissions'
 import { SideField } from '../../web/src/components/dashboard/side-field'
 import { useTheme } from '../../web/src/components/dashboard/theme'
 import { BrandMark } from '../../web/src/components/landing/brand'
@@ -17,10 +18,7 @@ import './styles.css'
 
 const LIMIT_HINT = `Enter an amount up to ${formatUsd(MAX_CLIENT_LIMIT_MICRO_USD)}, such as 1.00.`
 const appId = import.meta.env.VITE_PRIVY_APP_ID
-const PendingConsent = z.object({
-  clientName: z.string().min(1),
-  scopes: z.array(z.enum(MCP_SCOPES)).min(1),
-})
+const PendingConsent = z.object({ clientName: z.string().min(1) })
 
 function Connect() {
   const { ready, authenticated, user, login, logout, getAccessToken } =
@@ -28,6 +26,7 @@ function Connect() {
   const [pending, setPending] = useState<z.infer<typeof PendingConsent>>()
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const [scopes, setScopes] = useState<ToolScope[]>([...DEFAULT_TOOL_SCOPES])
   const [limitUsd, setLimitUsd] = useState('1.00')
   const handle = new URLSearchParams(window.location.search).get('handle')
   // Follows the system; the page has no header to hold a theme switch.
@@ -53,7 +52,7 @@ function Connect() {
     return () => controller.abort()
   }, [handle])
 
-  const payments = pending?.scopes.includes('payments:pay') ?? false
+  const payments = scopes.includes('payments:pay')
   const limit = parseClientLimit(limitUsd)
 
   async function decide(decision: 'approve' | 'deny') {
@@ -76,9 +75,11 @@ function Connect() {
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify(
-            decision === 'approve' && payments
-              ? { decision, limitUsd }
-              : { decision },
+            decision === 'deny'
+              ? { decision }
+              : payments
+                ? { decision, scopes, limitUsd }
+                : { decision, scopes },
           ),
         },
       )
@@ -155,37 +156,44 @@ function Connect() {
               aria-label="What it can do"
               className="border-t border-line px-5 py-5 sm:px-7"
             >
-              <Permissions scopes={pending.scopes} />
-
-              {payments && (
-                <label className="mt-5 block">
-                  <span className="d-label">Spending limit for this app</span>
-                  <span className="mt-2 flex h-11 items-center gap-1 rounded-[9px] border border-line-2 bg-surface px-3 font-mono font-semibold has-aria-invalid:border-bad has-focus-visible:border-accent">
-                    <span aria-hidden="true" className="text-fg-3">
-                      $
+              <ToolAccess
+                selected={scopes}
+                onChange={setScopes}
+                disabled={busy}
+                payLimit={
+                  <label className="mt-3 block">
+                    <span className="d-label">Spending limit for this app</span>
+                    <span className="mt-2 flex h-11 items-center gap-1 rounded-[9px] border border-line-2 bg-surface px-3 font-mono font-semibold has-aria-invalid:border-bad has-focus-visible:border-accent">
+                      <span aria-hidden="true" className="text-fg-3">
+                        $
+                      </span>
+                      <input
+                        className="h-full min-w-0 flex-1 bg-transparent font-mono font-semibold outline-none"
+                        inputMode="decimal"
+                        autoComplete="off"
+                        value={limitUsd}
+                        disabled={busy}
+                        aria-invalid={limit === null}
+                        onChange={(event) => setLimitUsd(event.target.value)}
+                      />
+                      <span className="text-[12px] font-medium text-fg-3">
+                        USDC
+                      </span>
                     </span>
-                    <input
-                      className="h-full min-w-0 flex-1 bg-transparent font-mono font-semibold outline-none"
-                      inputMode="decimal"
-                      autoComplete="off"
-                      value={limitUsd}
-                      disabled={busy}
-                      aria-invalid={limit === null}
-                      onChange={(event) => setLimitUsd(event.target.value)}
-                    />
-                    <span className="text-[12px] font-medium text-fg-3">
-                      USDC
+                    <span
+                      className={`mt-2 block text-[12.5px] ${limit === null ? 'text-bad' : 'text-fg-3'}`}
+                    >
+                      {limit === null
+                        ? LIMIT_HINT
+                        : `This app can spend ${formatUsd(limit)} in total. You can change or stop this in your dashboard.`}
                     </span>
-                  </span>
-                  <span
-                    className={`mt-2 block text-[12.5px] ${limit === null ? 'text-bad' : 'text-fg-3'}`}
-                  >
-                    {limit === null
-                      ? LIMIT_HINT
-                      : `This app can spend ${formatUsd(limit)} in total. You can change or stop this in your dashboard.`}
-                  </span>
-                </label>
-              )}
+                  </label>
+                }
+              />
+              <p className="mt-3 text-[12.5px] text-fg-3">
+                To change these later, disconnect the app in your dashboard and
+                connect it again.
+              </p>
             </section>
 
             {ready && authenticated && (

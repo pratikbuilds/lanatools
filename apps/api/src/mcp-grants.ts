@@ -1,7 +1,7 @@
 import { and, desc, eq, lt, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
-import { isClientLimit, isMcpScope } from '@lanatools/contracts'
+import { grantScopes, isClientLimit } from '@lanatools/contracts'
 import type { McpClient, McpScope } from '@lanatools/contracts'
 import {
   mcpConsent,
@@ -15,7 +15,6 @@ export type ConsentInput = {
   clientId: string
   clientName: string
   redirectUri: string
-  scopes: string[]
 }
 
 export type GrantIdentity = {
@@ -26,17 +25,6 @@ export type GrantIdentity = {
 
 // Tool calls record use at most this often, so each call is not a D1 write.
 const LAST_USED_INTERVAL = 5 * 60_000
-
-/** Validates requested scopes; returns them space-separated for storage. */
-export function scopeString(scopes: readonly string[]) {
-  if (
-    scopes.length === 0 ||
-    new Set(scopes).size !== scopes.length ||
-    !scopes.every(isMcpScope)
-  )
-    throw new Error('Unsupported access request')
-  return scopes.join(' ')
-}
 
 export function scopeList(scope: string) {
   return scope.split(' ')
@@ -61,7 +49,6 @@ export async function recordConsent(
   input: ConsentInput,
   now = Date.now(),
 ) {
-  const scope = scopeString(input.scopes)
   const db = drizzle(database)
   await db.delete(mcpConsent).where(lt(mcpConsent.expiresAt, now))
   await db.insert(mcpConsent).values({
@@ -69,7 +56,6 @@ export async function recordConsent(
     clientId: input.clientId,
     clientName: input.clientName,
     redirectUri: input.redirectUri,
-    scope,
     expiresAt: now + 10 * 60_000,
   })
 }
@@ -91,7 +77,6 @@ export async function pendingConsent(database: D1Database, handle: string) {
     clientName: consent.clientName,
     clientId: consent.clientId,
     redirectUri: consent.redirectUri,
-    scopes: scopeList(consent.scope),
   }
 }
 
@@ -140,10 +125,12 @@ export async function prepareGrant(
   return { grantId: grant.id }
 }
 
+/** Activates the grant with the tool families the user chose at consent. */
 export async function activateGrant(
   database: D1Database,
   handle: string,
   { grantId, userId, clientId }: GrantIdentity,
+  toolScopes: readonly string[],
   limitMicroUsd: number | null = null,
 ) {
   const db = drizzle(database)
@@ -156,8 +143,10 @@ export async function activateGrant(
     .get()
   if (!consent || consent.expiresAt < Date.now())
     throw new Error('Authorization request expired')
-  scopeString(scopeList(consent.scope))
-  const limit = approvedLimit(consent.scope, limitMicroUsd)
+  const scopes = grantScopes(toolScopes)
+  if (!scopes) throw new Error('Unsupported tool access')
+  const scope = scopes.join(' ')
+  const limit = approvedLimit(scope, limitMicroUsd)
 
   const now = Date.now()
   const [[grant]] = await db.batch([
@@ -167,7 +156,7 @@ export async function activateGrant(
         id: grantId,
         privyUserId: userId,
         clientId,
-        scope: consent.scope,
+        scope,
         limitMicroUsd: limit,
         clientName: consent.clientName,
         redirectUri: consent.redirectUri,
@@ -178,7 +167,7 @@ export async function activateGrant(
         target: [mcpGrant.privyUserId, mcpGrant.clientId],
         set: {
           status: 'active',
-          scope: consent.scope,
+          scope,
           limitMicroUsd: limit,
           clientName: consent.clientName,
           redirectUri: consent.redirectUri,

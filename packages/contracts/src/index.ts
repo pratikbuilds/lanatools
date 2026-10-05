@@ -14,17 +14,52 @@ export const EarlyAccessResponse = type({
 })
 export type EarlyAccessResponse = typeof EarlyAccessResponse.infer
 
-/** OAuth scopes the LanaTools MCP server grants. */
-export const MCP_SCOPES = [
-  'account:read',
+/**
+ * One scope per tool family. The user picks these for each client on the
+ * consent screen; the scopes the client requested do not decide them.
+ * Catalog tools have no scope: every connected client may search the catalog.
+ */
+export const TOOL_SCOPES = [
+  'helius:read',
   'payments:pay',
   'jupiter:read',
-  'chain:read',
+  'phoenix:read',
 ] as const
+export type ToolScope = (typeof TOOL_SCOPES)[number]
+
+/** Selected on the consent screen until the user changes them. */
+export const DEFAULT_TOOL_SCOPES: readonly ToolScope[] = [
+  'helius:read',
+  'payments:pay',
+]
+
+export function isToolScope(value: string): value is ToolScope {
+  return (TOOL_SCOPES as readonly string[]).includes(value)
+}
+
+/** Every grant has account:read, which lets a client see whose it is. */
+export const MCP_SCOPES = ['account:read', ...TOOL_SCOPES] as const
 export type McpScope = (typeof MCP_SCOPES)[number]
 
 export function isMcpScope(value: string): value is McpScope {
   return (MCP_SCOPES as readonly string[]).includes(value)
+}
+
+/**
+ * A grant's scopes for the tool families the user chose, in a fixed order, or
+ * null if the choice is not a set of tool families. Choosing none leaves the
+ * catalog only.
+ */
+export function grantScopes(toolScopes: readonly string[]): McpScope[] | null {
+  if (
+    new Set(toolScopes).size !== toolScopes.length ||
+    !toolScopes.every(isToolScope)
+  )
+    return null
+  return [
+    'account:read',
+    ...TOOL_SCOPES.filter((scope) => toolScopes.includes(scope)),
+  ]
 }
 
 /** The highest spending limit a user can give one client, in micro-USD. */

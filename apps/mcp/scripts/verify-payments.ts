@@ -1,6 +1,6 @@
 /**
  * Connects a real MCP client (the official SDK) with `payments:pay`, then
- * exercises pay_http against the hosted devnet merchant. Open the printed
+ * exercises the `call` tool against the hosted devnet merchant. Open the printed
  * URL, sign in, set the client's limit, and approve.
  *
  *   bun run --cwd apps/mcp verify:payments            # full run
@@ -114,7 +114,7 @@ try {
   async function pay(label: string, args: Record<string, unknown>) {
     const started = Date.now()
     const result = await client.callTool(
-      { name: 'pay_http', arguments: args },
+      { name: 'call', arguments: args },
       { timeout: 180_000 },
     )
     const text = (result.content as Array<{ text?: string }>)

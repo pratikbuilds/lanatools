@@ -7,6 +7,7 @@ import { readJupiter } from './jupiter'
 import { PayHttpError, payHttp, payKitPayer } from './payments/pay-http'
 import type { PayHttpInput, PayHttpResult } from './payments/pay-http'
 import { paymentConfig } from './payments/network'
+import { signerStatus } from './payments/signer-setup'
 import type { PaymentEnv } from './payments/network'
 import {
   activateGrant,
@@ -125,12 +126,14 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
     clientId: string,
     userId: string,
     grantId: string,
+    toolScopes: string[],
     limitMicroUsd: number | null = null,
   ) {
     await activateGrant(
       this.env.DB,
       handle,
       { grantId, userId, clientId },
+      toolScopes,
       limitMicroUsd,
     )
   }
@@ -203,5 +206,10 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
       clientId,
     })
     return active ? { userId, clientId } : null
+  }
+
+  /** The user's payment wallet address, or null before it is set up. */
+  async walletAddress(userId: string) {
+    return (await signerStatus(this.env.DB, userId)).walletAddress
   }
 }

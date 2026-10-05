@@ -20,8 +20,6 @@ export const mcpConsent = sqliteTable('mcp_consent', {
   clientId: text('client_id').notNull(),
   clientName: text('client_name').notNull(),
   redirectUri: text('redirect_uri').notNull(),
-  // Space-separated OAuth scopes, as in the authorization request.
-  scope: text('scope').notNull().default('account:read'),
   expiresAt: integer('expires_at').notNull(),
 })
 
@@ -34,7 +32,8 @@ export const mcpGrant = sqliteTable(
     status: text('status', { enum: ['pending', 'active', 'revoked'] })
       .notNull()
       .default('active'),
-    // Space-separated OAuth scopes the user approved.
+    // Space-separated scopes: account:read and the tool families the user
+    // chose on the consent screen.
     scope: text('scope').notNull().default('account:read'),
     // Cumulative USD this client may spend, in micro-USD. Only USDC is paid,
     // so one USDC base unit counts as one micro-USD. Spent and reserved
@@ -72,7 +71,7 @@ export const paymentSigner = sqliteTable('payment_signer', {
 })
 
 /**
- * One row per pay_http call. Request and response bodies are never stored.
+ * One row per `call` tool call. Request and response bodies are never stored.
  * `reserved` and `uncertain` rows hold `reservedAtomic` against the client's
  * limit; `paid` rows count `settledAtomic` as spent.
  */

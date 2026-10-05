@@ -30,7 +30,7 @@ beforeEach(() => {
 })
 
 async function connect({
-  scope = 'chain:read',
+  scope = 'helius:read',
   status = 'active',
 }: {
   scope?: string
@@ -261,8 +261,14 @@ test('grant, user and client identity must all match before any provider request
   expect(await rows()).toEqual([])
 })
 
-test('chain:read is independently required as an exact approved scope', async () => {
-  for (const scope of ['account:read', 'payments:pay', 'chain:read-extra']) {
+test('helius:read is independently required as an exact approved scope', async () => {
+  for (const scope of [
+    'account:read',
+    'payments:pay',
+    'phoenix:read',
+    'chain:read',
+    'helius:read-extra',
+  ]) {
     const identity = await connect({ scope })
     const run = mock(dependencies().run)
     const config = mock(dependencies().config)

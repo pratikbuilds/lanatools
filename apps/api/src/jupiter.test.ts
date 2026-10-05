@@ -26,11 +26,10 @@ async function connect(scopes: string[]) {
     clientId,
     clientName: 'Jupiter test',
     redirectUri: 'https://client.example/callback',
-    scopes,
   })
   const { grantId } = await prepareGrant(db, handle, clientId, userId)
   const identity = { grantId, clientId, userId }
-  await activateGrant(db, handle, identity)
+  await activateGrant(db, handle, identity, scopes)
   return identity
 }
 
@@ -44,7 +43,7 @@ test('the API requires stored Jupiter scope and binds access to the grant owner/
     calls++
     return Promise.resolve(Response.json([]))
   }
-  const account = await connect(['account:read'])
+  const account = await connect([])
   expect(
     await readJupiter(db, account, request, 'test-key', fetcher),
   ).toMatchObject({ ok: false, error: { code: 'permission_denied' } })

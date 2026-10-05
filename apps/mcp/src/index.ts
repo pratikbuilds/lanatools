@@ -8,7 +8,12 @@ import type {
 } from '@cloudflare/workers-oauth-provider'
 import { createMcpHandler } from 'agents/mcp/server'
 import { z } from 'zod'
-import { MCP_SCOPES, isMcpScope, parseClientLimit } from '@lanatools/contracts'
+import {
+  MCP_SCOPES,
+  TOOL_SCOPES,
+  grantScopes,
+  parseClientLimit,
+} from '@lanatools/contracts'
 import { WorkerEntrypoint, env as bindings } from 'cloudflare:workers'
 import type {
   McpAccessService,
@@ -41,13 +46,9 @@ const defaultHandler = {
     const url = new URL(request.url)
     if (url.pathname === '/authorize' && request.method === 'GET') {
       try {
+        // The user chooses the tool families on the consent screen, so the
+        // scopes a client asks for, if any, are not checked here.
         const auth = await env.OAUTH_PROVIDER.parseAuthRequest(request)
-        if (
-          auth.scope.length === 0 ||
-          new Set(auth.scope).size !== auth.scope.length ||
-          !auth.scope.every(isMcpScope)
-        )
-          return new Response('Unsupported access request', { status: 400 })
         const client = await env.OAUTH_PROVIDER.lookupClient(auth.clientId)
         if (!client) return new Response('Unknown MCP client', { status: 400 })
         const consent = await env.OAUTH_PROVIDER.beginConsent(auth)
@@ -56,7 +57,6 @@ const defaultHandler = {
           clientId: auth.clientId,
           clientName: client.clientName || 'Unnamed MCP client',
           redirectUri: auth.redirectUri,
-          scopes: auth.scope,
         })
         const destination = new URL('/connect', env.MCP_ORIGIN)
         destination.searchParams.set('handle', consent.handle)
@@ -103,11 +103,15 @@ const defaultHandler = {
         const body = z
           .object({
             decision: z.enum(['approve', 'deny']),
-            // Required by the API when the client asked for payments:pay.
+            // The tool families the user chose; none leaves the catalog only.
+            scopes: z.array(z.enum(TOOL_SCOPES)).default([]),
+            // Required when the user allows payments.
             limitUsd: z.string().optional(),
           })
           .safeParse(await request.json().catch(() => null))
         if (!body.success) return json({ error: 'Invalid decision' }, 400)
+        const scopes = grantScopes(body.data.scopes)
+        if (!scopes) return json({ error: 'Invalid tool access' }, 400)
         const limitMicroUsd =
           body.data.limitUsd === undefined
             ? null
@@ -120,20 +124,18 @@ const defaultHandler = {
             await env.API.discardConsent(handle)
             return json({ redirectTo: denied.redirectTo }, 200, denied.headers)
           }
-          const pending = await env.API.pendingConsent(handle)
-          if (
-            pending?.scopes.includes('payments:pay') &&
-            limitMicroUsd === null
-          )
+          if (scopes.includes('payments:pay') && limitMicroUsd === null)
             return json({ error: 'Set a spending limit' }, 400)
           const token = /^Bearer (.+)$/.exec(
             request.headers.get('authorization') || '',
           )?.[1]
           if (!token) return json({ error: 'Sign in first' }, 401)
           const userId = await env.API.verifyPrivyToken(token)
+          // The user's choice replaces the scopes the client asked for.
           const approved = await env.OAUTH_PROVIDER.approveConsent(
             request,
             handle,
+            { scope: scopes },
           )
           const { grantId } = await env.API.prepareGrant(
             handle,
@@ -157,6 +159,7 @@ const defaultHandler = {
                 approved.request.clientId,
                 userId,
                 grantId,
+                body.data.scopes,
                 limitMicroUsd,
               ),
           )

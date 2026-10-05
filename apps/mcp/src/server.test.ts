@@ -13,13 +13,16 @@ const identity = {
 const address = '11111111111111111111111111111111'
 
 async function connect(
-  scopes = ['chain:read'],
+  scopes = ['helius:read'],
   active = true,
   props: unknown = identity,
 ) {
   const api = {
     whoami: mock<ServerDependencies['api']['whoami']>(async () =>
       active ? { userId: identity.userId, clientId: identity.clientId } : null,
+    ),
+    walletAddress: mock<ServerDependencies['api']['walletAddress']>(
+      async () => address,
     ),
     readJupiter: mock<ServerDependencies['api']['readJupiter']>(async () => ({
       ok: false,
@@ -93,20 +96,17 @@ test('every package tool is registered with its metadata, schema, and read-only 
   }
 })
 
-test('chain:read is required before any API call', async () => {
+test('a client without helius:read is not shown the Helius tools and cannot call them', async () => {
   const session = await connect(['account:read', 'payments:pay'])
   try {
-    const result = await session.client.callTool({
-      name: 'get_accounts',
-      arguments: { addresses: [address] },
-    })
+    const names = (await session.client.listTools()).tools.map(
+      (tool) => tool.name,
+    )
+    for (const tool of heliusTools) expect(names).not.toContain(tool.name)
+    const result = await session.client
+      .callTool({ name: 'get_accounts', arguments: { addresses: [address] } })
+      .catch(() => ({ isError: true }))
     expect(result.isError).toBe(true)
-    expect(result.structuredContent).toEqual({
-      error: {
-        code: 'insufficient_scope',
-        message: 'Missing chain:read scope',
-      },
-    })
     expect(session.api.whoami).not.toHaveBeenCalled()
     expect(session.api.runTool).not.toHaveBeenCalled()
   } finally {
@@ -115,7 +115,7 @@ test('chain:read is required before any API call', async () => {
 })
 
 test('a revoked grant is refused and its OAuth tokens are scheduled for revocation', async () => {
-  const session = await connect(['chain:read'], false)
+  const session = await connect(['helius:read'], false)
   try {
     const result = await session.client.callTool({
       name: 'get_accounts',
@@ -133,7 +133,7 @@ test('a revoked grant is refused and its OAuth tokens are scheduled for revocati
 })
 
 test('invalid identities are refused before API calls', async () => {
-  const session = await connect(['chain:read'], true, {
+  const session = await connect(['helius:read'], true, {
     ...identity,
     grantId: 'invalid',
   })
@@ -272,17 +272,49 @@ test('every exported tool dispatches to the API through the shared grant boundar
   }
 })
 
-test('extracted server retains catalog, Jupiter and Phoenix tools from master', async () => {
-  const session = await connect(['account:read', 'jupiter:read'])
+test('each client sees the catalog and only the tool families it was given', async () => {
+  const families = {
+    jupiter: (names: string[]) =>
+      names.filter((name) => name.startsWith('jupiter_')).length,
+    phoenix: (names: string[]) =>
+      names.filter((name) => name.startsWith('phoenix_')).length,
+  }
+  const list = async (scopes: string[]) => {
+    const session = await connect(scopes)
+    try {
+      return (await session.client.listTools()).tools.map((tool) => tool.name)
+    } finally {
+      await session.close()
+    }
+  }
+  const catalogOnly = await list(['account:read'])
+  expect(catalogOnly).toEqual(
+    expect.arrayContaining([
+      'whoami',
+      'list_catalog',
+      'search_catalog',
+      'get_catalog_entry',
+    ]),
+  )
+  expect(catalogOnly).toHaveLength(4)
+
+  const jupiter = await list(['account:read', 'jupiter:read'])
+  expect(families.jupiter(jupiter)).toBe(9)
+  expect(families.phoenix(jupiter)).toBe(0)
+  expect(jupiter).not.toContain('call')
+
+  const phoenix = await list(['account:read', 'phoenix:read'])
+  expect(families.phoenix(phoenix)).toBeGreaterThan(0)
+  expect(families.jupiter(phoenix)).toBe(0)
+
+  const pay = await list(['account:read', 'payments:pay'])
+  expect(pay).toContain('call')
+  expect(pay).not.toContain('pay_http')
+})
+
+test('catalog tools work for any active grant', async () => {
+  const session = await connect(['account:read'])
   try {
-    const names = (await session.client.listTools()).tools.map(
-      (tool) => tool.name,
-    )
-    expect(names).toContain('list_catalog')
-    expect(names).toContain('search_catalog')
-    expect(names).toContain('get_catalog_entry')
-    expect(names.filter((name) => name.startsWith('jupiter_'))).toHaveLength(9)
-    expect(names).toContain('phoenix_get_market')
     const result = await session.client.callTool({
       name: 'list_catalog',
       arguments: {},
@@ -293,6 +325,37 @@ test('extracted server retains catalog, Jupiter and Phoenix tools from master', 
       identity.userId,
       identity.clientId,
     )
+  } finally {
+    await session.close()
+  }
+})
+
+test('whoami returns the account, client and payment wallet address', async () => {
+  const session = await connect(['account:read'])
+  try {
+    const result = await session.client.callTool({
+      name: 'whoami',
+      arguments: {},
+    })
+    expect(result.isError).not.toBe(true)
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text: JSON.stringify({
+          userId: identity.userId,
+          clientId: identity.clientId,
+          walletAddress: address,
+        }),
+      },
+    ])
+    expect(session.api.walletAddress).toHaveBeenCalledWith(identity.userId)
+
+    session.api.walletAddress.mockImplementationOnce(async () => null)
+    const unset = await session.client.callTool({
+      name: 'whoami',
+      arguments: {},
+    })
+    expect(JSON.stringify(unset.content)).toContain('\\"walletAddress\\":null')
   } finally {
     await session.close()
   }

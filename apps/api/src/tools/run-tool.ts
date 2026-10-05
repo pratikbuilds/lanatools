@@ -34,7 +34,7 @@ export type RunToolDeps = {
 const MESSAGES: Record<ToolErrorCode, string> = {
   unauthorized: 'This client is not connected. Reconnect it in LanaTools.',
   insufficient_scope:
-    'This client needs chain:read access. Reconnect it to approve access.',
+    'This client does not have Helius access. Reconnect it and allow Helius on the consent screen.',
   network_unavailable:
     'The Solana network configuration is unavailable. Try again later.',
   invalid_input: 'The tool name or input is invalid. Check the tool schema.',
@@ -84,7 +84,7 @@ export async function runTool(
     return failed('upstream_error')
   }
   if (!grant) return failed('unauthorized')
-  if (!grant.scope.split(' ').includes('chain:read'))
+  if (!grant.scope.split(' ').includes('helius:read'))
     return failed('insufficient_scope')
 
   if (!grant.lastUsedAt || startedAt - grant.lastUsedAt > 5 * 60_000) {

@@ -1,41 +1,59 @@
 import { expect, test } from 'bun:test'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { MCP_SCOPES, isMcpScope } from '@lanatools/contracts'
-import type { McpScope } from '@lanatools/contracts'
-import { Permissions } from '../consent/permissions'
+import {
+  DEFAULT_TOOL_SCOPES,
+  MCP_SCOPES,
+  TOOL_SCOPES,
+  grantScopes,
+} from '@lanatools/contracts'
+import type { ToolScope } from '@lanatools/contracts'
+import { ToolAccess } from '../consent/permissions'
 
-function permissions(scopes: McpScope[]) {
-  return renderToStaticMarkup(createElement(Permissions, { scopes }))
+function access(selected: readonly ToolScope[], payLimit = 'LIMIT FIELD') {
+  return renderToStaticMarkup(
+    createElement(ToolAccess, { selected, onChange: () => {}, payLimit }),
+  )
 }
 
-test('chain:read is a supported scope independently of identity and payment access', () => {
-  expect(MCP_SCOPES).toContain('chain:read')
-  expect(isMcpScope('chain:read')).toBe(true)
-  expect(isMcpScope('chain:write')).toBe(false)
-  const html = permissions(['chain:read'])
-  expect(html).toContain('Read Solana data')
-  expect(html).toContain('No wallet or payment access')
-  expect(html).not.toContain('Read account identity')
-  expect(html).not.toContain('Pay for requests')
+function switchFor(html: string, scope: ToolScope) {
+  return new RegExp(
+    `role="switch" aria-checked="(true|false)" aria-labelledby="tool-${scope}"`,
+  ).exec(html)?.[1]
+}
+
+test('Helius and Pay are on by default; Jupiter and Phoenix are off', () => {
+  expect(DEFAULT_TOOL_SCOPES).toEqual(['helius:read', 'payments:pay'])
+  const html = access(DEFAULT_TOOL_SCOPES)
+  expect(switchFor(html, 'helius:read')).toBe('true')
+  expect(switchFor(html, 'payments:pay')).toBe('true')
+  expect(switchFor(html, 'jupiter:read')).toBe('false')
+  expect(switchFor(html, 'phoenix:read')).toBe('false')
+  expect(html).toContain('2 of 4 on')
 })
 
-test('consent shows only requested permissions with and without chain:read', () => {
-  expect(permissions(['account:read'])).not.toContain('Read Solana data')
-  const combined = permissions(['account:read', 'chain:read'])
-  expect(combined).toContain('Read Solana data')
-  expect(combined).toContain('Read account identity')
-  expect(combined).toContain('No wallet or payment access')
-  const all = permissions([...MCP_SCOPES])
-  expect(all).toContain('Read Solana data')
-  expect(all).toContain('Pay for requests from your wallet')
-  expect(all).not.toContain('No wallet or payment access')
+test('every tool family has a switch, and the catalog is always included', () => {
+  const html = access([])
+  for (const scope of TOOL_SCOPES) expect(switchFor(html, scope)).toBe('false')
+  expect(html).toContain('Always included')
+  expect(html).toContain('pay.sh catalog')
+  expect(html).toContain('0 of 4 on')
 })
 
-test('Jupiter consent retains the existing access explanation', () => {
-  const html = permissions(['jupiter:read'])
-  expect(html).toContain('Jupiter access')
-  expect(html).toContain('public-wallet portfolios and lending data')
-  expect(html).not.toContain('Read Solana data')
-  expect(html).toContain('No wallet or payment access')
+test('the spending limit only shows while Pay is on', () => {
+  expect(access(['payments:pay'])).toContain('LIMIT FIELD')
+  expect(access(['helius:read'])).not.toContain('LIMIT FIELD')
+})
+
+test('grant scopes add account:read and keep a fixed order', () => {
+  expect(grantScopes([])).toEqual(['account:read'])
+  expect(grantScopes(['phoenix:read', 'helius:read'])).toEqual([
+    'account:read',
+    'helius:read',
+    'phoenix:read',
+  ])
+  expect(grantScopes([...TOOL_SCOPES])).toEqual([...MCP_SCOPES])
+  expect(grantScopes(['account:read'])).toBeNull()
+  expect(grantScopes(['chain:read'])).toBeNull()
+  expect(grantScopes(['helius:read', 'helius:read'])).toBeNull()
 })

@@ -64,6 +64,13 @@
       "when": 1791033274810,
       "tag": "0008_tool_activity",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1791185281709,
+      "tag": "0009_tool_scopes",
+      "breakpoints": true
     }
   ]
 }
