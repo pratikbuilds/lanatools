@@ -180,6 +180,31 @@ Kit. Restart the YAML merchant after editing its spec. The page offers fixed
 MPP and x402 payment checks. Ctrl-C on the proof server archives wallets and
 attempts to delete policies and the key quorum.
 
+## External SOL transfers on devnet
+
+An active MCP client can call `transfer_sol_external` with a recipient, exact
+integer `amountLamports`, and an `idempotencyKey`. An optional `externalWallet`
+restricts the source; otherwise the wallet is selected once on the signing page.
+The result contains a `/sign#token=…` link for one transfer. Opening it requires
+an external Solana wallet, without a LanaTools account login.
+
+The page prepares, reviews, signs and submits that exact transfer. The source
+pays the network fee. Link lifetime defaults to 900 seconds; configure
+`SIGNING_LINK_TTL_SECONDS` from 1 to 86400 independently of blockhash lifetime.
+`SIGNING_LINK_ORIGIN` selects the site origin and defaults to `https://lanatools.sh`;
+the local config uses `http://localhost:5173`.
+
+Reusing the same idempotency key and intent returns the same request with a new
+link. Changing that intent is refused. Expired or revoked links cannot perform
+new server operations. An already issued transaction can be broadcast by its
+signer elsewhere, so silence or a timeout never creates a replacement attempt.
+Refresh status after an uncertain submission. Confirmation requires verified
+chain evidence; RPC acceptance alone displays submitted.
+
+This path refuses a mainnet API configuration. Production remains on mainnet,
+so use the local devnet environment for this MVP. Automatic embedded signing
+needs separate transaction delegation and is not enabled by the external tool.
+
 ## Hosted app
 
 The site, API, and MCP server run as Cloudflare Workers. `lanatools.sh`

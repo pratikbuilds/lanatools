@@ -85,6 +85,13 @@
       "when": 1791289787068,
       "tag": "0011_solid_wallop",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1791294131632,
+      "tag": "0012_slippery_cerebro",
+      "breakpoints": true
     }
   ]
 }

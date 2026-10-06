@@ -43,6 +43,37 @@ export const ATTEMPT_STATES = [
 ] as const
 export type AttemptState = (typeof ATTEMPT_STATES)[number]
 
+export const ExternalTransferInput = type({
+  '+': 'reject',
+  idempotencyKey: '1 <= string <= 128',
+  recipient: '32 <= string <= 44',
+  amountLamports: Lamports,
+  externalWallet: 'string | null',
+})
+export type ExternalTransferInput = typeof ExternalTransferInput.infer
+
+export type ExternalTransferLink = {
+  requestId: string
+  signingUrl: string
+  expiresAt: number
+}
+
+export const ExternalTransferReview = type({
+  requestId: 'string',
+  state: type.enumerated('requested', 'refused', ...ATTEMPT_STATES),
+  recipient: 'string',
+  amountLamports: 'string',
+  walletAddress: 'string | null',
+  network: "'devnet'",
+  expiresAt: 'number',
+  transactionBase64: 'string | null',
+  signature: 'string | null',
+  reason: 'string | null',
+  commitment: "'confirmed' | 'finalized' | null",
+  transactionExpired: 'boolean',
+})
+export type ExternalTransferReview = typeof ExternalTransferReview.infer
+
 /** Safe to return to an agent; excludes message bytes and claim tokens. */
 export type TransactionResult = {
   requestId: string

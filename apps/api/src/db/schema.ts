@@ -275,3 +275,13 @@ export const transactionAttempt = sqliteTable(
     ),
   ],
 )
+
+export const transactionLink = sqliteTable('transaction_link', {
+  tokenHash: text('token_hash').primaryKey(),
+  requestId: text('request_id')
+    .notNull()
+    .references(() => transactionRequest.id),
+  grantId: text('grant_id').notNull(),
+  expiresAt: integer('expires_at').notNull(),
+  createdAt: integer('created_at').notNull(),
+})

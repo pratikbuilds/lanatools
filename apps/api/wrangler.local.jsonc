@@ -16,7 +16,10 @@
   // Agent payments run on this network only. SOLANA_RPC_URL (a secret) must
   // serve it; the Worker checks its genesis hash before paying. The public
   // api.devnet.solana.com refuses Workers, so use a provider's devnet URL.
-  "vars": { "SOLANA_NETWORK": "devnet" },
+  "vars": {
+    "SOLANA_NETWORK": "devnet",
+    "SIGNING_LINK_ORIGIN": "http://localhost:5173",
+  },
   "ratelimits": [
     {
       "name": "SIGNUP_LIMITER",

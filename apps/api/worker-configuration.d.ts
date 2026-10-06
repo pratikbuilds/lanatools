@@ -4,6 +4,7 @@ interface __BaseEnv_Env {
 	DB: D1Database;
 	SIGNUP_LIMITER: RateLimit;
 	SOLANA_NETWORK: "devnet";
+	SIGNING_LINK_ORIGIN: "http://localhost:5173";
 	PRIVY_APP_ID: string;
 	PRIVY_APP_SECRET: string;
 	PRIVY_PAYMENT_SIGNER_ID: string;
@@ -22,5 +23,5 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "SOLANA_NETWORK" | "PRIVY_APP_ID" | "PRIVY_APP_SECRET" | "PRIVY_PAYMENT_SIGNER_ID" | "PRIVY_PAYMENT_SIGNER_KEY" | "SOLANA_RPC_URL">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "SOLANA_NETWORK" | "SIGNING_LINK_ORIGIN" | "PRIVY_APP_ID" | "PRIVY_APP_SECRET" | "PRIVY_PAYMENT_SIGNER_ID" | "PRIVY_PAYMENT_SIGNER_KEY" | "SOLANA_RPC_URL">> {}
 }

@@ -6,6 +6,7 @@ import { paymentSignerRoutes } from './routes/payment-signer'
 import { walletBalances } from './routes/wallet-balances'
 import { earlyAccess } from './routes/early-access'
 import type { EarlyAccessEnv } from './routes/early-access'
+import { transactionLinkRoutes } from './routes/transaction-link'
 
 export { McpAccessService } from './mcp-service'
 
@@ -15,5 +16,6 @@ app.route('/api/early-access', earlyAccess)
 app.route('/api/mcp/clients', mcpClients)
 app.route('/api/payments/signer', paymentSignerRoutes)
 app.route('/api/wallet/balances', walletBalances)
+app.route('/api/transactions/link', transactionLinkRoutes)
 
 export default app

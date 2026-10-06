@@ -37,6 +37,10 @@ const Intent = type({
   externalWallet: 'string | null',
 })
 
+export function readSolTransferIntent(canonicalInput: string) {
+  return Intent.assert(JSON.parse(canonicalInput))
+}
+
 export type PreparationRpc = {
   genesisHash: string
   slot: bigint
@@ -69,7 +73,7 @@ export async function prepareSolTransfer(
   readRpc: PreparationReader = readPreparation,
 ) {
   const request = await getRequestRecord(db, identity, requestId)
-  const intent = Intent.assert(JSON.parse(request.canonicalInput))
+  const intent = readSolTransferIntent(request.canonicalInput)
   if (
     env.SOLANA_NETWORK !== 'devnet' ||
     request.network !== 'devnet' ||

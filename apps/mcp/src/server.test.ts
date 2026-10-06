@@ -12,6 +12,149 @@ const identity = {
 }
 const address = '11111111111111111111111111111111'
 
+test('an active grant creates one action signing link without account or payment scopes', async () => {
+  const session = await connect([])
+  try {
+    const listed = (await session.client.listTools()).tools
+    const tool = listed.find((item) => item.name === 'transfer_sol_external')
+    expect(tool?.inputSchema.additionalProperties).toBe(false)
+    const input = {
+      idempotencyKey: 'external-transfer-1',
+      recipient: address,
+      amountLamports: '18446744073709551615',
+    }
+    const result = await session.client.callTool({
+      name: 'transfer_sol_external',
+      arguments: input,
+    })
+    expect(result.isError).not.toBe(true)
+    expect(session.api.whoami).toHaveBeenCalledWith(identity)
+    expect(session.api.createExternalTransfer).toHaveBeenCalledTimes(1)
+    expect(session.api.createExternalTransfer).toHaveBeenCalledWith(identity, {
+      ...input,
+      externalWallet: null,
+    })
+    expect(result.structuredContent).toEqual({
+      requestId: 'request-1',
+      signingUrl: 'http://localhost:5173/sign#single-action-token',
+      expiresAt: 1_800_000_000_000,
+    })
+    expect(result.content).toEqual([
+      { type: 'text', text: JSON.stringify(result.structuredContent) },
+    ])
+    expect(session.api.walletAddress).not.toHaveBeenCalled()
+    expect(session.api.payHttp).not.toHaveBeenCalled()
+  } finally {
+    await session.close()
+  }
+})
+
+test('external transfer preserves an expected wallet and an exact large amount', async () => {
+  const session = await connect([])
+  try {
+    const input = {
+      idempotencyKey: 'expected-wallet',
+      recipient: address,
+      amountLamports: '9007199254740993',
+      externalWallet: address,
+    }
+    const result = await session.client.callTool({
+      name: 'transfer_sol_external',
+      arguments: input,
+    })
+    expect(result.isError).not.toBe(true)
+    expect(session.api.createExternalTransfer).toHaveBeenCalledTimes(1)
+    expect(session.api.createExternalTransfer).toHaveBeenCalledWith(
+      identity,
+      input,
+    )
+  } finally {
+    await session.close()
+  }
+})
+
+test('external transfer rejects malformed intent before authorizing or creating a link', async () => {
+  const session = await connect([])
+  try {
+    const input = {
+      idempotencyKey: 'strict-input',
+      recipient: address,
+      amountLamports: '1',
+    }
+    for (const invalid of [
+      { ...input, idempotencyKey: '' },
+      { ...input, idempotencyKey: 'x'.repeat(129) },
+      { ...input, recipient: 'x'.repeat(31) },
+      { ...input, recipient: 'x'.repeat(45) },
+      { ...input, amountLamports: '0' },
+      { ...input, amountLamports: '-1' },
+      { ...input, amountLamports: '1.5' },
+      { ...input, amountLamports: '1e9' },
+      { ...input, amountLamports: '18446744073709551616' },
+      { ...input, amountLamports: 1 },
+      { ...input, network: 'mainnet' },
+      { ...input, instructions: [] },
+      { ...input, externalWallet: 1 },
+    ]) {
+      const result = await session.client.callTool({
+        name: 'transfer_sol_external',
+        arguments: invalid,
+      })
+      expect(result.isError).toBe(true)
+    }
+    expect(session.api.whoami).not.toHaveBeenCalled()
+    expect(session.api.createExternalTransfer).not.toHaveBeenCalled()
+  } finally {
+    await session.close()
+  }
+})
+
+test('a revoked grant cannot create an external signing link', async () => {
+  const session = await connect([], false)
+  try {
+    const result = await session.client.callTool({
+      name: 'transfer_sol_external',
+      arguments: {
+        idempotencyKey: 'revoked',
+        recipient: address,
+        amountLamports: '1',
+      },
+    })
+    expect(result.isError).toBe(true)
+    expect(result.structuredContent).toMatchObject({
+      error: { code: 'unauthorized', retryable: false },
+    })
+    expect(session.api.createExternalTransfer).not.toHaveBeenCalled()
+    expect(session.revokeClient).toHaveBeenCalledWith(identity)
+  } finally {
+    await session.close()
+  }
+})
+
+test('external transfer service failures do not expose capability or RPC details', async () => {
+  const session = await connect([])
+  session.api.createExternalTransfer.mockImplementationOnce(async () => {
+    throw new Error('private signing capability and rpc-key')
+  })
+  try {
+    const result = await session.client.callTool({
+      name: 'transfer_sol_external',
+      arguments: {
+        idempotencyKey: 'unavailable',
+        recipient: address,
+        amountLamports: '1',
+      },
+    })
+    expect(result.isError).toBe(true)
+    expect(result.structuredContent).toMatchObject({
+      error: { code: 'service_unavailable', retryable: true },
+    })
+    expect(JSON.stringify(result)).not.toContain('private signing capability')
+  } finally {
+    await session.close()
+  }
+})
+
 async function connect(
   scopes = ['helius:read'],
   active = true,
@@ -35,6 +178,13 @@ async function connect(
     sendFeedback: mock<ServerDependencies['api']['sendFeedback']>(
       async () => true,
     ),
+    createExternalTransfer: mock<
+      ServerDependencies['api']['createExternalTransfer']
+    >(async () => ({
+      requestId: 'request-1',
+      signingUrl: 'http://localhost:5173/sign#single-action-token',
+      expiresAt: 1_800_000_000_000,
+    })),
   }
   const revokeClient = mock<ServerDependencies['revokeClient']>(() => {})
   const server = createServer(
@@ -300,6 +450,7 @@ test('each client sees the catalog and only the tool families it was given', asy
       'list_catalog',
       'search_catalog',
       'send_feedback',
+      'transfer_sol_external',
       'whoami',
     ].sort(),
   )

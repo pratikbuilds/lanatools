@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as SignRouteImport } from './routes/sign'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as DashboardActivityRouteImport } from './routes/dashboard/activity'
@@ -24,6 +25,11 @@ const IndexRoute = IndexRouteImport.update({
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignRoute = SignRouteImport.update({
+  id: '/sign',
+  path: '/sign',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SignInRoute = SignInRouteImport.update({
@@ -50,6 +56,7 @@ const DashboardSettingsRoute = DashboardSettingsRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRouteWithChildren
+  '/sign': typeof SignRoute
   '/sign-in': typeof SignInRoute
   '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/settings': typeof DashboardSettingsRoute
@@ -57,6 +64,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/sign': typeof SignRoute
   '/sign-in': typeof SignInRoute
   '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/settings': typeof DashboardSettingsRoute
@@ -66,6 +74,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRouteWithChildren
+  '/sign': typeof SignRoute
   '/sign-in': typeof SignInRoute
   '/dashboard/activity': typeof DashboardActivityRoute
   '/dashboard/settings': typeof DashboardSettingsRoute
@@ -76,6 +85,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/dashboard'
+    | '/sign'
     | '/sign-in'
     | '/dashboard/activity'
     | '/dashboard/settings'
@@ -83,6 +93,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/sign'
     | '/sign-in'
     | '/dashboard/activity'
     | '/dashboard/settings'
@@ -91,6 +102,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/dashboard'
+    | '/sign'
     | '/sign-in'
     | '/dashboard/activity'
     | '/dashboard/settings'
@@ -100,6 +112,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DashboardRoute: typeof DashboardRouteWithChildren
+  SignRoute: typeof SignRoute
   SignInRoute: typeof SignInRoute
 }
 
@@ -117,6 +130,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sign': {
+      id: '/sign'
+      path: '/sign'
+      fullPath: '/sign'
+      preLoaderRoute: typeof SignRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sign-in': {
@@ -169,6 +189,7 @@ const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DashboardRoute: DashboardRouteWithChildren,
+  SignRoute: SignRoute,
   SignInRoute: SignInRoute,
 }
 export const routeTree = rootRouteImport

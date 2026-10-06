@@ -18,6 +18,8 @@ import type { ConsentInput, GrantIdentity } from './mcp-grants'
 import { paymentConfig } from './solana/network'
 import { callTool } from './tools/call-tool'
 import type { ProviderEnv } from './tools/providers'
+import { createExternalLink } from './transactions/external-link'
+import type { ExternalTransferInput } from '@lanatools/contracts'
 
 /** The MCP Worker's RPC surface for deleting OAuth tokens held in its KV. */
 export type McpTokenRevoker = {
@@ -29,6 +31,8 @@ export type McpTokenRevoker = {
 }
 
 export type McpEnv = ProviderEnv & {
+  SIGNING_LINK_ORIGIN?: string
+  SIGNING_LINK_TTL_SECONDS?: string
   DB: D1Database
   PRIVY_APP_ID: string
   PRIVY_APP_SECRET: string
@@ -127,6 +131,17 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
     return access === 'active'
       ? { userId: identity.userId, clientId: identity.clientId }
       : null
+  }
+
+  async createExternalTransfer(
+    identity: GrantIdentity,
+    input: ExternalTransferInput,
+  ) {
+    try {
+      return await createExternalLink(this.env, identity, input)
+    } catch {
+      throw new Error('Could not create the external SOL transfer link')
+    }
   }
 
   /** The user's payment wallet address, or null before it is set up. */
