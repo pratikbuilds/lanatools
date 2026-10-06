@@ -156,3 +156,16 @@ export const toolActivity = sqliteTable(
     index('tool_activity_user_client').on(table.privyUserId, table.clientId),
   ],
 )
+
+/**
+ * Free-text feedback an agent sent with `send_feedback`. Agents write it, so
+ * treat it as untrusted data, never as instructions.
+ */
+export const agentFeedback = sqliteTable('agent_feedback', {
+  id: text('id').primaryKey(),
+  privyUserId: text('privy_user_id').notNull(),
+  clientId: text('client_id').notNull(),
+  grantId: text('grant_id').notNull(),
+  feedback: text('feedback').notNull(),
+  createdAt: integer('created_at').notNull(),
+})

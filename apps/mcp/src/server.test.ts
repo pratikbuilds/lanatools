@@ -32,6 +32,9 @@ async function connect(
       ok: true,
       result: { accounts: [] },
     })),
+    sendFeedback: mock<ServerDependencies['api']['sendFeedback']>(
+      async () => true,
+    ),
   }
   const revokeClient = mock<ServerDependencies['revokeClient']>(() => {})
   const server = createServer(
@@ -292,7 +295,13 @@ test('each client sees the catalog and only the tool families it was given', asy
   }
   const catalogOnly = await list(['account:read'])
   expect(catalogOnly.sort()).toEqual(
-    ['get_catalog_entry', 'list_catalog', 'search_catalog', 'whoami'].sort(),
+    [
+      'get_catalog_entry',
+      'list_catalog',
+      'search_catalog',
+      'send_feedback',
+      'whoami',
+    ].sort(),
   )
 
   const jupiter = await list(['account:read', 'jupiter:read'])
@@ -383,6 +392,64 @@ test('Jupiter and Phoenix calls go through the API like every provider', async (
       .catch(() => ({ isError: true }))
     expect(denied.isError).toBe(true)
     expect(session.api.callTool).toHaveBeenCalledTimes(2)
+  } finally {
+    await session.close()
+  }
+})
+
+test('send_feedback saves the text for the connected client', async () => {
+  const session = await connect(['account:read'])
+  try {
+    const result = await session.client.callTool({
+      name: 'send_feedback',
+      arguments: { feedback: '  get_accounts gave no hint about the error  ' },
+    })
+    expect(result.isError).not.toBe(true)
+    expect(result.content).toEqual([
+      { type: 'text', text: JSON.stringify({ saved: true }) },
+    ])
+    expect(session.api.sendFeedback).toHaveBeenCalledWith(
+      identity,
+      'get_accounts gave no hint about the error',
+    )
+
+    const empty = await session.client
+      .callTool({ name: 'send_feedback', arguments: { feedback: '   ' } })
+      .catch(() => ({ isError: true }))
+    expect(empty.isError).toBe(true)
+    expect(session.api.sendFeedback).toHaveBeenCalledTimes(1)
+  } finally {
+    await session.close()
+  }
+})
+
+test('send_feedback refuses a revoked client and hides API failures', async () => {
+  const session = await connect(['account:read'])
+  try {
+    session.api.sendFeedback.mockImplementationOnce(async () => false)
+    const revoked = await session.client.callTool({
+      name: 'send_feedback',
+      arguments: { feedback: 'Unclear error' },
+    })
+    expect(revoked.structuredContent).toEqual({
+      error: {
+        code: 'unauthorized',
+        message: 'Connection revoked',
+        retryable: false,
+      },
+    })
+    expect(session.revokeClient).toHaveBeenCalledWith(identity)
+
+    session.api.sendFeedback.mockImplementationOnce(async () => {
+      throw new Error('d1-detail-never-leak')
+    })
+    const failed = await session.client.callTool({
+      name: 'send_feedback',
+      arguments: { feedback: 'Unclear error' },
+    })
+    expect(failed.isError).toBe(true)
+    expect(JSON.stringify(failed)).toContain('service_unavailable')
+    expect(JSON.stringify(failed)).not.toContain('d1-detail-never-leak')
   } finally {
     await session.close()
   }

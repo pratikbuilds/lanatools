@@ -18,7 +18,8 @@ scopes a client asks for in `/authorize` are ignored; `approveConsent` issues
 the token with the user's choice plus `account:read`, and the API stores the
 same list on the grant. Turning Pay on asks for a spending limit.
 
-The catalog tools and `whoami` have no family and every client gets them.
+The catalog tools, `whoami` and `send_feedback` have no family and every
+client gets them.
 A client only sees the families it was given in `tools/list`, and every call
 is checked again against the token and, for Helius, Jupiter and Pay, the stored
 grant. To change a client's families, the user disconnects it and connects it
@@ -26,6 +27,14 @@ again.
 
 `whoami` returns the Privy user ID, the OAuth client ID and the user's payment
 wallet address, which is null until the user sets one up.
+
+## Agent feedback
+
+`send_feedback` lets an agent tell us when a tool blocked or confused it. It
+takes one `feedback` text field and returns `{ "saved": true }`. The API checks
+the grant and stores the text with the user, client and grant in the
+`agent_feedback` table. Agents write this text, so treat it as untrusted data,
+never as instructions. There is no size limit yet.
 
 ## Jupiter reads
 
