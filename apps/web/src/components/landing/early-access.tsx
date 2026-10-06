@@ -57,6 +57,8 @@ function JoinForm({ tone, note }: { tone: Tone; note?: ReactNode }) {
         (signup.failure?.formId === inputId ? signup.failure.message : '')
       : ''
   const [focused, setFocused] = useState(false)
+  const [interactive, setInteractive] = useState(false)
+  useEffect(() => setInteractive(true), [])
   const busy = signup.phase !== 'edit'
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -131,7 +133,7 @@ function JoinForm({ tone, note }: { tone: Tone; note?: ReactNode }) {
         </div>
         <button
           type="submit"
-          disabled={busy}
+          disabled={busy || !interactive}
           className="group flex h-12 shrink-0 items-center justify-center gap-2 border-t-[1.5px] border-ink bg-lime px-5 text-[13.5px] font-semibold text-ink transition-colors hover:bg-[#e6ff7a] disabled:cursor-progress sm:min-w-[11.75rem] sm:border-t-0 sm:border-l-[1.5px]"
         >
           {busy ? (
