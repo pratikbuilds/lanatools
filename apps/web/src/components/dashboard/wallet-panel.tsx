@@ -3,7 +3,7 @@ import { address } from '@solana/kit'
 import { skipToken, useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { AnimatedCounter } from '#/components/ui/animated-counter'
-import { NETWORK, getWalletBalances } from '#/lib/solana'
+import { NETWORK, formatSol, getWalletBalances } from '#/lib/solana'
 import { DepositModal } from './deposit-modal'
 import { WalletAddress } from './wallet-address'
 import { SolanaShine } from './solana-shine'
@@ -62,15 +62,60 @@ function wholeCents(usdc: bigint) {
   return Number(usdc / 10_000n) / 100
 }
 
-/**
- * The balance and the ways to move it, as one panel: what is available on
- * the left, the wallet's address with Deposit and Withdraw on the right.
- */
+/** The balance and the ways to move it, for the signed-in user's wallet. */
 export function WalletPanel({ walletAddress }: { walletAddress: string }) {
   const balances = useWalletBalances(walletAddress)
   const [depositing, setDepositing] = useState(false)
   const [withdrawing, setWithdrawing] = useState(false)
 
+  return (
+    <>
+      <WalletPanelView
+        walletAddress={walletAddress}
+        balances={balances.data}
+        pending={balances.isPending}
+        failed={balances.isError}
+        onDeposit={() => setDepositing(true)}
+        onWithdraw={() => setWithdrawing(true)}
+      />
+      <DepositModal
+        open={depositing}
+        onClose={() => setDepositing(false)}
+        walletAddress={walletAddress}
+      />
+      {withdrawing && (
+        <WithdrawModal
+          onClose={() => setWithdrawing(false)}
+          walletAddress={walletAddress}
+          available={balances.data?.usdc ?? null}
+          sol={balances.data?.sol ?? null}
+        />
+      )}
+    </>
+  )
+}
+
+/**
+ * One panel: what is available on the left, the wallet's address with
+ * Deposit and Withdraw on the right. USDC is the figure; the SOL that pays
+ * withdrawal fees is a quiet line under it, so nobody meets the fee for the
+ * first time as a failure.
+ */
+export function WalletPanelView({
+  walletAddress,
+  balances,
+  pending,
+  failed,
+  onDeposit,
+  onWithdraw,
+}: {
+  walletAddress: string
+  balances: { usdc: bigint; sol: bigint } | undefined
+  pending: boolean
+  failed: boolean
+  onDeposit: () => void
+  onWithdraw: () => void
+}) {
   return (
     <section className="mt-5">
       <SplitPanel
@@ -78,21 +123,21 @@ export function WalletPanel({ walletAddress }: { walletAddress: string }) {
           <>
             <p className="d-label">Available</p>
             <p className="mt-4 mb-3 flex items-baseline font-mono text-[44px] leading-none font-semibold tracking-[-0.05em] sm:text-[58px]">
-              {balances.data ? (
+              {balances ? (
                 <AnimatedCounter
-                  value={wholeCents(balances.data.usdc)}
+                  value={wholeCents(balances.usdc)}
                   decimals={2}
                   prefix="$"
                 />
               ) : (
                 <span
                   className={
-                    balances.isPending
+                    pending
                       ? 'h-[0.95em] w-[3em] animate-pulse rounded-[8px] bg-panel-2'
                       : ''
                   }
                 >
-                  {balances.isPending ? '' : '—'}
+                  {pending ? '' : '—'}
                 </span>
               )}
               <small className="ml-2.5 text-[14px] font-medium tracking-normal text-fg-3">
@@ -107,8 +152,9 @@ export function WalletPanel({ walletAddress }: { walletAddress: string }) {
               role="alert"
               className="mt-2 text-[12.5px] text-bad empty:hidden"
             >
-              {balances.isError ? 'Could not load balances.' : ''}
+              {failed ? 'Could not load balances.' : ''}
             </p>
+            <FeeBalance sol={balances?.sol ?? null} pending={pending} />
             <span className="absolute right-[22px] bottom-[18px] text-fg">
               <SolanaShine size={64} />
             </span>
@@ -128,36 +174,52 @@ export function WalletPanel({ walletAddress }: { walletAddress: string }) {
               <button
                 type="button"
                 className="d-btn d-btn-primary"
-                onClick={() => setDepositing(true)}
+                onClick={onDeposit}
               >
                 <span aria-hidden="true">↓</span> Deposit
               </button>
-              <button
-                type="button"
-                className="d-btn"
-                onClick={() => setWithdrawing(true)}
-              >
+              <button type="button" className="d-btn" onClick={onWithdraw}>
                 <span aria-hidden="true">↑</span> Withdraw
               </button>
             </div>
           </>
         }
       />
-
-      <DepositModal
-        open={depositing}
-        onClose={() => setDepositing(false)}
-        walletAddress={walletAddress}
-      />
-
-      {withdrawing && (
-        <WithdrawModal
-          onClose={() => setWithdrawing(false)}
-          walletAddress={walletAddress}
-          available={balances.data?.usdc ?? null}
-          sol={balances.data?.sol ?? null}
-        />
-      )}
     </section>
+  )
+}
+
+/**
+ * The SOL that pays withdrawal fees, as one line under the balance. A wallet
+ * with none is told here, in the card, before it tries to withdraw.
+ */
+function FeeBalance({
+  sol,
+  pending,
+}: {
+  sol: bigint | null
+  pending: boolean
+}) {
+  const empty = sol === 0n
+  return (
+    <dl className="mt-5 flex max-w-[330px] flex-wrap items-baseline gap-x-2.5 gap-y-0.5 border-t border-dashed border-line-2 pt-3.5 text-[13px]">
+      <dt className="text-fg-3">Network fees</dt>
+      <dd className={`font-mono font-medium ${empty ? 'text-bad' : ''}`}>
+        {pending ? (
+          <span className="inline-block h-[0.8em] w-[4em] animate-pulse rounded-[4px] bg-panel-2 align-middle" />
+        ) : sol === null ? (
+          '—'
+        ) : (
+          `${formatSol(sol)} SOL`
+        )}
+      </dd>
+      <dd
+        className={`basis-full text-[12.5px] sm:basis-auto ${empty ? 'text-bad' : 'text-fg-3'}`}
+      >
+        {empty
+          ? 'Add SOL to this wallet to withdraw.'
+          : 'Paid from this wallet when you withdraw.'}
+      </dd>
+    </dl>
   )
 }

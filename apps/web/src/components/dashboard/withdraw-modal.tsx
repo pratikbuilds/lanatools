@@ -2,7 +2,7 @@ import { useSignTransaction, useWallets } from '@privy-io/react-auth/solana'
 import { isAddress } from '@solana/kit'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { NETWORK, SOL_DECIMALS, USDC_DECIMALS, formatUnits } from '#/lib/solana'
+import { NETWORK, USDC_DECIMALS, formatUnits } from '#/lib/solana'
 import {
   formatUsdcAmount,
   parseUsdcAmount,
@@ -52,20 +52,18 @@ function checkForm(
 }
 
 /**
- * What the wallet can pay the network fee with. The fee comes out of the
- * wallet's own SOL, so with none a withdrawal is certain to fail; the user
- * is told before they try, not by the failure.
+ * Whether the wallet can pay the network fee. The fee comes out of its own
+ * SOL, so with none a withdrawal is certain to fail and the form is held.
  */
 export function feeNote(sol: bigint | null) {
-  if (sol === null) return { blocked: false, text: 'Checking the SOL balance…' }
   if (sol === 0n)
     return {
       blocked: true,
-      text: 'This wallet has no SOL. Withdrawals pay the network fee in SOL, so send a little SOL to this wallet’s address first.',
+      text: 'This wallet has no SOL to pay the network fee. Add SOL to it first.',
     }
   return {
     blocked: false,
-    text: `The network fee is paid in SOL from this wallet, which holds ${formatUnits(sol, SOL_DECIMALS, { maxFraction: 4 })} SOL.`,
+    text: 'The network fee is paid in SOL from this wallet.',
   }
 }
 

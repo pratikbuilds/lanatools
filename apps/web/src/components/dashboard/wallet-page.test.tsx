@@ -39,6 +39,7 @@ test('once the payment wallet exists, the page shows it for deposits', () => {
   expect(html).toContain('Hfv7…pChY')
   expect(html).toContain('>jpV3</strong>')
   expect(html).toContain('Withdraw')
+  expect(html).toContain('Network fees')
 })
 
 test('connected clients are on the page with or without a wallet', () => {
