@@ -52,7 +52,7 @@ function detail(client: McpClient, revokeFailed = false) {
 test('each connected client shows who it is and when it was used', () => {
   const html = table([claude])
   expect(html).toContain('Claude')
-  expect(html).toContain('claude.ai')
+  expect(html).not.toContain('claude.ai')
   expect(html).toContain('2 hours ago')
   expect(html).toContain('Manage')
 })
@@ -62,7 +62,10 @@ test('a client without a stored name or use is still identifiable', () => {
     { ...claude, clientName: null, redirectHost: null, lastUsedAt: null },
   ])
   expect(html).toContain('Unknown client')
-  expect(html).toContain('client-1')
+  expect(html).not.toContain('client-1')
+  expect(detail({ ...claude, clientName: null, redirectHost: null })).toContain(
+    'client-1',
+  )
   expect(html).toContain('Not used yet')
 })
 
@@ -133,7 +136,7 @@ test('the drawer lists the tool families a client may use, and always the catalo
   expect(detail(claude)).not.toContain('Helius, ')
 })
 
-test('each client shows its own credits as estimates, whether or not it can pay', () => {
+test('credits and host details stay in Manage rather than the client row', () => {
   const html = table([
     { ...claude, estimatedCredits: 1 },
     {
@@ -143,11 +146,12 @@ test('each client shows its own credits as estimates, whether or not it can pay'
       estimatedCredits: 1_234,
     },
   ])
-  expect(html).toContain('1 estimated credit')
-  expect(html).toContain('1,234 estimated credits')
+  expect(html).not.toContain('estimated credit')
+  expect(html).not.toContain('claude.ai')
   expect(html).toContain('$0.02')
-  expect(html).toContain('Helius does not report a per-call cost')
+  expect(html).not.toContain('Helius does not report a per-call cost')
   const clientDetail = detail({ ...claude, estimatedCredits: 1_234 })
+  expect(clientDetail).toContain('claude.ai')
   expect(clientDetail).toContain('Estimated credits')
   expect(clientDetail).toContain('1,234')
   expect(clientDetail).toContain('Helius does not report a per-call cost')

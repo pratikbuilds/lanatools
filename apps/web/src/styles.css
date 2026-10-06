@@ -602,22 +602,20 @@ body:has(.dash[data-theme='dark']) {
     }
   }
 
-  /* Spent of limit as a row of ticks. */
-  .d-ticks {
-    display: flex;
-    gap: 2px;
-  }
-  .d-ticks i {
-    flex: 1;
-    height: 12px;
-    border-radius: 2px;
+  .d-usage-bar {
+    display: block;
+    height: 4px;
+    overflow: hidden;
+    border-radius: 999px;
     background: var(--d-panel-2);
   }
-  .d-ticks i[data-on] {
+  .d-usage-bar i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
     background: var(--d-tick);
   }
-  /* Only a warning colours the ticks; otherwise they stay brand. */
-  .d-ticks:is([data-state='near'], [data-state='full']) i[data-on] {
+  .d-usage-bar:is([data-state='near'], [data-state='full']) i {
     background: var(--d-state);
   }
 
