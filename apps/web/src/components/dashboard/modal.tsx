@@ -8,6 +8,7 @@ import type { ReactNode } from 'react'
 export function Modal({
   open,
   onClose,
+  closable = true,
   title,
   detail,
   size = 'md',
@@ -15,6 +16,11 @@ export function Modal({
 }: {
   open: boolean
   onClose: () => void
+  /**
+   * False holds the dialog open: no Close button, and Escape and clicks
+   * outside do nothing, for a task that must not be abandoned midway.
+   */
+  closable?: boolean
   title: string
   detail: string
   /**
@@ -37,10 +43,17 @@ export function Modal({
     <dialog
       ref={ref}
       aria-label={title}
-      onClose={onClose}
+      onCancel={(event) => {
+        if (!closable) event.preventDefault()
+      }}
+      // The browser may still close it on a repeated Escape; reopen it.
+      onClose={() => {
+        if (closable) onClose()
+        else ref.current?.showModal()
+      }}
       // A click on the dialog itself, not its content, is a click outside.
       onClick={(event) => {
-        if (event.target === event.currentTarget) onClose()
+        if (closable && event.target === event.currentTarget) onClose()
       }}
       className={`d-modal m-auto rounded-[14px] ${size === 'lg' ? 'w-[min(46rem,calc(100vw-2rem))] md:h-[min(36rem,calc(100dvh-3rem))]' : 'w-[min(26rem,calc(100vw-2rem))]'} border border-line bg-panel p-0 text-fg shadow-(--d-shadow) backdrop:bg-(--d-scrim)`}
     >
@@ -55,9 +68,15 @@ export function Modal({
                 {title}
               </h2>
             </div>
-            <button type="button" className="d-btn d-btn-sm" onClick={onClose}>
-              Close
-            </button>
+            {closable && (
+              <button
+                type="button"
+                className="d-btn d-btn-sm"
+                onClick={onClose}
+              >
+                Close
+              </button>
+            )}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-5 pb-6">
             {children}
