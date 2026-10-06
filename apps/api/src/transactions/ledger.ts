@@ -47,7 +47,8 @@ const ownsAttempt = (identity: GrantIdentity) => sql`exists (
     and ${ownsRequest(identity)}
 )`
 
-async function loadRequest(
+/** Trusted execution code only; includes canonical intent and ownership. */
+export async function getRequestRecord(
   db: D1Database,
   identity: GrantIdentity,
   requestId: string,
@@ -80,7 +81,7 @@ export async function getRequest(
   identity: GrantIdentity,
   requestId: string,
 ) {
-  const request = await loadRequest(db, identity, requestId)
+  const request = await getRequestRecord(db, identity, requestId)
   const attempt = await getLatestAttempt(db, identity, requestId)
   return safeResult(request, attempt)
 }
@@ -91,7 +92,7 @@ export async function getLatestAttempt(
   identity: GrantIdentity,
   requestId: string,
 ) {
-  await loadRequest(db, identity, requestId)
+  await getRequestRecord(db, identity, requestId)
   return drizzle(db)
     .select()
     .from(transactionAttempt)

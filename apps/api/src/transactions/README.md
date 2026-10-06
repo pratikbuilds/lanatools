@@ -1,7 +1,8 @@
 # Durable named transactions
 
 This module stores named intent and exact transaction attempts. It has no public
-execution route or MCP tool and does not sign, broadcast or call RPC. The first
+execution route or MCP tool and does not sign or broadcast. SOL preparation
+reads devnet genesis and blockhash from the configured RPC. The first
 input contract is `transfer_sol`, with exact positive u64 lamports, an explicit
 `embedded` or `external` path and a client-scoped idempotency key.
 
@@ -100,3 +101,26 @@ Payment/read activity and budgets are separate tables and remain unchanged. The
 transaction request's originating grant is historical text because reconnecting
 replaces the mutable current grant ID. Progress is derived from the latest attempt,
 so request and attempt terminal statuses cannot diverge.
+
+## Native SOL preparation
+
+`prepareSolTransfer` loads the active client's stored request and bound source,
+claims preparation, verifies configured devnet genesis, and requests a confirmed
+blockhash with its context slot and last-valid block height through bounded Kit
+RPC calls. It stores the final message before returning safe progress. Unknown
+external sources must bind first; agents cannot supply source or RPC overrides.
+No signature or network submission occurs.
+
+`sol-transfer.ts` supports only a v0 message with static accounts, one source/payer
+signer and one System Program SOL transfer. Amounts remain positive u64 decimal
+strings through BigInt. Whole-message comparison with the canonical supported
+shape rejects changed recipients/amounts, extra instructions/signers/accounts,
+lookup tables, nonces, fee overrides and trailing bytes. Self-transfers are
+refused. The outgoing permission does not expand this supported shape; the
+embedded executor must recheck it immediately before signing.
+
+Preparation errors preserve the durable claim and release no bytes. A trusted
+recovery operation may abandon a still-unprepared attempt; response loss after a
+prepared write requires inspecting persisted state rather than blindly rebuilding.
+The local tests include real D1 and a disposable HTTP RPC fixture exercising the
+production Kit genesis/blockhash reader. They do not contact a Solana cluster.
