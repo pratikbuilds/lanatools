@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { formatUsd } from '@lanatools/contracts'
-import { CREDIT_ESTIMATE_NOTE, formatCredits } from '#/lib/activity'
+import { CREDIT_ESTIMATE_NOTE } from '#/lib/activity'
 import type { McpClient } from '@lanatools/contracts'
 import { revokeMcpClient, setMcpClientLimit, timeAgo } from '#/lib/mcp-clients'
 import { Drawer, DrawerFacts, DrawerHeader } from './drawer'
@@ -27,12 +27,11 @@ function toolsOf(client: McpClient) {
 }
 
 const ROW =
-  'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-3.5 md:grid-cols-[minmax(10rem,1.5fr)_7.5rem_minmax(9rem,1.7fr)_5rem_6.5rem_4.9rem] md:gap-4 md:px-4'
+  'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-3.5 md:grid-cols-[minmax(9rem,1.5fr)_minmax(9rem,1.7fr)_5.5rem_9.5rem_4.9rem] md:gap-4 md:px-4'
 // A client used this recently is shown as working now.
 const ACTIVE_MS = 10 * 60_000
 // Rows shown before the list folds.
 const SHOWN = 6
-const TICKS = 24
 
 function clientName(client: McpClient) {
   return client.clientName ?? 'Unknown client'
@@ -250,10 +249,9 @@ export function ClientTable({
         className={`${ROW} d-th hidden min-h-9 md:grid`}
       >
         {head('name', 'Client', 'text-left')}
-        <span className="d-label">Status</span>
-        <span className="d-label">Spent of limit</span>
-        {head('left', 'Left', 'text-left')}
-        {head('last', 'Last used', 'text-left')}
+        <span className="d-label">Spend / limit</span>
+        {head('left', 'Remaining', 'text-left')}
+        {head('last', 'Activity', 'text-left')}
         <span />
       </div>
       {shown.length === 0 ? (
@@ -308,29 +306,13 @@ function ClientRow({
         <b className="block truncate font-semibold" title={clientName(client)}>
           {clientName(client)}
         </b>
-        {/* Clients choose their own names; the host is what the user approved. */}
-        <span className="block truncate font-mono text-[11.5px] text-fg-3">
-          {client.redirectHost ?? client.clientId}
-        </span>
-        <span
-          className="block font-mono text-[11px] text-fg-3"
-          title={CREDIT_ESTIMATE_NOTE}
-        >
-          {formatCredits(client.estimatedCredits)}
-        </span>
-      </span>
-      <span className="col-start-1 row-start-3 md:col-auto md:row-auto">
-        <span className="d-status" data-state={state}>
-          <i />
-          {STATE_LABELS[state]}
-        </span>
       </span>
       {canPay(client) ? (
         <>
           <span className="col-span-2 row-start-2 min-w-0 md:col-span-1 md:row-auto">
-            <UsageTicks client={client} state={state} />
+            <UsageBar client={client} state={state} />
             <span className="mt-1 block font-mono text-[11.5px] text-fg-3">
-              {formatUsd(client.spentMicroUsd)} of{' '}
+              {formatUsd(client.spentMicroUsd)} /{' '}
               {formatUsd(client.limitMicroUsd)}
             </span>
           </span>
@@ -340,7 +322,7 @@ function ClientRow({
             {formatUsd(leftOf(client))}
             <span className="text-[12px] font-normal text-fg-3 md:hidden">
               {' '}
-              left
+              remaining
             </span>
           </span>
         </>
@@ -354,8 +336,16 @@ function ClientRow({
           </span>
         </>
       )}
-      <span className="hidden text-[13px] whitespace-nowrap text-fg-3 md:block">
-        {client.lastUsedAt ? timeAgo(client.lastUsedAt, now) : 'Not used yet'}
+      <span className="col-span-2 row-start-3 flex flex-wrap items-center gap-x-2 gap-y-1 md:col-span-1 md:row-auto md:flex-col md:items-start">
+        <span className="d-status" data-state={state}>
+          <i />
+          {STATE_LABELS[state]}
+        </span>
+        <span className="text-[11.5px] text-fg-3">
+          {client.lastUsedAt !== null
+            ? `Last used ${timeAgo(client.lastUsedAt, now)}`
+            : 'Not used yet'}
+        </span>
       </span>
       <span className="hidden md:block">
         <span className="d-btn d-btn-sm">Manage</span>
@@ -364,7 +354,7 @@ function ClientRow({
   )
 }
 
-function UsageTicks({
+function UsageBar({
   client,
   state,
 }: {
@@ -372,17 +362,11 @@ function UsageTicks({
   state: ClientState
 }) {
   const share = client.limitMicroUsd
-    ? Math.min(1, client.spentMicroUsd / client.limitMicroUsd)
+    ? Math.max(0, Math.min(1, client.spentMicroUsd / client.limitMicroUsd))
     : 1
-  const on =
-    client.spentMicroUsd > 0 || !client.limitMicroUsd
-      ? Math.max(1, Math.round(share * TICKS))
-      : 0
   return (
-    <span aria-hidden="true" className="d-ticks" data-state={state}>
-      {Array.from({ length: TICKS }, (_, tick) => (
-        <i key={tick} data-on={tick < on ? '' : undefined} />
-      ))}
+    <span aria-hidden="true" className="d-usage-bar" data-state={state}>
+      <i style={{ width: `${share * 100}%` }} />
     </span>
   )
 }
