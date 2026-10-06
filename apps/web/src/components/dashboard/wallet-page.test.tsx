@@ -4,6 +4,7 @@ import { renderToString } from 'react-dom/server'
 import { DashboardSessionProvider } from './session'
 import { AccountMenu } from './shell'
 import { WalletPage } from './wallet-page'
+import { WalletPanelView } from './wallet-panel'
 
 const embedded = 'F8ypHfv7gs9JiHVnb51g7aVA2tmmC9ZpF5FdpChYjpV3'
 
@@ -39,7 +40,6 @@ test('once the payment wallet exists, the page shows it for deposits', () => {
   expect(html).toContain('Hfv7…pChY')
   expect(html).toContain('>jpV3</strong>')
   expect(html).toContain('Withdraw')
-  expect(html).toContain('Network fees')
 })
 
 test('connected clients are on the page with or without a wallet', () => {
@@ -65,4 +65,20 @@ test('the account control names who is signed in', () => {
   expect(html).toContain('pratik@example.com')
   expect(html).toContain('aria-label="Account, pratik@example.com"')
   expect(html).toContain('>P<')
+})
+
+test('the SOL that pays withdrawal fees sits beside the balance', () => {
+  const view = (sol: bigint) =>
+    renderToString(
+      <WalletPanelView
+        walletAddress={embedded}
+        balances={{ usdc: 10_650_000n, sol }}
+        pending={false}
+        failed={false}
+        onDeposit={() => {}}
+        onWithdraw={() => {}}
+      />,
+    )
+  expect(view(100_000_000n)).toContain('0.1 SOL')
+  expect(view(0n)).toContain('Add SOL to this wallet to withdraw.')
 })

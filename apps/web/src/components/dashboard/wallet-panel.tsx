@@ -98,8 +98,8 @@ export function WalletPanel({ walletAddress }: { walletAddress: string }) {
 /**
  * One panel: what is available on the left, the wallet's address with
  * Deposit and Withdraw on the right. USDC is the figure; the SOL that pays
- * withdrawal fees is a quiet line under it, so nobody meets the fee for the
- * first time as a failure.
+ * withdrawal fees sits beside it in small type, so nobody meets the fee for
+ * the first time as a failure.
  */
 export function WalletPanelView({
   walletAddress,
@@ -122,7 +122,7 @@ export function WalletPanelView({
         left={
           <>
             <p className="d-label">Available</p>
-            <p className="mt-4 mb-3 flex items-baseline font-mono text-[44px] leading-none font-semibold tracking-[-0.05em] sm:text-[58px]">
+            <p className="mt-4 mb-3 flex flex-wrap items-baseline font-mono text-[44px] leading-none font-semibold tracking-[-0.05em] sm:text-[58px]">
               {balances ? (
                 <AnimatedCounter
                   value={wholeCents(balances.usdc)}
@@ -143,6 +143,7 @@ export function WalletPanelView({
               <small className="ml-2.5 text-[14px] font-medium tracking-normal text-fg-3">
                 USDC
               </small>
+              {balances && <FeeBalance sol={balances.sol} />}
             </p>
             <p className="max-w-[330px] text-fg-2">
               Your connected clients pay for tools from this balance, each
@@ -154,7 +155,6 @@ export function WalletPanelView({
             >
               {failed ? 'Could not load balances.' : ''}
             </p>
-            <FeeBalance sol={balances?.sol ?? null} pending={pending} />
             <span className="absolute right-[22px] bottom-[18px] text-fg">
               <SolanaShine size={64} />
             </span>
@@ -190,36 +190,25 @@ export function WalletPanelView({
 }
 
 /**
- * The SOL that pays withdrawal fees, as one line under the balance. A wallet
- * with none is told here, in the card, before it tries to withdraw.
+ * The SOL that pays withdrawal fees, beside the balance in the same small
+ * type as its unit. A wallet with none is told here, in red, before it
+ * tries to withdraw.
  */
-function FeeBalance({
-  sol,
-  pending,
-}: {
-  sol: bigint | null
-  pending: boolean
-}) {
+function FeeBalance({ sol }: { sol: bigint }) {
   const empty = sol === 0n
   return (
-    <dl className="mt-5 flex max-w-[330px] flex-wrap items-baseline gap-x-2.5 gap-y-0.5 border-t border-dashed border-line-2 pt-3.5 text-[13px]">
-      <dt className="text-fg-3">Network fees</dt>
-      <dd className={`font-mono font-medium ${empty ? 'text-bad' : ''}`}>
-        {pending ? (
-          <span className="inline-block h-[0.8em] w-[4em] animate-pulse rounded-[4px] bg-panel-2 align-middle" />
-        ) : sol === null ? (
-          '—'
-        ) : (
-          `${formatSol(sol)} SOL`
-        )}
-      </dd>
-      <dd
-        className={`basis-full text-[12.5px] sm:basis-auto ${empty ? 'text-bad' : 'text-fg-3'}`}
-      >
-        {empty
+    <small
+      title={
+        empty
           ? 'Add SOL to this wallet to withdraw.'
-          : 'Paid from this wallet when you withdraw.'}
-      </dd>
-    </dl>
+          : 'Pays the network fee when you withdraw.'
+      }
+      className={`ml-2.5 text-[14px] font-medium tracking-normal ${empty ? 'text-bad' : 'text-fg-3'}`}
+    >
+      <span aria-hidden="true" className="mr-2.5 text-fg-3">
+        ·
+      </span>
+      {`${formatSol(sol)} SOL`}
+    </small>
   )
 }
