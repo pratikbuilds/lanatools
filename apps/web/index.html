@@ -67,7 +67,9 @@
       onto the app instead of the landing page's blue. React replaces it.
     -->
     <style>
-      html[data-boot] body:has(.boot) {
+      /* Keep the theme through React startup until a page main is mounted. */
+      html[data-boot] body:has(.boot),
+      html[data-boot] body:not(:has(#app main)) {
         margin: 0;
         background: var(--b-bg);
       }
