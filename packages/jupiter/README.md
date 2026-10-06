@@ -100,6 +100,7 @@ manual handling and rejects redirects. Live legacy DCA additionally requires
 provider differences have regression coverage. Its initially failing live case
 passed after these corrections.
 
-The key is configured only in the ignored local API Worker `.dev.vars`.
+During this check the key was configured only in the ignored local API Worker
+`.dev.vars`; `bun run dev` now reads it from the root `.env`.
 Production Worker configuration and the deployed browser OAuth flow remain
 unverified. No transactions were created or submitted.

@@ -19,6 +19,10 @@ import { checkLocalConfig, checkLocalEnv, parseUsdc } from './local-env'
 const ROOT = join(import.meta.dir, '..')
 const ENV_FILE = join(ROOT, '.env')
 const STATE = join(ROOT, 'apps/api/.wrangler/state')
+// Where the two Workers find each other. Wrangler's shared registry keeps
+// entries from dev servers that were killed, pointing at dead ports, and the
+// Workers can use them for about a minute after a restart.
+const REGISTRY = join(ROOT, 'apps/api/.wrangler/registry')
 const API_CONFIG = 'apps/api/wrangler.local.jsonc'
 const MCP_CONFIG = 'apps/mcp/wrangler.local.jsonc'
 const WRANGLER = join(ROOT, 'node_modules/.bin/wrangler')
@@ -63,7 +67,13 @@ const SERVICES = [
     ports: [5173],
     cwd: join(ROOT, 'apps/web'),
     cmd: [
-      join(ROOT, 'apps/web/node_modules/.bin/vite'),
+      // The web package's own copy with isolated installs, else the hoisted one.
+      Bun.which('vite', {
+        PATH: [
+          join(ROOT, 'apps/web/node_modules/.bin'),
+          join(ROOT, 'node_modules/.bin'),
+        ].join(':'),
+      }) ?? 'vite',
       '--port',
       '5173',
       '--strictPort',
@@ -107,10 +117,13 @@ function migrate() {
   )
 }
 
+/** Only a taken port counts; a host without that address family is free. */
 function canListen(port: number, host: string) {
   return new Promise<boolean>((resolve) => {
     const server = createServer()
-    server.once('error', () => resolve(false))
+    server.once('error', (error: NodeJS.ErrnoException) =>
+      resolve(error.code !== 'EADDRINUSE'),
+    )
     server.listen(port, host, () => server.close(() => resolve(true)))
   })
 }
@@ -177,12 +190,17 @@ async function start() {
     fail(`Port ${busy.join(', ')} is in use; stop what is using it`)
 
   // Vite lets process variables override .env files, so the browser and the
-  // API always use the same Privy app.
+  // API always use the same Privy app. The dashboard always proxies to the
+  // local API, whatever API_PROXY_TARGET the shell has.
   const env = {
     ...process.env,
     VITE_PRIVY_APP_ID: secrets.PRIVY_APP_ID,
     VITE_SOLANA_NETWORK: 'devnet',
+    API_PROXY_TARGET: 'http://127.0.0.1:3000',
+    WRANGLER_REGISTRY_PATH: REGISTRY,
   }
+  // The ports are free, so no running Worker still owns an entry here.
+  rmSync(REGISTRY, { recursive: true, force: true })
   migrate()
   run(['bun', 'run', '--cwd', 'apps/mcp', 'build'], env)
 

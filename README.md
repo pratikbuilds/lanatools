@@ -56,8 +56,9 @@ Other commands:
 - `bun run dev:reset` clears the local database and OAuth state, then applies
   migrations. Stop `bun run dev` first.
 - `bun run dev:fund <wallet> <usdc>` sends devnet USDC from the default Solana
-  CLI wallet, for example to the payment wallet the dashboard shows. It checks
-  that the CLI's RPC is devnet first.
+  CLI wallet, for example to the payment wallet the dashboard shows. It uses
+  `DEVNET_RPC_URL` from `.env`, or Solana's public devnet RPC, and checks that
+  it serves devnet first.
 
 Paid calls go to the hosted devnet merchant,
 `https://devnet-merchant-production.up.railway.app/api/v1/fixed` (0.01 USDC
