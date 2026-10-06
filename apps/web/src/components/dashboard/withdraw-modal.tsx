@@ -21,9 +21,18 @@ function useWalletSigner(walletAddress: string): SignTransaction | null {
   const { signTransaction } = useSignTransaction()
   const wallet = wallets.find((w) => w.address === walletAddress)
   if (!wallet) return null
+  // The modal is already the confirmation: the user typed the address and
+  // amount and pressed Withdraw. Privy's own prompt would also sit behind
+  // this native modal dialog, where it cannot be clicked.
   return async (transaction) =>
-    (await signTransaction({ transaction, wallet, chain: NETWORK.chain }))
-      .signedTransaction
+    (
+      await signTransaction({
+        transaction,
+        wallet,
+        chain: NETWORK.chain,
+        options: { uiOptions: { showWalletUIs: false } },
+      })
+    ).signedTransaction
 }
 
 /** What is wrong with the form, or null when it can be sent. */
