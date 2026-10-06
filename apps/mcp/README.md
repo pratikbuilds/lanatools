@@ -44,8 +44,8 @@ limit or wallet-signature flow.
 
 Definitions and REST adapters live in `packages/jupiter`. Like every provider
 tool, a call goes through the API's `callTool`, which checks the current stored
-grant/scope, supplies `JUPITER_API_KEY` and records the call in activity. Put the key in ignored
-`apps/api/.dev.vars` locally. For the hosted API, provision it with
+grant/scope, supplies `JUPITER_API_KEY` and records the call in activity. Put the key in the
+root `.env` locally. For the hosted API, provision it with
 `bunx wrangler secret put JUPITER_API_KEY -c apps/api/wrangler.jsonc`.
 No key is stored in the MCP Worker, browser or agent arguments.
 
@@ -98,7 +98,7 @@ move no money.
   they reference.
 
 Set the key with `wrangler secret put TYPESAFE_API_KEY -c apps/mcp/wrangler.jsonc`,
-or in `apps/mcp/.dev.vars` for local runs.
+or in the root `.env` for local runs.
 
 Catalog text is third-party data and listed prices are hints. Catalog
 endpoints are paid on Solana mainnet, so these tools only discover them for
@@ -190,17 +190,10 @@ new grant ID, so tokens issued before the revocation never work again.
 
 ## Local run
 
-1. Put `PRIVY_APP_ID` and `PRIVY_APP_SECRET` in ignored
-   `apps/api/.dev.vars`. For payments, run
-   `bun --env-file=.env apps/api/scripts/create-payment-signer.ts` once and add
-   its `PRIVY_PAYMENT_SIGNER_ID` and `PRIVY_PAYMENT_SIGNER_KEY`, plus a devnet
-   `SOLANA_RPC_URL` from an RPC provider. The public
-   `api.devnet.solana.com` answers Workers with HTTP 403. Put the same public app ID as `VITE_PRIVY_APP_ID` in
-   ignored `apps/mcp/consent/.env.local`.
-2. Run `bun run --cwd apps/api db:migrate:local`.
-3. Run `bun run dev:mcp`. This builds the consent page and starts the API and
-   MCP Workers locally.
-4. Run `bun run --cwd apps/mcp smoke:local`. The smoke test checks OAuth
+1. Fill in the root `.env` and run `bun run dev`, as the root README
+   describes. It builds the consent page with the same Privy app ID and starts
+   the API and MCP Workers locally.
+2. Run `bun run --cwd apps/mcp smoke:local`. The smoke test checks OAuth
    discovery, client registration, consent, denial, and replay protection.
 
 For a full signed-in check, run `bun run --cwd apps/mcp verify:local` and open
@@ -212,10 +205,9 @@ Set `LANATOOLS_MCP_CLIENT_ID` to reuse a previously registered local client.
 
 ### Verify every Solana tool through OAuth on devnet
 
-Use the local API configuration (`SOLANA_NETWORK=devnet`) and its ignored
-`.dev.vars` with an existing Helius key and devnet RPC URL, then apply local D1
-migrations. Capture the local Workers' logs with
-`bun run dev:mcp 2>&1 | tee /tmp/lanatools-workers.log`.
+Use the local API configuration (`SOLANA_NETWORK=devnet`) with a Helius
+devnet RPC URL as `SOLANA_RPC_URL` in the root `.env`. Capture the local
+Workers' logs with `bun run dev 2>&1 | tee /tmp/lanatools-workers.log`.
 
 Run `bun run --cwd apps/mcp verify:local -- --chain-read` with:
 
@@ -238,7 +230,7 @@ shaped output, identical JSON text/structured content, and the local D1 ledger:
 exactly one successful `devnet` row with estimated credits per call.
 Documented DAS not-found/no-assets responses may legitimately use zero credits;
 RPC and history smoke fixtures must have positive credits.
-The D1 query uses the same local persistence directory as `dev:mcp` and never
+The D1 query uses the same local persistence directory as `bun run dev` and never
 queries a remote database.
 
 Tool results and captured Worker logs are scanned for the exact key and
