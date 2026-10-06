@@ -121,8 +121,8 @@ export function WalletPanel({ walletAddress }: { walletAddress: string }) {
               <WalletAddress walletAddress={walletAddress} compact />
             </div>
             <p className="mt-3 text-[12.5px] text-fg-3">
-              Only send USDC on {NETWORK.label}. Other tokens or networks won’t
-              show up.
+              Send USDC on {NETWORK.label}, plus a little SOL for withdrawal
+              fees. Other tokens or networks won’t show up.
             </p>
             <div className="mt-5 flex gap-2">
               <button
@@ -155,6 +155,7 @@ export function WalletPanel({ walletAddress }: { walletAddress: string }) {
           onClose={() => setWithdrawing(false)}
           walletAddress={walletAddress}
           available={balances.data?.usdc ?? null}
+          sol={balances.data?.sol ?? null}
         />
       )}
     </section>

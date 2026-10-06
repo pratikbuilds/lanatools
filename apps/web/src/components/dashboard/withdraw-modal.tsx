@@ -2,7 +2,7 @@ import { useSignTransaction, useWallets } from '@privy-io/react-auth/solana'
 import { isAddress } from '@solana/kit'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { NETWORK, formatUnits, USDC_DECIMALS } from '#/lib/solana'
+import { NETWORK, SOL_DECIMALS, USDC_DECIMALS, formatUnits } from '#/lib/solana'
 import {
   formatUsdcAmount,
   parseUsdcAmount,
@@ -52,6 +52,24 @@ function checkForm(
 }
 
 /**
+ * What the wallet can pay the network fee with. The fee comes out of the
+ * wallet's own SOL, so with none a withdrawal is certain to fail; the user
+ * is told before they try, not by the failure.
+ */
+export function feeNote(sol: bigint | null) {
+  if (sol === null) return { blocked: false, text: 'Checking the SOL balance…' }
+  if (sol === 0n)
+    return {
+      blocked: true,
+      text: 'This wallet has no SOL. Withdrawals pay the network fee in SOL, so send a little SOL to this wallet’s address first.',
+    }
+  return {
+    blocked: false,
+    text: `The network fee is paid in SOL from this wallet, which holds ${formatUnits(sol, SOL_DECIMALS, { maxFraction: 4 })} SOL.`,
+  }
+}
+
+/**
  * Withdraws USDC to another address, in a centred modal. The transfer is
  * built by the API, signed by the user's wallet here and sent by the API.
  * Mount it to open it; unmounting clears the form and the last result.
@@ -60,11 +78,14 @@ export function WithdrawModal({
   onClose,
   walletAddress,
   available,
+  sol,
 }: {
   onClose: () => void
   walletAddress: string
   /** USDC base units, or null while the balance is unknown. */
   available: bigint | null
+  /** Lamports, for the network fee, or null while unknown. */
+  sol: bigint | null
 }) {
   const { getAccessToken } = useDashboardSession()
   const sign = useWalletSigner(walletAddress)
@@ -88,7 +109,8 @@ export function WithdrawModal({
   })
 
   const problem = checkForm(form, walletAddress, available)
-  const canSubmit = problem === null && !withdraw.isPending
+  const fee = feeNote(sol)
+  const canSubmit = problem === null && !fee.blocked && !withdraw.isPending
 
   return (
     <Modal
@@ -175,9 +197,13 @@ export function WithdrawModal({
                 ? problem
                 : ''}
           </p>
+          <p
+            className={`text-[12.5px] ${fee.blocked ? 'text-bad' : 'text-fg-3'}`}
+          >
+            {fee.text}
+          </p>
           <p className="text-[12.5px] text-fg-3">
-            Only send to an address on {NETWORK.label}. The network fee is paid
-            in SOL from this wallet.
+            Only send to an address on {NETWORK.label}.
           </p>
         </form>
       )}
