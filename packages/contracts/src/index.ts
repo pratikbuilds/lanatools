@@ -225,3 +225,22 @@ export const PaymentSignerGrant = type({
   policyIds: 'string[]',
 })
 export type PaymentSignerGrant = typeof PaymentSignerGrant.infer
+
+/**
+ * A USDC withdrawal from the user's payment wallet to another address, in
+ * base units (six decimals). The API builds the transfer, the user's own
+ * wallet signs it in the browser, and the API sends it.
+ */
+export const WithdrawalRequest = type({
+  owner: 'string',
+  to: 'string',
+  amount: 'string.integer',
+})
+export type WithdrawalRequest = typeof WithdrawalRequest.infer
+
+/** A transaction as base64 wire bytes: unsigned when prepared, then signed. */
+export const WithdrawalTransaction = type({ transaction: 'string' })
+export type WithdrawalTransaction = typeof WithdrawalTransaction.infer
+
+export const WithdrawalReceipt = type({ signature: 'string' })
+export type WithdrawalReceipt = typeof WithdrawalReceipt.infer

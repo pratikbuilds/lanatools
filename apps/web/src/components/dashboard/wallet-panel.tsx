@@ -6,10 +6,10 @@ import { AnimatedCounter } from '#/components/ui/animated-counter'
 import { NETWORK, getWalletBalances } from '#/lib/solana'
 import { DepositModal } from './deposit-modal'
 import { WalletAddress } from './wallet-address'
-import { Modal } from './modal'
 import { SolanaShine } from './solana-shine'
 import { SplitPanel } from './split-panel'
 import { useDashboardSession } from './session'
+import { WithdrawModal } from './withdraw-modal'
 
 export function CreateWallet() {
   const { createWallet } = useCreateWallet()
@@ -150,84 +150,13 @@ export function WalletPanel({ walletAddress }: { walletAddress: string }) {
         walletAddress={walletAddress}
       />
 
-      <WithdrawModal
-        open={withdrawing}
-        onClose={() => setWithdrawing(false)}
-        available={balances.data ? wholeCents(balances.data.usdc) : null}
-      />
+      {withdrawing && (
+        <WithdrawModal
+          onClose={() => setWithdrawing(false)}
+          walletAddress={walletAddress}
+          available={balances.data?.usdc ?? null}
+        />
+      )}
     </section>
-  )
-}
-
-/**
- * Where a withdrawal will be filled in, in a centred modal. Sending is not built yet, so the
- * form can be filled but not submitted.
- */
-function WithdrawModal({
-  open,
-  onClose,
-  available,
-}: {
-  open: boolean
-  onClose: () => void
-  available: number | null
-}) {
-  const [to, setTo] = useState('')
-  const [amount, setAmount] = useState('')
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Withdraw USDC"
-      detail={`From your wallet on ${NETWORK.label}`}
-    >
-      <form className="grid gap-4" onSubmit={(event) => event.preventDefault()}>
-        <label className="grid gap-1.5">
-          <span className="d-label">To address</span>
-          <input
-            className="d-input h-10 font-mono"
-            placeholder="Solana address"
-            value={to}
-            onChange={(event) => setTo(event.target.value)}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <label className="grid gap-1.5">
-          <span className="flex items-baseline justify-between">
-            <span className="d-label">Amount</span>
-            <span className="font-mono text-[12px] text-fg-3">
-              {available === null ? '—' : `$${available.toFixed(2)} available`}
-            </span>
-          </span>
-          <span className="flex gap-2">
-            <input
-              className="d-input h-10 min-w-0 flex-1 font-mono"
-              inputMode="decimal"
-              placeholder="0.00"
-              value={amount}
-              onChange={(event) => setAmount(event.target.value)}
-            />
-            <button
-              type="button"
-              className="d-btn h-10"
-              disabled={available === null}
-              onClick={() =>
-                available !== null && setAmount(available.toFixed(2))
-              }
-            >
-              Max
-            </button>
-          </span>
-        </label>
-        <button type="submit" className="d-btn d-btn-primary h-11" disabled>
-          Withdraw
-        </button>
-        <p className="text-[12.5px] text-fg-3">
-          Withdrawals are coming soon. Nothing is sent from this form yet.
-        </p>
-      </form>
-    </Modal>
   )
 }

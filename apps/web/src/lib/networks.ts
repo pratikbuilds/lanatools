@@ -1,13 +1,16 @@
-// Each network pairs a label with the USDC mint that exists on it. Sending
-// USDC on the wrong network loses it, so the page always names the network.
-// Balances come from the API, which reports the network it reads.
+// Each network pairs a label and wallet-standard chain ID with the USDC mint
+// that exists on it. Sending USDC on the wrong network loses it, so the page
+// always names the network. Balances come from the API, which reports the
+// network it reads.
 export const NETWORKS = {
   devnet: {
     label: 'Solana devnet',
+    chain: 'solana:devnet',
     usdcMint: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
   },
   mainnet: {
     label: 'Solana mainnet',
+    chain: 'solana:mainnet',
     usdcMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
   },
 } as const

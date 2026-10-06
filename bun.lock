@@ -24,6 +24,7 @@
         "@lanatools/phoenix": "workspace:*",
         "@lanatools/toolkit": "workspace:*",
         "@privy-io/node": "^0.35.0",
+        "@solana-program/token": "^0.14.0",
         "@solana/keychain-privy": "1.4.0",
         "@solana/kit": "~6.10.0",
         "@solana/pay-kit": "0.12.0",
