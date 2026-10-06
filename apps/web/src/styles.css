@@ -396,6 +396,33 @@ body:has(.dash[data-theme='dark']) {
 .dash :focus-visible {
   outline-color: var(--d-focus);
 }
+/* Fields own their focus border; avoid a second ring from the global outline. */
+.d-limit-field,
+.dash .d-input {
+  transition: border-color 150ms ease;
+}
+.d-limit-field:focus-within,
+.dash .d-input:focus {
+  border-color: color-mix(in srgb, var(--d-focus) 55%, var(--d-line-2));
+}
+.d-limit-field:has([aria-invalid='true']),
+.dash .d-input[aria-invalid='true'] {
+  border-color: var(--d-bad);
+}
+.d-limit-input,
+.dash .d-input {
+  caret-color: var(--d-focus);
+}
+.dash .d-limit-input:focus-visible,
+.dash .d-input:focus-visible {
+  outline: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .d-limit-field,
+  .dash .d-input {
+    transition: none;
+  }
+}
 /* The header is brand blue in the light theme, so its focus ring is lime. */
 .dash header :focus-visible {
   outline-color: var(--color-lime);

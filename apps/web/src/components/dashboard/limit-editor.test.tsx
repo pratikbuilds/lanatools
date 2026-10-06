@@ -63,3 +63,21 @@ test('a sub-cent limit keeps its digits', () => {
     'value="0.3456"',
   )
 })
+
+test('the ruler reaches a wallet endpoint that includes fractions of a cent', () => {
+  const html = render(
+    { ...codex, limitMicroUsd: 103_000, spentMicroUsd: 18_000 },
+    85_000,
+  )
+  expect(html).toMatch(/type="range"[^>]*max="11"[^>]*value="11"/)
+  expect(html).toContain('aria-valuetext="$0.103"')
+})
+
+test('a wallet smaller than one cent still has a reachable endpoint', () => {
+  const html = render(
+    { ...codex, limitMicroUsd: 4_000, spentMicroUsd: 0 },
+    4_000,
+  )
+  expect(html).toMatch(/type="range"[^>]*max="1"[^>]*value="1"/)
+  expect(html).toContain('aria-valuetext="$0.004"')
+})

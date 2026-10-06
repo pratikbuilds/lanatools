@@ -8,7 +8,6 @@ import type { McpClient } from '@lanatools/contracts'
 import { AnimatedCounter } from '#/components/ui/animated-counter'
 
 const TICKS = 41
-const RULER_STEPS = 1000
 const CENT = 10_000
 
 /** A limit as the amount field shows it: dollars, no sign, no grouping. */
@@ -86,6 +85,7 @@ export function LimitEditor({
       <AnimatedCounter
         value={limit / 1_000_000}
         decimals={decimalsFor(limit)}
+        duration={0.35}
         prefix="$"
         className="mt-3 mb-2 font-mono text-[3rem] leading-none font-semibold tracking-[-0.05em]"
       />
@@ -103,10 +103,10 @@ export function LimitEditor({
       )}
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
-        <label className="flex h-[34px] items-center gap-1 rounded-[9px] border border-line-2 bg-surface pl-3 font-mono font-semibold has-aria-invalid:border-bad has-focus-visible:border-accent">
+        <label className="d-limit-field flex h-[34px] items-center gap-1 rounded-[9px] border border-line-2 pl-3 font-mono font-semibold">
           <span className="text-fg-3">$</span>
           <input
-            className="h-full w-28 rounded-r-[9px] bg-transparent pr-2.5 font-mono font-semibold outline-none"
+            className="d-limit-input h-full w-28 rounded-r-[9px] bg-transparent pr-2.5 font-mono font-semibold"
             inputMode="decimal"
             aria-label="New spending limit in USD"
             aria-invalid={typed === null}
@@ -146,8 +146,8 @@ export function LimitEditor({
 
 /**
  * A row of tick marks with a native range input laid over it, as in Rare
- * UI's animated counter demo: marks up to the position are dark and the
- * position itself is a taller mark.
+ * UI's animated counter demo. The taller accent mark shows the position;
+ * the native input supplies pointer and keyboard interaction.
  */
 function LimitRuler({
   limit,
@@ -160,15 +160,15 @@ function LimitRuler({
   disabled: boolean
   onChange: (limitMicroUsd: number) => void
 }) {
-  const position = Math.min(
-    RULER_STEPS,
-    Math.round((limit / top) * RULER_STEPS),
-  )
-  const at = Math.round((position / RULER_STEPS) * (TICKS - 1))
+  // Whole-cent steps let arrow keys move the value without rounding back.
+  // The final step reaches the wallet exactly, even when it has fractions of a cent.
+  const steps = Math.ceil(top / CENT)
+  const position = limit >= top ? steps : Math.round(limit / CENT)
+  const at = Math.round(Math.min(limit / top, 1) * (TICKS - 1))
 
   return (
     <>
-      <div className="relative mt-5 h-[46px] rounded-[9px] border border-line bg-surface px-3 pt-1.5 pb-2 has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-accent">
+      <div className="relative mt-5 h-[46px] rounded-[4px] px-1 pt-1.5 pb-2 has-focus-visible:outline-1 has-focus-visible:outline-offset-2 has-focus-visible:outline-(--d-focus)">
         <div
           aria-hidden="true"
           className="flex h-full items-end justify-between"
@@ -178,7 +178,7 @@ function LimitRuler({
               key={tick}
               className={`rounded-[1px] transition-[height,background-color] duration-200 motion-reduce:transition-none ${
                 tick === at
-                  ? '-mx-[0.5px] h-[30px] w-[3px] bg-fg'
+                  ? '-mx-[0.5px] h-[30px] w-[3px] bg-(--d-focus)'
                   : `h-[18px] w-[2px] ${tick < at ? 'bg-tick' : 'bg-line-2'}`
               }`}
             />
@@ -187,19 +187,14 @@ function LimitRuler({
         <input
           type="range"
           min={0}
-          max={RULER_STEPS}
+          max={steps}
           step={1}
           value={position}
           disabled={disabled}
           aria-label="Spending limit"
           aria-valuetext={formatUsd(limit)}
           onChange={(event) =>
-            // The ruler moves in whole cents.
-            onChange(
-              Math.round(
-                ((Number(event.target.value) / RULER_STEPS) * top) / CENT,
-              ) * CENT,
-            )
+            onChange(Math.min(top, Number(event.target.value) * CENT))
           }
           className="absolute inset-0 m-0 size-full cursor-ew-resize opacity-0"
         />
