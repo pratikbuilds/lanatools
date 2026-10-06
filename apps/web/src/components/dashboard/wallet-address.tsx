@@ -57,10 +57,15 @@ export function WalletAddress({
           <Icon size={19} aria-hidden="true" />
         </button>
       </div>
-      <CopyStatus state={state} subject="address" />
+      <CopyStatus
+        state={state}
+        subject={compact ? 'full address in Deposit' : 'address'}
+      />
       {state === 'failed' && (
         <p className="mt-2 text-[12.5px] text-bad">
-          Copy failed. Select the address and copy it manually.
+          {compact
+            ? 'Copy failed. Open Deposit to select the full address.'
+            : 'Copy failed. Select the address and copy it manually.'}
         </p>
       )}
     </div>
