@@ -4,6 +4,8 @@ import type { AgentId } from './logos'
 
 export const MCP_URL = 'https://mcp.lanatools.sh/mcp'
 export const MCP_HOST = new URL(MCP_URL).host
+/** How an agent connects itself, for clients without MCP settings. */
+export const SKILL_URL = 'https://lanatools.sh/SKILL.md'
 
 type ClientConfig = { tab: string; file: string; lines: Array<string> }
 
@@ -36,8 +38,8 @@ export const CLIENTS: Record<AgentId, ClientConfig> = {
   },
   codex: {
     tab: 'Codex',
-    file: '~/.codex/config.toml',
-    lines: ['[mcp_servers.lanatools]', `url = "${MCP_URL}"`],
+    file: 'terminal',
+    lines: [`$ codex mcp add lanatools --url ${MCP_URL}`],
   },
   grok: {
     tab: 'Grok bot',
