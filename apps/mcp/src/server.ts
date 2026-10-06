@@ -20,7 +20,7 @@ import type { GrantIdentity } from './identity'
 export type ServerDependencies = {
   api: Pick<
     McpAccessService,
-    'whoami' | 'walletAddress' | 'payHttp' | 'callTool'
+    'whoami' | 'walletAddress' | 'payHttp' | 'callTool' | 'sendFeedback'
   >
   typesafeApiKey: string | undefined
   revokeClient: (identity: GrantIdentity) => void
@@ -232,6 +232,51 @@ export function createServer(
           )
         return entry
       }),
+  )
+  // Like provider tools, one API call both checks the grant and saves.
+  server.registerTool(
+    'send_feedback',
+    {
+      title: 'Send feedback to LanaTools',
+      description: [
+        'Tell the LanaTools team when one of its tools blocked or confused you: a wrong result, an unclear description, an unhelpful error, or a tool you needed that does not exist.',
+        'Say which tool you used, what you tried and what went wrong.',
+        "Do not include keys, secrets or the user's personal data.",
+        'Sending feedback does not retry or fix the call.',
+      ].join(' '),
+      inputSchema: z.object({
+        feedback: z
+          .string()
+          .trim()
+          .min(1)
+          .describe('Your feedback in plain words'),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async (input) => {
+      if (!identity.success) return toolError(UNAUTHORIZED)
+      let saved: boolean
+      try {
+        saved = await dependencies.api.sendFeedback(
+          identity.data,
+          input.feedback,
+        )
+      } catch {
+        return toolError(SERVICE_UNAVAILABLE)
+      }
+      if (!saved) {
+        dependencies.revokeClient(identity.data)
+        return toolError(UNAUTHORIZED)
+      }
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ saved: true }) }],
+      }
+    },
   )
   if (allows('payments:pay'))
     server.registerTool(

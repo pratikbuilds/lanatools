@@ -1,6 +1,7 @@
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import { PrivyClient } from '@privy-io/node'
 import type { D1Database } from '@cloudflare/workers-types'
+import { saveFeedback } from './agent-feedback'
 import { PayHttpError, payHttp, payKitPayer } from './payments/pay-http'
 import type { PayHttpInput, PayHttpResult } from './payments/pay-http'
 import { signerStatus } from './payments/signer-setup'
@@ -131,6 +132,11 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
   /** The user's payment wallet address, or null before it is set up. */
   async walletAddress(userId: string) {
     return (await signerStatus(this.env.DB, userId)).walletAddress
+  }
+
+  /** Saves feedback from the grant's agent; false once it is revoked. */
+  async sendFeedback(identity: GrantIdentity, feedback: string) {
+    return saveFeedback(this.env.DB, identity, feedback)
   }
 
   /** Runs any provider tool, recording it in the client's activity. */
