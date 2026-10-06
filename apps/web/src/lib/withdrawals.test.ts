@@ -32,7 +32,9 @@ test('a withdrawal is prepared, signed here and sent', async () => {
         auth: headers.get('authorization'),
       })
       return Response.json(
-        calls.length === 1 ? { transaction: unsigned } : { signature: 'sig' },
+        calls.length === 1
+          ? { transaction: unsigned }
+          : { signature: 'sig', confirmed: true },
       )
     },
   ) as unknown as typeof fetch
@@ -45,7 +47,7 @@ test('a withdrawal is prepared, signed here and sent', async () => {
       return new TextEncoder().encode('signed bytes')
     },
   )
-  expect(receipt).toEqual({ signature: 'sig' })
+  expect(receipt).toEqual({ signature: 'sig', confirmed: true })
   expect(calls).toEqual([
     {
       path: '/api/wallet/withdrawals/prepare',

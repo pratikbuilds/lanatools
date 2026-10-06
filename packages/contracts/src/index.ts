@@ -242,5 +242,12 @@ export type WithdrawalRequest = typeof WithdrawalRequest.infer
 export const WithdrawalTransaction = type({ transaction: 'string' })
 export type WithdrawalTransaction = typeof WithdrawalTransaction.infer
 
-export const WithdrawalReceipt = type({ signature: 'string' })
+/**
+ * The sent withdrawal. `confirmed` is false only when the network accepted
+ * it but its status could not be read in time; the balance shows the rest.
+ */
+export const WithdrawalReceipt = type({
+  signature: 'string',
+  confirmed: 'boolean',
+})
 export type WithdrawalReceipt = typeof WithdrawalReceipt.infer

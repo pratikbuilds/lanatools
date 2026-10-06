@@ -4,11 +4,14 @@ import { HTTPException } from 'hono/http-exception'
 import { address, createSolanaRpc, isAddress } from '@solana/kit'
 import { WithdrawalRequest, WithdrawalTransaction } from '@lanatools/contracts'
 import type { WithdrawalReceipt } from '@lanatools/contracts'
+import { privyClient } from '../mcp-service'
 import type { McpEnv } from '../mcp-service'
+import { findUserWallet } from '../payments/signer-setup'
 import { paymentConfig } from '../solana/network'
 import {
   TransferError,
   prepareUsdcTransfer,
+  readSignedWithdrawal,
   sendUsdcTransfer,
 } from '../solana/usdc-transfer'
 import { privyAuth } from './privy-auth'
@@ -16,8 +19,9 @@ import { privyAuth } from './privy-auth'
 /**
  * Withdrawals from the payment wallet, in two steps around the user's own
  * signature: `prepare` builds the transfer and `send` broadcasts the signed
- * one. The RPC is checked against the network before either, as for
- * payments; the server never signs.
+ * one. Both work only on the signed-in user's own wallet, and `send` relays
+ * nothing but a checked USDC withdrawal. The RPC is checked against the
+ * network before either, as for payments; the server never signs.
  */
 export const walletWithdrawals = new Hono<{
   Bindings: McpEnv
@@ -33,30 +37,42 @@ export const walletWithdrawals = new Hono<{
     )
       throw new HTTPException(400)
     const { network, rpcUrl } = await paymentConfig(c.env)
-    return withUserErrors(async () =>
-      c.json({
+    return withUserErrors(async () => {
+      await assertOwnWallet(c.env, c.get('userId'), body.owner)
+      return c.json({
         transaction: await prepareUsdcTransfer(createSolanaRpc(rpcUrl), {
           owner: address(body.owner),
           to: address(body.to),
           amount: BigInt(body.amount),
           mint: address(network.usdcMint),
         }),
-      } satisfies WithdrawalTransaction),
-    )
+      } satisfies WithdrawalTransaction)
+    })
   })
   .post('/send', async (c) => {
     const body = WithdrawalTransaction(await c.req.json().catch(() => null))
     if (body instanceof type.errors) throw new HTTPException(400)
-    const { rpcUrl } = await paymentConfig(c.env)
-    return withUserErrors(async () =>
-      c.json(
+    const { network, rpcUrl } = await paymentConfig(c.env)
+    return withUserErrors(async () => {
+      const withdrawal = await readSignedWithdrawal(
+        body.transaction,
+        address(network.usdcMint),
+      )
+      await assertOwnWallet(c.env, c.get('userId'), withdrawal.payer)
+      return c.json(
         (await sendUsdcTransfer(
           createSolanaRpc(rpcUrl),
-          body.transaction,
+          withdrawal,
         )) satisfies WithdrawalReceipt,
-      ),
-    )
+      )
+    })
   })
+
+/** Refuses a wallet that Privy does not list as the user's own. */
+async function assertOwnWallet(env: McpEnv, userId: string, wallet: string) {
+  if (!(await findUserWallet(privyClient(env), userId, wallet)))
+    throw new TransferError('That wallet is not your payment wallet')
+}
 
 /** A refusal the user can act on is a 409 with its reason; the rest is 502. */
 async function withUserErrors(handle: () => Promise<Response>) {

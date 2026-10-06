@@ -87,8 +87,8 @@ export function WalletPanel({ walletAddress }: { walletAddress: string }) {
         <WithdrawModal
           onClose={() => setWithdrawing(false)}
           walletAddress={walletAddress}
-          available={balances.data?.usdc ?? null}
-          sol={balances.data?.sol ?? null}
+          balances={balances.data ?? null}
+          loadFailed={balances.isError}
         />
       )}
     </>

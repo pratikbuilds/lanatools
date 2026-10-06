@@ -35,28 +35,41 @@ function useWalletSigner(walletAddress: string): SignTransaction | null {
     ).signedTransaction
 }
 
-/** What is wrong with the form, or null when it can be sent. */
-function checkForm(
+export type Balances = { usdc: bigint; sol: bigint }
+
+/**
+ * What is wrong with the form, or null when it can be sent. Nothing can be
+ * sent until the balances have loaded: they prove the API reads the network
+ * this page names, and the amount is checked against them.
+ */
+export function checkForm(
   { to, amount }: { to: string; amount: string },
   walletAddress: string,
-  available: bigint | null,
+  balances: Balances | null,
 ) {
-  if (!to || !amount) return 'incomplete'
+  if (!to || !amount || !balances) return 'incomplete'
   if (!isAddress(to)) return 'Enter a valid Solana address.'
   if (to === walletAddress) return 'Enter an address other than this wallet.'
   const units = parseUsdcAmount(amount)
   if (units === null) return 'Enter an amount in USDC, up to six decimals.'
-  if (available !== null && units > available)
-    return 'That is more than the wallet holds.'
+  if (units > balances.usdc) return 'That is more than the wallet holds.'
   return null
 }
 
 /**
  * Whether the wallet can pay the network fee. The fee comes out of its own
  * SOL, so with none a withdrawal is certain to fail and the form is held.
+ * It is also held while the balances are unknown.
  */
-export function feeNote(sol: bigint | null) {
-  if (sol === 0n)
+export function feeNote(balances: Balances | null, loadFailed: boolean) {
+  if (!balances)
+    return {
+      blocked: true,
+      text: loadFailed
+        ? 'The wallet balances could not be loaded. Close this and try again.'
+        : 'Checking the wallet balances…',
+    }
+  if (balances.sol === 0n)
     return {
       blocked: true,
       text: 'This wallet has no SOL to pay the network fee. Add SOL to it first.',
@@ -75,15 +88,15 @@ export function feeNote(sol: bigint | null) {
 export function WithdrawModal({
   onClose,
   walletAddress,
-  available,
-  sol,
+  balances,
+  loadFailed,
 }: {
   onClose: () => void
   walletAddress: string
-  /** USDC base units, or null while the balance is unknown. */
-  available: bigint | null
-  /** Lamports, for the network fee, or null while unknown. */
-  sol: bigint | null
+  /** USDC base units and lamports, or null while they are unknown. */
+  balances: Balances | null
+  /** Whether the balances failed to load, as opposed to still loading. */
+  loadFailed: boolean
 }) {
   const { getAccessToken } = useDashboardSession()
   const sign = useWalletSigner(walletAddress)
@@ -106,14 +119,18 @@ export function WithdrawModal({
       queryClient.invalidateQueries({ queryKey: ['balances', NETWORK.id] }),
   })
 
-  const problem = checkForm(form, walletAddress, available)
-  const fee = feeNote(sol)
+  const problem = checkForm(form, walletAddress, balances)
+  const fee = feeNote(balances, loadFailed)
   const canSubmit = problem === null && !fee.blocked && !withdraw.isPending
+  const available = balances?.usdc ?? null
 
   return (
     <Modal
       open
       onClose={onClose}
+      // Closing midway would lose the withdrawal's state while it still
+      // completes, and a reopened form would let the same one be sent twice.
+      closable={!withdraw.isPending}
       title="Withdraw USDC"
       detail={`From your wallet on ${NETWORK.label}`}
     >
@@ -122,6 +139,7 @@ export function WithdrawModal({
           amount={withdraw.variables.amount}
           to={withdraw.variables.to}
           signature={withdraw.data.signature}
+          confirmed={withdraw.data.confirmed}
           onDone={onClose}
         />
       ) : (
@@ -209,16 +227,18 @@ export function WithdrawModal({
   )
 }
 
-/** The confirmed transfer, with its signature for the explorer. */
+/** The sent transfer, with its signature for the explorer. */
 function Sent({
   amount,
   to,
   signature,
+  confirmed,
   onDone,
 }: {
   amount: bigint
   to: string
   signature: string
+  confirmed: boolean
   onDone: () => void
 }) {
   const explorer = `https://explorer.solana.com/tx/${signature}${NETWORK.id === 'mainnet' ? '' : `?cluster=${NETWORK.id}`}`
@@ -236,7 +256,9 @@ function Sent({
         <code className="block font-mono text-[12.5px] break-all">{to}</code>
       </div>
       <p className="text-[12.5px] text-fg-3">
-        Confirmed by the network.{' '}
+        {confirmed
+          ? 'Confirmed by the network.'
+          : 'Accepted by the network; the balance updates once it confirms.'}{' '}
         <a
           href={explorer}
           target="_blank"
