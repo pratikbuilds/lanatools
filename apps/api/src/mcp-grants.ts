@@ -144,6 +144,7 @@ export async function prepareGrant(
         activatedAt: null,
         revokedAt: null,
         lastUsedAt: null,
+        outgoingAllowed: false,
       },
       setWhere: eq(mcpGrant.status, 'revoked'),
     })
@@ -307,6 +308,7 @@ export async function listClients(
       spent: totals.spent,
       reserved: totals.reserved,
       estimatedCredits: toolTotals.estimatedCredits,
+      outgoingAllowed: mcpGrant.outgoingAllowed,
       createdAt: mcpGrant.createdAt,
       activatedAt: mcpGrant.activatedAt,
       lastUsedAt: mcpGrant.lastUsedAt,
@@ -328,6 +330,7 @@ export async function listClients(
     spentMicroUsd: row.spent ?? 0,
     reservedMicroUsd: row.reserved ?? 0,
     estimatedCredits: row.estimatedCredits ?? 0,
+    outgoingAllowed: row.outgoingAllowed,
   }))
 }
 
@@ -361,8 +364,23 @@ export async function revokeGrant(
 ) {
   const [grant] = await drizzle(database)
     .update(mcpGrant)
-    .set({ status: 'revoked', revokedAt: now })
+    .set({ status: 'revoked', revokedAt: now, outgoingAllowed: false })
     .where(activeGrantOwnedBy(userId, grantId))
     .returning({ clientId: mcpGrant.clientId })
   return grant?.clientId ?? null
+}
+
+/** Only the owner can change an active client's transaction permission. */
+export async function setClientOutgoing(
+  database: D1Database,
+  userId: string,
+  grantId: string,
+  outgoingAllowed: boolean,
+) {
+  const [grant] = await drizzle(database)
+    .update(mcpGrant)
+    .set({ outgoingAllowed })
+    .where(activeGrantOwnedBy(userId, grantId))
+    .returning({ id: mcpGrant.id })
+  return !!grant
 }

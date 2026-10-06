@@ -1,10 +1,15 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import type { ReactNode } from 'react'
 import { formatUsd } from '@lanatools/contracts'
 import { CREDIT_ESTIMATE_NOTE } from '#/lib/activity'
 import type { McpClient } from '@lanatools/contracts'
-import { revokeMcpClient, setMcpClientLimit, timeAgo } from '#/lib/mcp-clients'
+import {
+  revokeMcpClient,
+  setMcpClientLimit,
+  setMcpClientOutgoing,
+  timeAgo,
+} from '#/lib/mcp-clients'
 import { Drawer, DrawerFacts, DrawerHeader } from './drawer'
 import { LimitEditor } from './limit-editor'
 import { SectionHead } from './page-head'
@@ -109,12 +114,18 @@ export function ConnectedClients({
     onSettled: () => queryClient.invalidateQueries({ queryKey }),
   })
   const managing = clients.data?.find((c) => c.grantId === managingId)
+  const outgoing = useMutation({
+    mutationFn: ({ grantId, allowed }: { grantId: string; allowed: boolean }) =>
+      setMcpClientOutgoing(getAccessToken, grantId, allowed),
+    onSettled: () => queryClient.invalidateQueries({ queryKey }),
+  })
 
   // Opens or closes the client drawer, leaving behind any failure from the
   // client that was open before.
   function manage(grantId: string | undefined) {
     revoke.reset()
     limit.reset()
+    outgoing.reset()
     setManagingId(grantId)
   }
 
@@ -171,6 +182,9 @@ export function ConnectedClients({
             revokeFailed={revoke.isError}
             onSetLimit={(limitUsd) =>
               limit.mutateAsync({ grantId: managing.grantId, limitUsd })
+            }
+            onSetOutgoing={(allowed) =>
+              outgoing.mutateAsync({ grantId: managing.grantId, allowed })
             }
             onRevoke={() => revoke.mutate(managing.grantId)}
             onViewActivity={() => onViewActivity(managing.clientId)}
@@ -384,6 +398,7 @@ export function ClientDetail({
   revoking,
   revokeFailed,
   onSetLimit,
+  onSetOutgoing,
   onRevoke,
   onViewActivity,
   onClose,
@@ -394,12 +409,27 @@ export function ClientDetail({
   revoking: boolean
   revokeFailed: boolean
   onSetLimit: (limitUsd: string) => Promise<void>
+  onSetOutgoing: (allowed: boolean) => Promise<void>
   onRevoke: () => void
   onViewActivity: () => void
   onClose: () => void
   now?: number
 }) {
   const [confirming, setConfirming] = useState(false)
+  const [savingOutgoing, setSavingOutgoing] = useState(false)
+  const [outgoingFailed, setOutgoingFailed] = useState(false)
+  const outgoingDescriptionId = useId()
+  async function saveOutgoing(allowed: boolean) {
+    setSavingOutgoing(true)
+    setOutgoingFailed(false)
+    try {
+      await onSetOutgoing(allowed)
+    } catch {
+      setOutgoingFailed(true)
+    } finally {
+      setSavingOutgoing(false)
+    }
+  }
   const name = clientName(client)
   const facts: Array<[string, ReactNode]> = [
     ['Tools', toolsOf(client)],
@@ -426,6 +456,35 @@ export function ClientDetail({
           onSave={onSetLimit}
         />
       )}
+      <div className="my-6 rounded-[10px] border border-line bg-surface px-3.5 py-3">
+        <label className="flex items-start gap-2.5 text-[13px] font-semibold">
+          <input
+            type="checkbox"
+            className="mt-0.5 accent-(--d-focus)"
+            checked={client.outgoingAllowed}
+            disabled={savingOutgoing || revoking}
+            aria-describedby={outgoingDescriptionId}
+            onChange={(event) => void saveOutgoing(event.target.checked)}
+          />
+          Allow automatic SOL transfers
+        </label>
+        <p id={outgoingDescriptionId} className="mt-2 text-[12px] text-fg-3">
+          Requires separate transaction delegation. No per-transfer approval.
+          Allows this client to send SOL from your embedded wallet once
+          delegation is enabled. Payments within its spending limit and
+          transactions you sign with an external wallet are separate.
+          Reconnecting resets this permission to off. Turning it off stops new
+          authorizations but cannot undo already signed transactions.
+        </p>
+        <p role="status" className="mt-2 text-[12px] text-fg-3 empty:hidden">
+          {savingOutgoing ? 'Saving permission…' : ''}
+        </p>
+        <p role="alert" className="mt-2 text-[12px] text-bad empty:hidden">
+          {outgoingFailed
+            ? 'Could not change the outgoing permission. Try again.'
+            : ''}
+        </p>
+      </div>
       <DrawerFacts facts={facts} />
       <p className="mt-3 text-[12px] text-fg-3">{CREDIT_ESTIMATE_NOTE}</p>
       {/* The page behind an open drawer cannot be reached, so a failure is

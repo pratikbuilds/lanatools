@@ -116,11 +116,15 @@ export const McpClient = type({
   reservedMicroUsd: 'number',
   /** Estimated provider credits across this client's tool calls. */
   estimatedCredits: 'number',
+  outgoingAllowed: 'boolean = false',
 })
 export type McpClient = typeof McpClient.infer
 
 export const McpClientList = type({ clients: McpClient.array() })
 export type McpClientList = typeof McpClientList.infer
+
+export const ClientOutgoingUpdate = type({ '+': 'reject', allowed: 'boolean' })
+export type ClientOutgoingUpdate = typeof ClientOutgoingUpdate.infer
 
 export const ClientLimitUpdate = type({ limitUsd: 'string' })
 export type ClientLimitUpdate = typeof ClientLimitUpdate.infer

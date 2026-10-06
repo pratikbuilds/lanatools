@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'bun:test'
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client'
 import { heliusTools } from '@lanatools/helius'
+import type { TransactionResult } from '@lanatools/contracts'
 import { createServer } from './server'
 import { chainFixtures } from '../scripts/verify-chain'
 import type { ServerDependencies } from './server'
@@ -11,6 +12,213 @@ const identity = {
   clientId: 'client-1',
 }
 const address = '11111111111111111111111111111111'
+const transferResult: TransactionResult = {
+  requestId: '522b313e-3011-45bb-95ed-fd65ee54f1d9',
+  state: 'uncertain',
+  attemptId: 'attempt-1',
+  signature: 'signature-1',
+  reason: 'Submission outcome is unknown',
+}
+
+test('embedded transfer returns safe metadata and preserves the exact amount for any active grant', async () => {
+  const session = await connect([])
+  try {
+    const input = {
+      idempotencyKey: 'embedded-1',
+      recipient: address,
+      amountLamports: '18446744073709551615',
+    }
+    const result = await session.client.callTool({
+      name: 'transfer_sol_embedded',
+      arguments: input,
+    })
+    expect(result.isError).not.toBe(true)
+    expect(session.api.whoami).toHaveBeenCalledWith(identity)
+    expect(session.api.executeEmbeddedTransfer).toHaveBeenCalledTimes(1)
+    expect(session.api.executeEmbeddedTransfer).toHaveBeenCalledWith(
+      identity,
+      input,
+    )
+    expect(result.structuredContent).toEqual(transferResult)
+    expect(result.content).toEqual([
+      { type: 'text', text: JSON.stringify(transferResult) },
+    ])
+    expect(session.api.payHttp).not.toHaveBeenCalled()
+    expect(session.api.createExternalTransfer).not.toHaveBeenCalled()
+  } finally {
+    await session.close()
+  }
+})
+
+test('embedded transfer rejects malformed amounts and caller-selected authority before API calls', async () => {
+  const session = await connect([])
+  try {
+    const input = {
+      idempotencyKey: 'strict-embedded',
+      recipient: address,
+      amountLamports: '1',
+    }
+    for (const invalid of [
+      { ...input, idempotencyKey: '' },
+      { ...input, idempotencyKey: 'x'.repeat(129) },
+      { ...input, recipient: 'x'.repeat(31) },
+      { ...input, recipient: 'x'.repeat(45) },
+      { ...input, amountLamports: '0' },
+      { ...input, amountLamports: '-1' },
+      { ...input, amountLamports: '1.5' },
+      { ...input, amountLamports: '1e9' },
+      { ...input, amountLamports: '18446744073709551616' },
+      { ...input, amountLamports: 1 },
+      { ...input, externalWallet: address },
+      { ...input, walletId: 'wallet-1' },
+      { ...input, outgoingAllowed: true },
+      { ...input, instructions: [] },
+      { ...input, network: 'mainnet' },
+    ]) {
+      const result = await session.client.callTool({
+        name: 'transfer_sol_embedded',
+        arguments: invalid,
+      })
+      expect(result.isError).toBe(true)
+    }
+    expect(session.api.whoami).not.toHaveBeenCalled()
+    expect(session.api.executeEmbeddedTransfer).not.toHaveBeenCalled()
+  } finally {
+    await session.close()
+  }
+})
+
+test('embedded permission refusals return the safe reason without a signing link', async () => {
+  const session = await connect([])
+  session.api.executeEmbeddedTransfer.mockImplementationOnce(async () => ({
+    ok: false,
+    reason: 'Transaction delegation is not enabled',
+  }))
+  try {
+    const result = await session.client.callTool({
+      name: 'transfer_sol_embedded',
+      arguments: {
+        idempotencyKey: 'disabled',
+        recipient: address,
+        amountLamports: '1',
+      },
+    })
+    expect(result.isError).toBe(true)
+    expect(result.structuredContent).toEqual({
+      error: {
+        code: 'transaction_refused',
+        message: 'Transaction delegation is not enabled',
+        retryable: false,
+      },
+    })
+    expect(session.api.createExternalTransfer).not.toHaveBeenCalled()
+  } finally {
+    await session.close()
+  }
+})
+
+test('status lookup forwards only the owned request ID and returns verified safe metadata', async () => {
+  const session = await connect([])
+  try {
+    const result = await session.client.callTool({
+      name: 'get_transfer_status',
+      arguments: { requestId: transferResult.requestId },
+    })
+    expect(result.isError).not.toBe(true)
+    expect(session.api.getTransferStatus).toHaveBeenCalledWith(
+      identity,
+      transferResult.requestId,
+    )
+    expect(result.structuredContent).toEqual(transferResult)
+    expect(result.content).toEqual([
+      { type: 'text', text: JSON.stringify(transferResult) },
+    ])
+    expect(session.api.executeEmbeddedTransfer).not.toHaveBeenCalled()
+    for (const invalid of [
+      { requestId: 'not-a-uuid' },
+      { requestId: transferResult.requestId, userId: 'another-user' },
+    ]) {
+      expect(
+        (
+          await session.client.callTool({
+            name: 'get_transfer_status',
+            arguments: invalid,
+          })
+        ).isError,
+      ).toBe(true)
+    }
+    expect(session.api.getTransferStatus).toHaveBeenCalledTimes(1)
+    expect(session.api.whoami).toHaveBeenCalledTimes(1)
+  } finally {
+    await session.close()
+  }
+})
+
+test('revoked grants cannot execute embedded transfers or read their status', async () => {
+  const session = await connect([], false)
+  try {
+    for (const call of [
+      {
+        name: 'transfer_sol_embedded',
+        arguments: {
+          idempotencyKey: 'revoked',
+          recipient: address,
+          amountLamports: '1',
+        },
+      },
+      {
+        name: 'get_transfer_status',
+        arguments: { requestId: transferResult.requestId },
+      },
+    ]) {
+      const result = await session.client.callTool(call)
+      expect(result.isError).toBe(true)
+      expect(result.structuredContent).toMatchObject({
+        error: { code: 'unauthorized' },
+      })
+    }
+    expect(session.api.executeEmbeddedTransfer).not.toHaveBeenCalled()
+    expect(session.api.getTransferStatus).not.toHaveBeenCalled()
+    expect(session.revokeClient).toHaveBeenCalledWith(identity)
+  } finally {
+    await session.close()
+  }
+})
+
+test('embedded execution and status service failures never expose signing details', async () => {
+  const session = await connect([])
+  session.api.executeEmbeddedTransfer.mockImplementationOnce(async () => {
+    throw new Error('private signer key')
+  })
+  session.api.getTransferStatus.mockImplementationOnce(async () => {
+    throw new Error('private RPC key')
+  })
+  try {
+    for (const call of [
+      {
+        name: 'transfer_sol_embedded',
+        arguments: {
+          idempotencyKey: 'unavailable',
+          recipient: address,
+          amountLamports: '1',
+        },
+      },
+      {
+        name: 'get_transfer_status',
+        arguments: { requestId: transferResult.requestId },
+      },
+    ]) {
+      const result = await session.client.callTool(call)
+      expect(result.isError).toBe(true)
+      expect(result.structuredContent).toMatchObject({
+        error: { code: 'service_unavailable', retryable: true },
+      })
+      expect(JSON.stringify(result)).not.toContain('private')
+    }
+  } finally {
+    await session.close()
+  }
+})
 
 test('an active grant creates one action signing link without account or payment scopes', async () => {
   const session = await connect([])
@@ -185,6 +393,12 @@ async function connect(
       signingUrl: 'http://localhost:5173/sign#single-action-token',
       expiresAt: 1_800_000_000_000,
     })),
+    executeEmbeddedTransfer: mock<
+      ServerDependencies['api']['executeEmbeddedTransfer']
+    >(async () => ({ ok: true, result: transferResult })),
+    getTransferStatus: mock<ServerDependencies['api']['getTransferStatus']>(
+      async () => transferResult,
+    ),
   }
   const revokeClient = mock<ServerDependencies['revokeClient']>(() => {})
   const server = createServer(
@@ -451,6 +665,8 @@ test('each client sees the catalog and only the tool families it was given', asy
       'search_catalog',
       'send_feedback',
       'transfer_sol_external',
+      'transfer_sol_embedded',
+      'get_transfer_status',
       'whoami',
     ].sort(),
   )

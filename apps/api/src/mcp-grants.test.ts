@@ -10,9 +10,11 @@ import {
   recordConsent,
   revokeGrant,
   setClientLimit,
+  setClientOutgoing,
   authorizeGrant,
 } from './mcp-grants'
-import { TOOL_SCOPES } from '@lanatools/contracts'
+import { type } from 'arktype'
+import { ClientOutgoingUpdate, TOOL_SCOPES } from '@lanatools/contracts'
 import { testDatabase } from './test-database'
 
 let db: D1Database
@@ -60,6 +62,7 @@ test('an approved client is listed with its name and redirect host', async () =>
       spentMicroUsd: 0,
       reservedMicroUsd: 0,
       estimatedCredits: 0,
+      outgoingAllowed: false,
     },
   ])
   expect(await listClients(db, 'someone-else')).toEqual([])
@@ -307,4 +310,39 @@ test('client credits stay isolated, survive reconnects, and do not multiply paym
     spentMicroUsd: 30_000,
     reservedMicroUsd: 5_000,
   })
+})
+
+test('outgoing permission is default off, owner-only and reset by revoke/reconnect', async () => {
+  const grant = await connect('outgoing-owner', 'outgoing-client')
+  expect((await listClients(db, grant.userId))[0]?.outgoingAllowed).toBe(false)
+  expect(await setClientOutgoing(db, 'intruder', grant.grantId, true)).toBe(
+    false,
+  )
+  expect(await setClientOutgoing(db, grant.userId, grant.grantId, true)).toBe(
+    true,
+  )
+  expect((await listClients(db, grant.userId))[0]?.outgoingAllowed).toBe(true)
+  expect(await setClientOutgoing(db, grant.userId, grant.grantId, false)).toBe(
+    true,
+  )
+  expect((await listClients(db, grant.userId))[0]?.outgoingAllowed).toBe(false)
+  await setClientOutgoing(db, grant.userId, grant.grantId, true)
+  await revokeGrant(db, grant.userId, grant.grantId)
+  expect(await setClientOutgoing(db, grant.userId, grant.grantId, true)).toBe(
+    false,
+  )
+  const renewed = await connect(grant.userId, grant.clientId)
+  expect(renewed.grantId).not.toBe(grant.grantId)
+  expect((await listClients(db, grant.userId))[0]?.outgoingAllowed).toBe(false)
+})
+
+test('outgoing update accepts only an explicit boolean permission', () => {
+  expect(ClientOutgoingUpdate({ allowed: true })).toEqual({ allowed: true })
+  for (const value of [
+    {},
+    { allowed: 'true' },
+    { allowed: true, walletId: 'override' },
+    { outgoingAllowed: true },
+  ])
+    expect(ClientOutgoingUpdate(value)).toBeInstanceOf(type.errors)
 })

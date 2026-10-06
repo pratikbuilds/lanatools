@@ -17,6 +17,7 @@ const claude: McpClient = {
   spentMicroUsd: 0,
   reservedMicroUsd: 0,
   estimatedCredits: 0,
+  outgoingAllowed: false,
 }
 
 const paying: McpClient = {
@@ -41,6 +42,7 @@ function detail(client: McpClient, revokeFailed = false) {
       revoking={false}
       revokeFailed={revokeFailed}
       onSetLimit={async () => {}}
+      onSetOutgoing={async () => {}}
       onRevoke={() => {}}
       onViewActivity={() => {}}
       onClose={() => {}}
@@ -156,4 +158,17 @@ test('credits and host details stay in Manage rather than the client row', () =>
   expect(clientDetail).toContain('1,234')
   expect(clientDetail).toContain('Helius does not report a per-call cost')
   expect(clientDetail).not.toContain('$')
+})
+
+test('outgoing permission reflects the saved client value and explains its boundaries', () => {
+  const off = detail(claude)
+  expect(off).toContain('Allow automatic SOL transfers')
+  expect(off).not.toContain('checked=""')
+  expect(detail({ ...claude, outgoingAllowed: true })).toContain('checked=""')
+  expect(off).toContain('your embedded wallet')
+  expect(off).toContain('Requires separate transaction delegation')
+  expect(off).toContain('No per-transfer approval')
+  expect(off).toContain('external wallet')
+  expect(off).toContain('Reconnecting resets this permission to off')
+  expect(off).toContain('cannot undo already signed')
 })

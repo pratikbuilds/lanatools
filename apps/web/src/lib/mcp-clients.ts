@@ -64,3 +64,22 @@ export async function setMcpClientLimit(
   )
   if (!response.ok) throw new Error('Could not change the limit.')
 }
+
+export async function setMcpClientOutgoing(
+  getAccessToken: GetAccessToken,
+  grantId: string,
+  allowed: boolean,
+) {
+  const response = await fetch(
+    `/api/mcp/clients/${encodeURIComponent(grantId)}/outgoing`,
+    {
+      method: 'PUT',
+      headers: {
+        ...(await authorized(getAccessToken)),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ allowed }),
+    },
+  )
+  if (!response.ok) throw new Error('Could not change the outgoing permission.')
+}

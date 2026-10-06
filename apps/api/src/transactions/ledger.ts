@@ -18,7 +18,12 @@ import type {
   TransactionEvidence,
   TransactionResult,
 } from '@lanatools/contracts'
-import { mcpGrant, transactionAttempt, transactionRequest } from '../db/schema'
+import {
+  mcpGrant,
+  transactionAttempt,
+  transactionRequest,
+  transactionSigner,
+} from '../db/schema'
 import { activeGrantFor } from '../mcp-grants'
 import type { GrantIdentity } from '../mcp-grants'
 import { hashBytes, normalizeInput } from './input'
@@ -343,16 +348,38 @@ export async function claimSigning(
   db: D1Database,
   identity: GrantIdentity,
   claim: Claim,
+  expectedSignerId: string,
 ) {
+  if (!expectedSignerId)
+    throw new TransactionConflict('Transaction signer is unavailable')
   const token = crypto.randomUUID()
-  const attempt = await changeAttempt(
-    db,
-    identity,
-    claim,
-    ['prepared'],
-    { state: 'signing', claimToken: token },
-    'embedded',
-  )
+  const [attempt] = await drizzle(db)
+    .update(transactionAttempt)
+    .set({ state: 'signing', claimToken: token, updatedAt: Date.now() })
+    .where(
+      and(
+        eq(transactionAttempt.id, claim.attemptId),
+        eq(transactionAttempt.claimToken, claim.token),
+        eq(transactionAttempt.state, 'prepared'),
+        ownsAttempt(identity),
+        sql`exists (select 1 from ${mcpGrant} where ${activeGrantFor(identity)} and ${mcpGrant.outgoingAllowed} = 1)`,
+        sql`exists (
+        select 1 from ${transactionRequest} r
+        join ${transactionSigner} s on s.privy_user_id = r.privy_user_id
+        where r.id = ${transactionAttempt.requestId}
+          and r.status = 'pending' and r.execution = 'embedded'
+          and s.status = 'enabled' and s.signer_id = ${expectedSignerId}
+          and s.wallet_address = ${transactionAttempt.walletAddress}
+          and s.wallet_address = r.wallet_address
+          and s.wallet_id = json_extract(r.canonical_input, '$.embeddedWallet.id')
+      )`,
+      ),
+    )
+    .returning()
+  if (!attempt)
+    throw new TransactionConflict(
+      'Transaction signing is not permitted or already claimed',
+    )
   return { attemptId: attempt.id, token, messageBase64: attempt.messageBase64 }
 }
 

@@ -43,6 +43,9 @@ export const mcpGrant = sqliteTable(
     // amounts are summed from payment_activity by user and client, so they
     // survive a reconnect that replaces this row's ID.
     limitMicroUsd: integer('limit_micro_usd').notNull().default(0),
+    outgoingAllowed: integer('outgoing_allowed', { mode: 'boolean' })
+      .notNull()
+      .default(false),
     // Copied from the consent the user approved. Clients choose their own
     // names, so the dashboard shows the approved redirect host beside it.
     clientName: text('client_name'),
@@ -54,6 +57,10 @@ export const mcpGrant = sqliteTable(
   },
   (table) => [
     uniqueIndex('mcp_grant_user_client').on(table.privyUserId, table.clientId),
+    check(
+      'mcp_grant_outgoing_allowed',
+      sql`${sql.identifier('outgoing_allowed')} in (0, 1)`,
+    ),
   ],
 )
 
@@ -285,3 +292,23 @@ export const transactionLink = sqliteTable('transaction_link', {
   expiresAt: integer('expires_at').notNull(),
   createdAt: integer('created_at').notNull(),
 })
+
+/** Enabled only after dedicated transaction delegation has been confirmed. */
+export const transactionSigner = sqliteTable(
+  'transaction_signer',
+  {
+    privyUserId: text('privy_user_id').primaryKey(),
+    walletId: text('wallet_id').notNull(),
+    walletAddress: text('wallet_address').notNull(),
+    signerId: text('signer_id').notNull(),
+    policyId: text('policy_id').notNull(),
+    status: text('status', { enum: ['enabled', 'disabled'] }).notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [
+    check(
+      'transaction_signer_status',
+      sql`${t.status} in ('enabled', 'disabled')`,
+    ),
+  ],
+)

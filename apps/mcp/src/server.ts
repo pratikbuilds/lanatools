@@ -26,6 +26,8 @@ export type ServerDependencies = {
     | 'callTool'
     | 'sendFeedback'
     | 'createExternalTransfer'
+    | 'executeEmbeddedTransfer'
+    | 'getTransferStatus'
   >
   typesafeApiKey: string | undefined
   revokeClient: (identity: GrantIdentity) => void
@@ -43,6 +45,20 @@ const SERVICE_UNAVAILABLE: ToolError = {
 }
 
 const JEV_TIMEOUT_MS = 3000
+const transferFields = {
+  idempotencyKey: z.string().min(1).max(128),
+  recipient: z.string().min(32).max(44),
+  amountLamports: z
+    .string()
+    .regex(/^\d{1,20}$/)
+    .refine(
+      (value) =>
+        /^\d{1,20}$/.test(value) &&
+        BigInt(value) > 0n &&
+        BigInt(value) <= 18446744073709551615n,
+      'Expected a positive u64 amount in lamports',
+    ),
+}
 const cachedFetch = (url: string, init?: RequestInit) =>
   fetch(url, { ...init, cf: { cacheEverything: true } })
 
@@ -127,18 +143,7 @@ export function createServer(
       description:
         'Create a devnet SOL transfer signing link for the user to review and sign with an external wallet. The link permits only this transfer and does not sign or send it. Reuse the same idempotency key for the same intent. Amounts are exact integer lamports, not SOL.',
       inputSchema: z.strictObject({
-        idempotencyKey: z.string().min(1).max(128),
-        recipient: z.string().min(32).max(44),
-        amountLamports: z
-          .string()
-          .regex(/^\d{1,20}$/)
-          .refine(
-            (value) =>
-              /^\d{1,20}$/.test(value) &&
-              BigInt(value) > 0n &&
-              BigInt(value) <= 18446744073709551615n,
-            'Expected a positive u64 amount in lamports',
-          ),
+        ...transferFields,
         externalWallet: z.string().nullable().optional().default(null),
       }),
       annotations: {
@@ -158,6 +163,75 @@ export function createServer(
           return {
             content: [{ type: 'text', text: JSON.stringify(link) }],
             structuredContent: link,
+          }
+        } catch {
+          return toolError(SERVICE_UNAVAILABLE)
+        }
+      }),
+  )
+  server.registerTool(
+    'transfer_sol_embedded',
+    {
+      title: 'Transfer SOL from the embedded wallet',
+      description: [
+        "Automatically transfer devnet SOL from the user's embedded wallet after initial outgoing permission and confirmed separate transaction delegation.",
+        'No signing link or per-transfer approval is required. Execution is disabled by default pending the transaction authority proof; payment signer credentials are never used.',
+        'Use exact integer amountLamports and reuse the same idempotency key for the same intent. An uncertain result may already have moved funds: check get_transfer_status instead of creating another intent.',
+      ].join(' '),
+      inputSchema: z.strictObject(transferFields),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    (input) =>
+      withGrant(null, async (grant) => {
+        try {
+          const outcome = await dependencies.api.executeEmbeddedTransfer(
+            grant,
+            input,
+          )
+          if (!outcome.ok)
+            return toolError({
+              code: 'transaction_refused',
+              message: outcome.reason,
+              retryable: false,
+            })
+          return {
+            content: [{ type: 'text', text: JSON.stringify(outcome.result) }],
+            structuredContent: outcome.result,
+          }
+        } catch {
+          return toolError(SERVICE_UNAVAILABLE)
+        }
+      }),
+  )
+  server.registerTool(
+    'get_transfer_status',
+    {
+      title: 'Read a SOL transfer status',
+      description:
+        'Read safe status metadata for a transfer owned by this active connection. Successful or failed chain status requires verified transaction evidence. Unresolved or uncertain status does not prove the transfer failed; do not create a replacement intent.',
+      inputSchema: z.strictObject({ requestId: z.uuid() }),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    (input) =>
+      withGrant(null, async (grant) => {
+        try {
+          const result = await dependencies.api.getTransferStatus(
+            grant,
+            input.requestId,
+          )
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result) }],
+            structuredContent: result,
           }
         } catch {
           return toolError(SERVICE_UNAVAILABLE)

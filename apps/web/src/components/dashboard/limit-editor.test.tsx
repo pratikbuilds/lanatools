@@ -5,6 +5,7 @@ import { LimitEditor } from './limit-editor'
 
 const codex: McpClient = {
   grantId: 'grant-1',
+  outgoingAllowed: false,
   clientId: 'client-1',
   clientName: 'Codex',
   redirectHost: '127.0.0.1:58113',

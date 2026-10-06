@@ -205,6 +205,26 @@ This path refuses a mainnet API configuration. Production remains on mainnet,
 so use the local devnet environment for this MVP. Automatic embedded signing
 needs separate transaction delegation and is not enabled by the external tool.
 
+## Automatic embedded SOL transfers
+
+`transfer_sol_embedded` accepts the same named recipient, exact lamports and
+idempotency key, then signs automatically after the owner's initial permission.
+It uses no signing link or per-transfer approval. The connected-client drawer
+has an owner-only automatic SOL permission, initially off and reset on revoke
+or reconnect. Disabling it stops new signing claims; an already claimed transfer
+may finish and retain its evidence.
+
+Live signing remains disabled. It requires verified, separate transaction
+delegation, `PRIVY_TRANSACTION_SIGNER_ID` and `PRIVY_TRANSACTION_SIGNER_KEY`, plus
+`SOL_TRANSACTION_SIGNING_ENABLED=true` on devnet. Payment signer credentials are
+refused. No delegation setup/attachment endpoint is offered until the isolated
+Privy policy and selective signer-removal proof passes. Configure these only
+after that proof; the permission checkbox alone cannot activate a signer.
+
+`get_transfer_status` reads a request owned by the active user/client connection
+and reconciles exact verified chain evidence. Signing or submission response
+loss stays unresolved and never triggers another signing call or replacement.
+
 ## Hosted app
 
 The site, API, and MCP server run as Cloudflare Workers. `lanatools.sh`

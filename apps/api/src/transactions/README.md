@@ -36,7 +36,7 @@ Refusals replay under the same key; a changed intent needs a new key.
 | `claimPreparation`    | no attempt → preparing                                                  | attempt ID and token, or null     |
 | `storePrepared`       | preparing → prepared                                                    | none                              |
 | `issueAttempt`        | prepared → issued, external only                                        | exact stored unsigned message     |
-| `claimSigning`        | prepared → signing, embedded only                                       | new token and stored message      |
+| `claimSigning`        | prepared → signing, embedded permission + confirmed signer              | new token and stored message      |
 | `storeVerifiedSigned` | signing/issued → signed                                                 | none                              |
 | `claimSubmission`     | signed → submitting                                                     | new token and stored signed bytes |
 | `recordOutcome`       | submitting → submitted or uncertain; verified chain evidence → terminal | none                              |
@@ -124,3 +124,10 @@ recovery operation may abandon a still-unprepared attempt; response loss after a
 prepared write requires inspecting persisted state rather than blindly rebuilding.
 The local tests include real D1 and a disposable HTTP RPC fixture exercising the
 production Kit genesis/blockhash reader. They do not contact a Solana cluster.
+
+Embedded claims require current owner-approved client outgoing permission and an
+enabled transaction signer record matching the canonical owner wallet ID/address
+and trusted configured signer ID. Neither an agent nor a payment signer enables
+that record. Missing or disabled delegation fails closed before a signing permit.
+The owner may disable new claims; already persisted claims may finish and retain
+their evidence. Provisioning and delegation setup are not exposed here.

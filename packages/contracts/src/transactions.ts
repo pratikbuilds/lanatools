@@ -52,6 +52,10 @@ export const ExternalTransferInput = type({
 })
 export type ExternalTransferInput = typeof ExternalTransferInput.infer
 
+export const EmbeddedTransferInput =
+  ExternalTransferInput.omit('externalWallet')
+export type EmbeddedTransferInput = typeof EmbeddedTransferInput.infer
+
 export type ExternalTransferLink = {
   requestId: string
   signingUrl: string

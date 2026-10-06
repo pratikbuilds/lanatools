@@ -19,7 +19,14 @@ import { paymentConfig } from './solana/network'
 import { callTool } from './tools/call-tool'
 import type { ProviderEnv } from './tools/providers'
 import { createExternalLink } from './transactions/external-link'
-import type { ExternalTransferInput } from '@lanatools/contracts'
+import type {
+  ExternalTransferInput,
+  EmbeddedTransferInput,
+} from '@lanatools/contracts'
+import {
+  executeEmbeddedSol,
+  getTransferStatus,
+} from './transactions/embedded-sol'
 
 /** The MCP Worker's RPC surface for deleting OAuth tokens held in its KV. */
 export type McpTokenRevoker = {
@@ -33,6 +40,9 @@ export type McpTokenRevoker = {
 export type McpEnv = ProviderEnv & {
   SIGNING_LINK_ORIGIN?: string
   SIGNING_LINK_TTL_SECONDS?: string
+  SOL_TRANSACTION_SIGNING_ENABLED?: string
+  PRIVY_TRANSACTION_SIGNER_ID?: string
+  PRIVY_TRANSACTION_SIGNER_KEY?: string
   DB: D1Database
   PRIVY_APP_ID: string
   PRIVY_APP_SECRET: string
@@ -141,6 +151,29 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
       return await createExternalLink(this.env, identity, input)
     } catch {
       throw new Error('Could not create the external SOL transfer link')
+    }
+  }
+
+  async executeEmbeddedTransfer(
+    identity: GrantIdentity,
+    input: EmbeddedTransferInput,
+  ) {
+    try {
+      return await executeEmbeddedSol(this.env, identity, input)
+    } catch {
+      return {
+        ok: false as const,
+        reason:
+          'Could not complete the automatic SOL transfer; check status before retrying',
+      }
+    }
+  }
+
+  async getTransferStatus(identity: GrantIdentity, requestId: string) {
+    try {
+      return await getTransferStatus(this.env, identity, requestId)
+    } catch {
+      throw new Error('Transfer status is unavailable')
     }
   }
 

@@ -18,7 +18,12 @@ import {
 } from '@solana/kit'
 import type { D1Database } from '@cloudflare/workers-types'
 import type { PreparedTransaction } from '@lanatools/contracts'
-import { mcpGrant, transactionAttempt, transactionRequest } from '../db/schema'
+import {
+  mcpGrant,
+  transactionAttempt,
+  transactionRequest,
+  transactionSigner,
+} from '../db/schema'
 import { testDatabase } from '../test-database'
 import { normalizeInput } from './input'
 import {
@@ -37,6 +42,7 @@ import {
   storeVerifiedSigned,
 } from './ledger'
 
+const SIGNER = 'dedicated-transaction-signer'
 const WALLET = '11111111111111111111111111111111'
 const OTHER = 'So11111111111111111111111111111111111111112'
 const context = {
@@ -105,8 +111,21 @@ async function connect(
     privyUserId: userId,
     clientId: identity.clientId,
     status: 'active',
+    outgoingAllowed: true,
     createdAt: Date.now(),
   })
+  await drizzle(database)
+    .insert(transactionSigner)
+    .values({
+      privyUserId: userId,
+      walletId: 'owner-wallet',
+      walletAddress: WALLET,
+      signerId: SIGNER,
+      policyId: 'transaction-policy',
+      status: 'enabled',
+      updatedAt: Date.now(),
+    })
+    .onConflictDoNothing()
   return identity
 }
 
@@ -374,7 +393,7 @@ test('embedded signing has one permit and cannot use the external issuance path'
   const { identity, request, claim } = await preparedAttempt()
   await expect(issueAttempt(db, identity, claim)).rejects.toThrow()
   const results = await Promise.allSettled(
-    Array.from({ length: 8 }, () => claimSigning(db, identity, claim)),
+    Array.from({ length: 8 }, () => claimSigning(db, identity, claim, SIGNER)),
   )
   expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
   expect((await getRequest(db, identity, request.requestId)).state).toBe(
@@ -388,7 +407,7 @@ test('external bytes are exposed only after the issued marker is durable', async
     ...external,
     externalWallet: WALLET,
   })
-  await expect(claimSigning(db, identity, claim)).rejects.toThrow()
+  await expect(claimSigning(db, identity, claim, SIGNER)).rejects.toThrow()
   expect(await issueAttempt(db, identity, claim)).toBe(
     fixture().prepared.messageBase64,
   )
@@ -400,7 +419,7 @@ test('external bytes are exposed only after the issued marker is durable', async
 
 test('signed registration preserves the exact prepared message and signature', async () => {
   const { identity, request, claim } = await preparedAttempt()
-  const signing = await claimSigning(db, identity, claim)
+  const signing = await claimSigning(db, identity, claim, SIGNER)
   await expect(
     storeVerifiedSigned(db, identity, signing, fixture(OTHER).signed),
   ).rejects.toThrow()
@@ -426,7 +445,7 @@ test('signed registration preserves the exact prepared message and signature', a
 
 test('RPC acceptance, uncertainty and confirmed success are distinct and terminal', async () => {
   const { identity, request, claim } = await preparedAttempt()
-  const signing = await claimSigning(db, identity, claim)
+  const signing = await claimSigning(db, identity, claim, SIGNER)
   await storeVerifiedSigned(db, identity, signing, fixture().signed)
   const submission = await claimSubmission(db, identity, signing)
   expect(submission.signedBase64).toBe(fixture().signed.signedBase64)
@@ -487,7 +506,7 @@ test('RPC acceptance, uncertainty and confirmed success are distinct and termina
 
 test('RPC acceptance alone reports submitted and expiry needs reconciled history', async () => {
   const { identity, request, claim } = await preparedAttempt()
-  const signing = await claimSigning(db, identity, claim)
+  const signing = await claimSigning(db, identity, claim, SIGNER)
   await storeVerifiedSigned(db, identity, signing, fixture().signed)
   const submission = await claimSubmission(db, identity, signing)
   await recordOutcome(db, identity, submission, {
@@ -570,7 +589,7 @@ test('failed creation and required writes never authorize downstream calls', asy
   const sign = mock(() => {})
   await expect(
     (async () => {
-      await claimSigning(failing, identity, claim)
+      await claimSigning(failing, identity, claim, SIGNER)
       sign()
     })(),
   ).rejects.toThrow()
@@ -578,7 +597,7 @@ test('failed creation and required writes never authorize downstream calls', asy
   expect((await getRequest(db, identity, request.requestId)).state).toBe(
     'prepared',
   )
-  const signing = await claimSigning(db, identity, claim)
+  const signing = await claimSigning(db, identity, claim, SIGNER)
   await expect(
     storeVerifiedSigned(failing, identity, signing, fixture().signed),
   ).rejects.toThrow()
@@ -603,7 +622,7 @@ test('process restart recovers immutable bytes and blocks a second signing claim
     const claim = await claimPreparation(opened.db, identity, request.requestId)
     if (!claim) throw new Error('Expected claim')
     await storePrepared(opened.db, identity, claim, fixture().prepared)
-    const signing = await claimSigning(opened.db, identity, claim)
+    const signing = await claimSigning(opened.db, identity, claim, SIGNER)
     await storeVerifiedSigned(opened.db, identity, signing, fixture().signed)
     const submission = await claimSubmission(opened.db, identity, signing)
     await opened.dispose()
@@ -666,11 +685,11 @@ test('failed preparation storage and external issuance release no bytes', async 
 test('a committed claim with a lost response cannot issue a second permit', async () => {
   const { identity, request, claim } = await preparedAttempt()
   const lostResponse = async () => {
-    await claimSigning(db, identity, claim)
+    await claimSigning(db, identity, claim, SIGNER)
     throw new Error('response lost after commit')
   }
   await expect(lostResponse()).rejects.toThrow('response lost')
-  await expect(claimSigning(db, identity, claim)).rejects.toThrow()
+  await expect(claimSigning(db, identity, claim, SIGNER)).rejects.toThrow()
   expect(await claimPreparation(db, identity, request.requestId)).toBeNull()
   expect((await getRequest(db, identity, request.requestId)).state).toBe(
     'signing',
@@ -678,4 +697,89 @@ test('a committed claim with a lost response cannot issue a second permit', asyn
   const recovered = await getLatestAttempt(db, identity, request.requestId)
   expect(recovered?.claimToken).not.toBe(claim.token)
   expect(recovered?.messageBase64).toBe(fixture().prepared.messageBase64)
+})
+
+test('signing fails closed without permission or matching confirmed delegation', async () => {
+  const cases = [
+    'permission',
+    'missing',
+    'disabled',
+    'wallet-id',
+    'address',
+    'signer',
+    'owner',
+    'revoked',
+  ] as const
+  for (const denial of cases) {
+    const { identity, claim } = await preparedAttempt()
+    if (denial === 'permission' || denial === 'revoked')
+      await drizzle(db)
+        .update(mcpGrant)
+        .set(
+          denial === 'permission'
+            ? { outgoingAllowed: false }
+            : { status: 'revoked', outgoingAllowed: false },
+        )
+        .where(eq(mcpGrant.id, identity.grantId))
+    else if (denial === 'missing')
+      await drizzle(db)
+        .delete(transactionSigner)
+        .where(eq(transactionSigner.privyUserId, identity.userId))
+    else {
+      const changes = {
+        disabled: { status: 'disabled' as const },
+        'wallet-id': { walletId: 'different-wallet' },
+        address: { walletAddress: OTHER },
+        signer: { signerId: 'payment-signer' },
+        owner: { privyUserId: crypto.randomUUID() },
+      }
+      await drizzle(db)
+        .update(transactionSigner)
+        .set(changes[denial])
+        .where(eq(transactionSigner.privyUserId, identity.userId))
+    }
+    const sign = mock(() => {})
+    await expect(
+      (async () => {
+        await claimSigning(db, identity, claim, SIGNER)
+        sign()
+      })(),
+    ).rejects.toThrow()
+    expect(sign).not.toHaveBeenCalled()
+    const stored = await drizzle(db)
+      .select()
+      .from(transactionAttempt)
+      .where(eq(transactionAttempt.id, claim.attemptId))
+      .get()
+    expect(stored?.state).toBe('prepared')
+    expect(stored?.claimToken).toBe(claim.token)
+  }
+})
+
+test('signing rejects a wrong trusted signer ID and a different authenticated owner', async () => {
+  const { identity, claim } = await preparedAttempt()
+  await expect(
+    claimSigning(db, identity, claim, 'other-configured-signer'),
+  ).rejects.toThrow()
+  await expect(
+    claimSigning(db, await connect(), claim, SIGNER),
+  ).rejects.toThrow()
+  await expect(claimSigning(db, identity, claim, '')).rejects.toThrow()
+})
+
+test('disabling outgoing after a durable claim preserves signed evidence', async () => {
+  const { identity, request, claim } = await preparedAttempt()
+  const signing = await claimSigning(db, identity, claim, SIGNER)
+  await drizzle(db)
+    .update(mcpGrant)
+    .set({ outgoingAllowed: false })
+    .where(eq(mcpGrant.id, identity.grantId))
+  await drizzle(db)
+    .update(transactionSigner)
+    .set({ status: 'disabled' })
+    .where(eq(transactionSigner.privyUserId, identity.userId))
+  await storeVerifiedSigned(db, identity, signing, fixture().signed)
+  expect((await getLatestAttempt(db, identity, request.requestId))?.state).toBe(
+    'signed',
+  )
 })

@@ -1,9 +1,13 @@
 import { type } from 'arktype'
 import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
-import { ClientLimitUpdate, parseClientLimit } from '@lanatools/contracts'
+import {
+  ClientLimitUpdate,
+  ClientOutgoingUpdate,
+  parseClientLimit,
+} from '@lanatools/contracts'
 import type { McpClientList } from '@lanatools/contracts'
-import { listClients, setClientLimit } from '../mcp-grants'
+import { listClients, setClientLimit, setClientOutgoing } from '../mcp-grants'
 import { revokeClient } from '../mcp-service'
 import type { McpDashboardEnv } from '../mcp-service'
 import { privyAuth } from './privy-auth'
@@ -36,6 +40,19 @@ export const mcpClients = new Hono<{
       c.get('userId'),
       c.req.param('grantId'),
       limit,
+    )
+    if (!updated) throw new HTTPException(404)
+    return c.body(null, 204)
+  })
+
+  .put('/:grantId/outgoing', async (c) => {
+    const body = ClientOutgoingUpdate(await c.req.json().catch(() => null))
+    if (body instanceof type.errors) throw new HTTPException(400)
+    const updated = await setClientOutgoing(
+      c.env.DB,
+      c.get('userId'),
+      c.req.param('grantId'),
+      body.allowed,
     )
     if (!updated) throw new HTTPException(404)
     return c.body(null, 204)
