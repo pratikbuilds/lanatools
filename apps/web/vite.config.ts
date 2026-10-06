@@ -1,4 +1,4 @@
-import { defineConfig, loadEnv } from 'vite'
+import { createServer, defineConfig, loadEnv } from 'vite'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -18,6 +18,30 @@ export default defineConfig(async ({ command, mode }) => {
       tailwindcss(),
       tanstackRouter({ target: 'react', autoCodeSplitting: true }),
       viteReact(),
+      {
+        name: 'prerender-landing',
+        apply: 'build',
+        async transformIndexHtml(html: string) {
+          const server = await createServer({
+            configFile: false,
+            root: import.meta.dirname,
+            resolve: { tsconfigPaths: true },
+            plugins: [viteReact()],
+            appType: 'custom',
+            optimizeDeps: { noDiscovery: true, include: [] },
+            server: { middlewareMode: true, ws: false, watch: null },
+          })
+          try {
+            const { render } = await server.ssrLoadModule('/src/prerender.tsx')
+            return html.replace(
+              '<div id="app"></div>',
+              `<div id="app">${render()}</div>`,
+            )
+          } finally {
+            await server.close()
+          }
+        },
+      },
     ],
     server: { proxy },
     preview: { proxy },
