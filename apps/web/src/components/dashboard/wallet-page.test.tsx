@@ -79,6 +79,6 @@ test('the SOL that pays withdrawal fees sits beside the balance', () => {
         onWithdraw={() => {}}
       />,
     )
-  expect(view(100_000_000n)).toContain('◎0.1<')
-  expect(view(0n)).toContain('No SOL. Add SOL to this wallet to withdraw.')
+  expect(view(100_000_000n)).toContain('0.1 SOL')
+  expect(view(0n)).toContain('Add SOL to this wallet to withdraw.')
 })

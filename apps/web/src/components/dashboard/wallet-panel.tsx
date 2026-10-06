@@ -191,8 +191,7 @@ export function WalletPanelView({
 
 /**
  * The SOL that pays withdrawal fees, beside the balance in the same small
- * type as its unit and written as Solana Explorer writes it: the ◎ sign
- * before the amount, standing in for the word SOL. A wallet with none is told here, in red, before it
+ * type as its unit. A wallet with none is told here, in red, before it
  * tries to withdraw.
  */
 function FeeBalance({ sol }: { sol: bigint }) {
@@ -201,12 +200,15 @@ function FeeBalance({ sol }: { sol: bigint }) {
     <small
       title={
         empty
-          ? 'No SOL. Add SOL to this wallet to withdraw.'
-          : 'SOL, which pays the network fee when you withdraw.'
+          ? 'Add SOL to this wallet to withdraw.'
+          : 'Pays the network fee when you withdraw.'
       }
-      className={`ml-4 text-[14px] font-medium tracking-normal ${empty ? 'text-bad' : 'text-fg-3'}`}
+      className={`ml-2.5 text-[14px] font-medium tracking-normal ${empty ? 'text-bad' : 'text-fg-3'}`}
     >
-      {`\u25ce${formatSol(sol)}`}
+      <span aria-hidden="true" className="mr-2.5 text-fg-3">
+        ·
+      </span>
+      {`${formatSol(sol)} SOL`}
     </small>
   )
 }
