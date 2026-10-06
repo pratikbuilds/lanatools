@@ -3,14 +3,9 @@ import { address } from '@solana/kit'
 import { skipToken, useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { AnimatedCounter } from '#/components/ui/animated-counter'
-import { CopyStatus, copyLabel, useCopy } from '#/components/landing/copy-url'
-import {
-  NETWORK,
-  SOL_DECIMALS,
-  formatUnits,
-  getWalletBalances,
-} from '#/lib/solana'
-import { Drawer, DrawerFacts, DrawerHeader } from './drawer'
+import { NETWORK, getWalletBalances } from '#/lib/solana'
+import { DepositModal } from './deposit-modal'
+import { WalletAddress } from './wallet-address'
 import { Modal } from './modal'
 import { SolanaShine } from './solana-shine'
 import { SplitPanel } from './split-panel'
@@ -67,17 +62,11 @@ function wholeCents(usdc: bigint) {
   return Number(usdc / 10_000n) / 100
 }
 
-/** A wallet address cut to its first and last four characters. */
-function shortAddress(walletAddress: string) {
-  return `${walletAddress.slice(0, 4)}…${walletAddress.slice(-4)}`
-}
-
 /**
  * The balance and the ways to move it, as one panel: what is available on
  * the left, the wallet's address with Deposit and Withdraw on the right.
  */
 export function WalletPanel({ walletAddress }: { walletAddress: string }) {
-  const { state, copy } = useCopy(walletAddress)
   const balances = useWalletBalances(walletAddress)
   const [depositing, setDepositing] = useState(false)
   const [withdrawing, setWithdrawing] = useState(false)
@@ -128,19 +117,8 @@ export function WalletPanel({ walletAddress }: { walletAddress: string }) {
         right={
           <>
             <h2 className="d-label">Deposit USDC</h2>
-            <div className="mt-3 flex items-center gap-2">
-              <code title={walletAddress} className="d-well">
-                {shortAddress(walletAddress)}
-              </code>
-              <button
-                type="button"
-                onClick={() => void copy()}
-                className="d-btn h-[39px]"
-                aria-label="Copy the wallet address"
-              >
-                {copyLabel(state, 'Copy')}
-              </button>
-              <CopyStatus state={state} subject="address" />
+            <div className="mt-3 w-full max-w-[30rem]">
+              <WalletAddress walletAddress={walletAddress} compact />
             </div>
             <p className="mt-3 text-[12.5px] text-fg-3">
               Only send USDC on {NETWORK.label}. Other tokens or networks won’t
@@ -166,40 +144,11 @@ export function WalletPanel({ walletAddress }: { walletAddress: string }) {
         }
       />
 
-      <Drawer
+      <DepositModal
         open={depositing}
         onClose={() => setDepositing(false)}
-        label="Deposit USDC"
-      >
-        <DrawerHeader
-          title="Deposit USDC"
-          detail={`Your wallet on ${NETWORK.label}`}
-          onClose={() => setDepositing(false)}
-        />
-        <p>
-          Send USDC on {NETWORK.label} to this address. It shows up in your
-          balance once the transfer confirms.
-        </p>
-        <p className="d-well my-3.5">{walletAddress}</p>
-        <button
-          type="button"
-          className="d-btn d-btn-primary"
-          onClick={() => void copy()}
-        >
-          {copyLabel(state, 'Copy address')}
-        </button>
-        <DrawerFacts
-          facts={[
-            ['Network', NETWORK.label],
-            [
-              'Network fees',
-              balances.data
-                ? `${formatUnits(balances.data.sol, SOL_DECIMALS, { maxFraction: 4 })} SOL in this wallet`
-                : '—',
-            ],
-          ]}
-        />
-      </Drawer>
+        walletAddress={walletAddress}
+      />
 
       <WithdrawModal
         open={withdrawing}

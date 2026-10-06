@@ -35,7 +35,9 @@ test('once the payment wallet exists, the page shows it for deposits', () => {
   expect(html).toContain('Available')
   expect(html).toContain('Deposit USDC')
   expect(html).toContain(embedded)
-  expect(html).toContain('F8yp…jpV3')
+  expect(html).toContain('>F8yp</strong>')
+  expect(html).toContain('Hfv7…pChY')
+  expect(html).toContain('>jpV3</strong>')
   expect(html).toContain('Withdraw')
 })
 
