@@ -16,23 +16,59 @@ TanStack Query, and Tailwind. Shared HTTP schemas live in `packages/contracts`.
 | `apps/api/src/solana/network.ts`        | Solana network table and server network configuration            |
 | `apps/api/src/payments`                 | `call`: challenges, spending limits, signing and settlement      |
 | `apps/mcp`                              | OAuth and the MCP server; provider tools run in the API          |
+| `scripts/dev.ts`                        | Local devnet setup: `bun run dev`, `dev:reset` and `dev:fund`    |
 
 ## Development
 
 Install Bun **1.4.2** and Node.js **24 LTS**. Node runs the Vite/ESLint toolchain;
-Bun installs packages and runs unit tests. Wrangler runs the local API.
+Bun installs packages and runs unit tests. Wrangler runs the local Workers.
 
-```sh
-bun install --frozen-lockfile
-bun run --cwd apps/api db:migrate:local
-bun run dev
-```
+Local development runs on Solana devnet with a local database, so it never
+touches production users, wallets or data.
 
-Open <http://localhost:5173>. The local Worker listens on port 3000; the
-frontend proxies `/api` requests to it. The home page reports the real API
-connection status. To change the Worker port, pass `--port` to Wrangler and set
-`API_PROXY_TARGET=http://127.0.0.1:<port>` when starting the frontend.
-Only the Vite server reads `API_PROXY_TARGET`; it is never bundled into the browser.
+1. Copy `.env.example` to `.env` and fill it in. Use a Privy app made for
+   local development, never the production one, and create its payment signer
+   once with `bun --env-file=.env apps/api/scripts/create-payment-signer.ts`.
+2. Install and start:
+
+   ```sh
+   bun install --frozen-lockfile
+   bun run dev
+   ```
+
+`bun run dev` checks `.env`, applies local migrations, builds the consent page
+and starts three services:
+
+| Service   | URL                         |
+| --------- | --------------------------- |
+| Dashboard | <http://localhost:5173>     |
+| API       | <http://localhost:3000>     |
+| MCP       | <http://localhost:8788/mcp> |
+
+It reads secrets only from the root `.env`; per-app `.dev.vars` and
+`.env.local` files are not used. It refuses to start with the production Privy
+app, an RPC that does not serve devnet, Solana's public devnet RPC (Workers
+cannot use it), a remote Cloudflare binding, or a busy port. If one service
+stops, the others stop too. The dashboard proxies `/api` to the API.
+
+Other commands:
+
+- `bun run dev:reset` clears the local database and OAuth state, then applies
+  migrations. Stop `bun run dev` first.
+- `bun run dev:fund <wallet> <usdc>` sends devnet USDC from the default Solana
+  CLI wallet, for example to the payment wallet the dashboard shows. It uses
+  `DEVNET_RPC_URL` from `.env`, or Solana's public devnet RPC, and checks that
+  it serves devnet first.
+
+Paid calls go to the hosted devnet merchant,
+`https://devnet-merchant-production.up.railway.app/api/v1/fixed` (0.01 USDC
+over MPP and x402). The local testbed merchant cannot be used here, because
+`pay_http` only calls public `https` URLs.
+
+To check the setup end to end: run `bun run dev`, sign in at
+<http://localhost:5173>, set up the payment wallet and fund it with
+`dev:fund`, then connect Claude Code or Codex to `http://localhost:8788/mcp`,
+approve a spending limit and ask it to pay the merchant URL above.
 
 ## Checks
 

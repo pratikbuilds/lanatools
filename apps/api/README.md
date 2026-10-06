@@ -1,11 +1,11 @@
 # API
 
-`bun run dev` starts the local Cloudflare Worker on port 3000 and the web app.
-The local Worker uses D1 under `apps/api/.wrangler/state`. Before its first run,
-apply the checked-in migration:
+`bun run dev` from the repository root starts the local Cloudflare Worker on
+port 3000 with the MCP Worker and the web app, and applies migrations first;
+see the root README. The local Worker uses D1 under `apps/api/.wrangler/state`.
+To check D1 on its own:
 
 ```sh
-bun run --cwd apps/api db:migrate:local
 bun run --cwd apps/api db:smoke:local
 ```
 
@@ -31,7 +31,7 @@ its tools from the same list. `McpAccessService.callTool(identity, name, input)`
 runs any of them through `callTool` in `src/tools/call-tool.ts`.
 
 Jupiter tools need `jupiter:read`. Supply `JUPITER_API_KEY`
-as an API Worker secret (ignored `.dev.vars` locally). A missing server key
+as an API Worker secret (the root `.env` locally). A missing server key
 returns a configuration error without asking the user for credentials.
 This adds no database migration or wallet-authentication flow.
 
