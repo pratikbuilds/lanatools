@@ -6,6 +6,7 @@ import { AnimatedCounter } from '#/components/ui/animated-counter'
 import { NETWORK, formatSol, getWalletBalances } from '#/lib/solana'
 import { DepositModal } from './deposit-modal'
 import { WalletAddress } from './wallet-address'
+import { SolanaCoin } from './solana-mark'
 import { SolanaShine } from './solana-shine'
 import { SplitPanel } from './split-panel'
 import { useDashboardSession } from './session'
@@ -203,11 +204,9 @@ function FeeBalance({ sol }: { sol: bigint }) {
           ? 'Add SOL to this wallet to withdraw.'
           : 'Pays the network fee when you withdraw.'
       }
-      className={`ml-2.5 text-[14px] font-medium tracking-normal ${empty ? 'text-bad' : 'text-fg-3'}`}
+      className={`ml-3.5 text-[14px] font-medium tracking-normal ${empty ? 'text-bad' : 'text-fg-3'}`}
     >
-      <span aria-hidden="true" className="mr-2.5 text-fg-3">
-        ·
-      </span>
+      <SolanaCoin size={14} className="mr-1.5 align-[-2px]" />
       {`${formatSol(sol)} SOL`}
     </small>
   )
