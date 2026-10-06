@@ -2,7 +2,10 @@ import ReactDOM from 'react-dom/client'
 import { RouterProvider } from '@tanstack/react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { PrivyProvider } from '@privy-io/react-auth'
-import { toSolanaWalletConnectors } from '@privy-io/react-auth/solana'
+import {
+  defaultSolanaRpcsPlugin,
+  toSolanaWalletConnectors,
+} from '@privy-io/react-auth/solana'
 import { getRouter } from './router'
 
 const router = getRouter()
@@ -39,6 +42,7 @@ ReactDOM.createRoot(rootElement).render(
           },
         },
         embeddedWallets: { solana: { createOnLogin: 'off' } },
+        plugins: [defaultSolanaRpcsPlugin()],
       }}
     >
       {app}

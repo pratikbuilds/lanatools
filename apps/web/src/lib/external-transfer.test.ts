@@ -11,6 +11,7 @@ import {
   setTransactionMessageLifetimeUsingBlockhash,
 } from '@solana/kit'
 import type { ExternalTransferReview } from '@lanatools/contracts'
+import { defaultSolanaRpcsPlugin } from '@privy-io/react-auth/solana'
 import {
   callTransferLink,
   exactSOL,
@@ -37,6 +38,40 @@ const review: ExternalTransferReview = {
   commitment: null,
   transactionExpired: false,
 }
+
+test('Privy Solana RPC defaults supply separate working devnet and mainnet clients', async () => {
+  const clients = defaultSolanaRpcsPlugin().getDefaultRpcs({
+    appId: 'mock-app',
+  })
+  const urls: string[] = []
+  request.mockImplementation(
+    Object.assign(
+      async (...[url, init]: Parameters<typeof fetch>) => {
+        urls.push(String(url))
+        const body: unknown = JSON.parse(String(init?.body))
+        if (!body || typeof body !== 'object' || !('id' in body))
+          throw new Error('Missing JSON RPC request')
+        return Response.json({
+          jsonrpc: '2.0',
+          id: body.id,
+          result: '11111111111111111111111111111111',
+        })
+      },
+      { preconnect: () => {} },
+    ),
+  )
+  for (const chain of ['solana:devnet', 'solana:mainnet'] as const) {
+    const client = clients[chain]
+    if (!client) throw new Error(`Missing RPC configuration for ${chain}`)
+    expect(String(await client.rpc.getGenesisHash().send())).toBe(
+      '11111111111111111111111111111111',
+    )
+  }
+  expect(urls).toEqual([
+    'https://solana-devnet.rpc.privy.systems?privyAppId=mock-app',
+    'https://solana-mainnet.rpc.privy.systems?privyAppId=mock-app',
+  ])
+})
 
 test('capability is read only from a valid token fragment', () => {
   expect(tokenFromFragment(`#token=${token}`)).toBe(token)
