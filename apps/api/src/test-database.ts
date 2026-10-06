@@ -3,17 +3,20 @@ import type { D1Database, RateLimit } from '@cloudflare/workers-types'
 import { getPlatformProxy } from 'wrangler'
 
 /** A throwaway local D1 database with every migration applied. */
-export async function testDatabase() {
+export async function testDatabase(options?: {
+  persist: string
+  migrate: boolean
+}) {
   const proxy = await getPlatformProxy<{
     DB: D1Database
     SIGNUP_LIMITER: RateLimit
   }>({
     configPath: new URL('../wrangler.local.jsonc', import.meta.url).pathname,
-    persist: false,
+    persist: options ? { path: options.persist } : false,
   })
   const db = proxy.env.DB
   const dir = new URL('../drizzle/', import.meta.url)
-  for (const file of (await readdir(dir))
+  for (const file of (options?.migrate === false ? [] : await readdir(dir))
     .filter((f) => f.endsWith('.sql'))
     .sort())
     for (const statement of (await Bun.file(new URL(file, dir)).text()).split(

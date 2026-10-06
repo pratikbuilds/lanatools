@@ -1,10 +1,13 @@
 import {
+  check,
   index,
   integer,
   sqliteTable,
   text,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core'
+import { sql } from 'drizzle-orm'
+import { ATTEMPT_STATES } from '@lanatools/contracts'
 
 export const dbSmoke = sqliteTable('db_smoke', {
   id: text('id').primaryKey(),
@@ -169,3 +172,106 @@ export const agentFeedback = sqliteTable('agent_feedback', {
   feedback: text('feedback').notNull(),
   createdAt: integer('created_at').notNull(),
 })
+
+export const transactionRequest = sqliteTable(
+  'transaction_request',
+  {
+    id: text('id').primaryKey(),
+    privyUserId: text('privy_user_id').notNull(),
+    clientId: text('client_id').notNull(),
+    originatingGrantId: text('originating_grant_id').notNull(),
+    idempotencyKey: text('idempotency_key').notNull(),
+    canonicalInput: text('canonical_input').notNull(),
+    inputHash: text('input_hash').notNull(),
+    execution: text('execution', { enum: ['embedded', 'external'] }).notNull(),
+    network: text('network', { enum: ['devnet', 'mainnet'] }).notNull(),
+    walletAddress: text('wallet_address'),
+    status: text('status', { enum: ['pending', 'refused'] })
+      .notNull()
+      .default('pending'),
+    refusal: text('refusal'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('transaction_request_user_client_key').on(
+      t.privyUserId,
+      t.clientId,
+      t.idempotencyKey,
+    ),
+    index('transaction_request_user_time').on(t.privyUserId, t.createdAt),
+    check(
+      'transaction_request_execution',
+      sql`${t.execution} in ('embedded', 'external')`,
+    ),
+    check(
+      'transaction_request_network',
+      sql`${t.network} in ('devnet', 'mainnet')`,
+    ),
+    check(
+      'transaction_request_status',
+      sql`${t.status} in ('pending', 'refused')`,
+    ),
+    check(
+      'transaction_request_wallet',
+      sql`${t.execution} = 'external' or ${t.walletAddress} is not null`,
+    ),
+    check(
+      'transaction_request_refusal',
+      sql`(${t.status} = 'pending' and ${t.refusal} is null) or (${t.status} = 'refused' and ${t.refusal} is not null)`,
+    ),
+  ],
+)
+
+export const transactionAttempt = sqliteTable(
+  'transaction_attempt',
+  {
+    id: text('id').primaryKey(),
+    requestId: text('request_id')
+      .notNull()
+      .references(() => transactionRequest.id),
+    number: integer('number').notNull(),
+    state: text('state', { enum: ATTEMPT_STATES }).notNull(),
+    claimToken: text('claim_token').notNull(),
+    walletAddress: text('wallet_address').notNull(),
+    network: text('network', { enum: ['devnet', 'mainnet'] }).notNull(),
+    messageBase64: text('message_base64'),
+    messageHash: text('message_hash'),
+    preparationSlot: text('preparation_slot'),
+    blockhash: text('blockhash'),
+    lastValidBlockHeight: text('last_valid_block_height'),
+    signedBase64: text('signed_base64'),
+    signature: text('signature'),
+    evidence: text('evidence'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('transaction_attempt_number').on(t.requestId, t.number),
+    uniqueIndex('transaction_attempt_one_active')
+      .on(t.requestId)
+      .where(
+        sql`${t.state} in ('preparing', 'prepared', 'issued', 'signing', 'signed', 'submitting', 'submitted', 'uncertain')`,
+      ),
+    check('transaction_attempt_number_positive', sql`${t.number} > 0`),
+    check(
+      'transaction_attempt_state',
+      sql`${t.state} in ('preparing', 'prepared', 'issued', 'signing', 'signed', 'submitting', 'submitted', 'uncertain', 'succeeded', 'failed', 'expired', 'abandoned')`,
+    ),
+    check(
+      'transaction_attempt_network',
+      sql`${t.network} in ('devnet', 'mainnet')`,
+    ),
+    check(
+      'transaction_attempt_prepared',
+      sql`${t.state} in ('preparing', 'abandoned') or (${t.messageBase64} is not null and ${t.messageHash} is not null and ${t.preparationSlot} is not null and ${t.blockhash} is not null and ${t.lastValidBlockHeight} is not null)`,
+    ),
+    check(
+      'transaction_attempt_signed',
+      sql`${t.state} not in ('signed', 'submitting', 'submitted') or (${t.signedBase64} is not null and ${t.signature} is not null)`,
+    ),
+    check(
+      'transaction_attempt_evidence',
+      sql`${t.state} not in ('submitted', 'uncertain', 'succeeded', 'failed', 'expired') or ${t.evidence} is not null`,
+    ),
+  ],
+)
