@@ -32,6 +32,7 @@ const ROW =
 const ACTIVE_MS = 10 * 60_000
 // Rows shown before the list folds.
 const SHOWN = 6
+const TICKS = 24
 
 function clientName(client: McpClient) {
   return client.clientName ?? 'Unknown client'
@@ -310,9 +311,9 @@ function ClientRow({
       {canPay(client) ? (
         <>
           <span className="col-span-2 row-start-2 min-w-0 md:col-span-1 md:row-auto">
-            <UsageBar client={client} state={state} />
+            <UsageTicks client={client} state={state} />
             <span className="mt-1 block font-mono text-[11.5px] text-fg-3">
-              {formatUsd(client.spentMicroUsd)} /{' '}
+              {formatUsd(client.spentMicroUsd)} of{' '}
               {formatUsd(client.limitMicroUsd)}
             </span>
           </span>
@@ -354,7 +355,7 @@ function ClientRow({
   )
 }
 
-function UsageBar({
+function UsageTicks({
   client,
   state,
 }: {
@@ -362,11 +363,17 @@ function UsageBar({
   state: ClientState
 }) {
   const share = client.limitMicroUsd
-    ? Math.max(0, Math.min(1, client.spentMicroUsd / client.limitMicroUsd))
+    ? Math.min(1, client.spentMicroUsd / client.limitMicroUsd)
     : 1
+  const on =
+    client.spentMicroUsd > 0 || !client.limitMicroUsd
+      ? Math.max(1, Math.round(share * TICKS))
+      : 0
   return (
-    <span aria-hidden="true" className="d-usage-bar" data-state={state}>
-      <i style={{ width: `${share * 100}%` }} />
+    <span aria-hidden="true" className="d-ticks" data-state={state}>
+      {Array.from({ length: TICKS }, (_, tick) => (
+        <i key={tick} data-on={tick < on ? '' : undefined} />
+      ))}
     </span>
   )
 }
