@@ -55,11 +55,11 @@ export function Modal({
       onClick={(event) => {
         if (closable && event.target === event.currentTarget) onClose()
       }}
-      className={`d-modal m-auto rounded-[14px] ${size === 'lg' ? 'w-[min(46rem,calc(100vw-2rem))] md:h-[min(36rem,calc(100dvh-3rem))]' : 'w-[min(26rem,calc(100vw-2rem))]'} border border-line bg-panel p-0 text-fg shadow-(--d-shadow) backdrop:bg-(--d-scrim)`}
+      className={`d-modal m-auto flex-col overflow-clip rounded-[14px] ${size === 'lg' ? 'w-[min(46rem,calc(100vw-2rem))] md:h-[min(36rem,calc(100dvh-3rem))]' : 'w-[min(26rem,calc(100vw-2rem))]'} border border-line bg-panel p-0 text-fg shadow-(--d-shadow) open:flex backdrop:bg-(--d-scrim)`}
     >
       {open && (
-        <div className="flex h-full flex-col">
-          <div className="flex shrink-0 items-start justify-between gap-4 border-b border-dashed border-line-2 px-6 pt-5 pb-4">
+        <>
+          <div className="flex shrink-0 items-start justify-between gap-4 border-b border-dashed border-line-2 px-4 pt-5 pb-4 sm:px-6">
             <div className="min-w-0">
               <p className="font-mono text-[11.5px] break-words text-fg-3">
                 {detail}
@@ -78,10 +78,10 @@ export function Modal({
               </button>
             )}
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-5 pb-6">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-5 pb-6 sm:px-6">
             {children}
           </div>
-        </div>
+        </>
       )}
     </dialog>
   )

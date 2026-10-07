@@ -78,7 +78,7 @@ export function DrawerFacts({
   facts: Array<[label: string, value: ReactNode]>
 }) {
   return (
-    <dl className="mt-6 grid grid-cols-[8.5rem_minmax(0,1fr)] overflow-hidden rounded-[10px] border border-line text-[13.5px]">
+    <dl className="mt-6 grid grid-cols-[minmax(0,0.85fr)_minmax(0,1fr)] sm:grid-cols-[8.5rem_minmax(0,1fr)] overflow-hidden rounded-[10px] border border-line text-[13.5px]">
       {facts.map(([label, value]) => (
         <div
           key={label}
@@ -87,7 +87,9 @@ export function DrawerFacts({
           <dt className="d-th d-label flex items-center px-3.5 py-2.5">
             {label}
           </dt>
-          <dd className="px-3.5 py-2.5 break-words">{value}</dd>
+          <dd className="min-w-0 px-3.5 py-2.5 [overflow-wrap:anywhere]">
+            {value}
+          </dd>
         </div>
       ))}
     </dl>

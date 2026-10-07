@@ -29,7 +29,7 @@ import { PageHead, SectionHead } from './page-head'
 
 const DAY_MS = 86_400_000
 const ROW =
-  'grid grid-cols-[4rem_minmax(0,1fr)_auto] items-center gap-x-3 px-3.5 md:grid-cols-[5.5rem_minmax(0,1.7fr)_minmax(0,1fr)_4rem_10rem] md:gap-x-4 md:px-4'
+  'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3.5 lg:grid-cols-[5.5rem_minmax(0,1.7fr)_minmax(0,1fr)_4rem_10rem] lg:gap-x-4 lg:px-4'
 const PROTOCOL_LABELS = { mpp: 'MPP', x402: 'x402' }
 
 function clientName(item: ActivityItem) {
@@ -119,7 +119,7 @@ export function ActivityPage({
       </div>
       <p className="mt-3 text-[12.5px] text-fg-3">{CREDIT_ESTIMATE_NOTE}</p>
       <SectionHead title="Calls" className="mt-9">
-        <div className="flex w-full flex-wrap items-center gap-2.5 md:ml-auto md:w-auto">
+        <div className="flex w-full flex-wrap items-center gap-2.5 lg:ml-auto lg:w-auto">
           <div role="group" aria-label="Filter by outcome" className="d-seg">
             {[undefined, ...ACTIVITY_OUTCOMES].map((outcome) => (
               <button
@@ -265,7 +265,7 @@ export function ActivityHeatmap({
 function CallTable({ children }: { children: ReactNode }) {
   return (
     <div className="d-card">
-      <div aria-hidden="true" className={`${ROW} d-th hidden min-h-9 md:grid`}>
+      <div aria-hidden="true" className={`${ROW} d-th hidden min-h-9 lg:grid`}>
         <span className="d-label">Time</span>
         <span className="d-label">Request</span>
         <span className="d-label">Client</span>
@@ -299,7 +299,7 @@ export function CallRows({
         return (
           <li key={`${item.kind}:${item.id}`}>
             {heading && (
-              <h3 className="d-label flex min-h-[30px] items-center border-t border-line bg-surface px-3.5 md:px-4">
+              <h3 className="d-label flex min-h-[30px] items-center border-t border-line bg-surface px-3.5 lg:px-4">
                 {label}
               </h3>
             )}
@@ -311,7 +311,7 @@ export function CallRows({
               <span className="font-mono text-[12px] text-fg-3">
                 {formatTime(item.createdAt)}
               </span>
-              <span className="min-w-0">
+              <span className="col-span-2 row-start-2 min-w-0 lg:col-span-1 lg:row-auto">
                 <span className="block truncate">
                   <b className="font-semibold">
                     {item.kind === 'tool' ? item.tool : callHost(item)}
@@ -330,17 +330,17 @@ export function CallRows({
                   </span>
                 )}
               </span>
-              <span className="hidden truncate text-fg-2 md:block">
+              <span className="hidden truncate text-fg-2 lg:block">
                 {clientName(item)}
               </span>
-              <span className="hidden font-mono text-[12px] text-fg-3 md:block">
+              <span className="hidden font-mono text-[12px] text-fg-3 lg:block">
                 {item.kind === 'tool'
                   ? item.provider === 'helius'
                     ? 'Helius'
                     : item.provider
                   : item.protocol && PROTOCOL_LABELS[item.protocol]}
               </span>
-              <span className="text-right font-mono text-[13px] whitespace-nowrap">
+              <span className="col-start-2 row-start-1 text-right font-mono text-[13px] whitespace-nowrap lg:col-auto lg:row-auto">
                 <Outcome item={item} />
                 {item.kind === 'tool' && (
                   <span
@@ -375,7 +375,7 @@ function Outcome({ item }: { item: ActivityItem }) {
     return (
       <span className="font-semibold text-bad">
         Failed
-        <span className="font-normal max-md:hidden"> · not charged</span>
+        <span className="font-normal max-lg:hidden"> · not charged</span>
       </span>
     )
   return (

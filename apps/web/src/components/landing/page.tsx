@@ -68,7 +68,9 @@ function Header() {
           }`}
         >
           <a href="/" aria-label="lanatools home">
-            <Wordmark size={32} />
+            <span className="max-sm:[&_svg]:size-6 max-sm:[&>span]:gap-1 max-sm:[&>span]:text-[14px]">
+              <Wordmark size={32} />
+            </span>
           </a>
           <nav
             aria-label="Primary"
@@ -107,7 +109,7 @@ function Hero() {
     <section className={`${wide} pt-12 pb-14 sm:pt-16 lg:pt-20`}>
       <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-14">
         <div>
-          <span className="chip gap-1.5">
+          <span className="chip chip-wrap gap-1.5">
             <Logo id="solana" size={12} />
             the toolkit for your agents · on Solana
           </span>

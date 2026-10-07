@@ -122,12 +122,13 @@ export function WalletPanelView({
         left={
           <>
             <p className="d-label">Available</p>
-            <p className="mt-4 mb-3 flex flex-wrap items-baseline font-mono text-[44px] leading-none font-semibold tracking-[-0.05em] sm:text-[58px]">
+            <p className="mt-4 mb-3 flex flex-wrap items-baseline font-mono text-[clamp(1.75rem,8vw,2.75rem)] leading-none font-semibold tracking-[-0.05em] sm:text-[58px]">
               {balances ? (
                 <AnimatedCounter
                   value={wholeCents(balances.usdc)}
                   decimals={2}
                   prefix="$"
+                  className="max-w-full overflow-x-auto"
                 />
               ) : (
                 <span
@@ -145,7 +146,7 @@ export function WalletPanelView({
               </small>
               {balances && <FeeBalance sol={balances.sol} />}
             </p>
-            <p className="max-w-[330px] text-fg-2">
+            <p className="max-w-[330px] text-fg-2 lg:pr-16">
               Your connected clients pay for tools from this balance, each
               within its own limit.
             </p>
@@ -155,7 +156,7 @@ export function WalletPanelView({
             >
               {failed ? 'Could not load balances.' : ''}
             </p>
-            <span className="absolute right-[22px] bottom-[18px] text-fg">
+            <span className="absolute right-[22px] bottom-[18px] text-fg max-lg:hidden">
               <SolanaShine size={64} />
             </span>
           </>
@@ -170,7 +171,7 @@ export function WalletPanelView({
               Send USDC on {NETWORK.label}, plus a little SOL for withdrawal
               fees. Other tokens or networks won’t show up.
             </p>
-            <div className="mt-5 flex gap-2">
+            <div className="mt-5 flex flex-wrap gap-2">
               <button
                 type="button"
                 className="d-btn d-btn-primary"
