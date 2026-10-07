@@ -134,6 +134,15 @@ export async function prepareSigner(
       return { signerId, policyIds: [existing.policyId] }
     }
     if (existing) {
+      if (
+        !existing.policyId.startsWith(PREPARING) &&
+        (existing.walletId !== wallet.id ||
+          existing.walletAddress !== walletAddress ||
+          existing.signerId !== signerId)
+      )
+        throw new SignerSetupError(
+          'The previous transaction setup may still have an owner attachment in flight. Review it before changing wallets or signers.',
+        )
       const previousWallet =
         existing.walletId === wallet.id &&
         existing.walletAddress === walletAddress
@@ -154,11 +163,16 @@ export async function prepareSigner(
         )
     }
     const claim = PREPARING + crypto.randomUUID()
+    // A canceled owner addSigners call can still finish. Keep its policy bound.
+    const policyId =
+      existing && !existing.policyId.startsWith(PREPARING)
+        ? existing.policyId
+        : claim
     const pending = {
       walletId: wallet.id,
       walletAddress,
       signerId,
-      policyId: claim,
+      policyId,
       status: 'pending' as const,
       updatedAt: now,
     }
@@ -185,6 +199,7 @@ export async function prepareSigner(
       throw new SignerSetupError(
         'Transaction setup changed. Refresh and try again.',
       )
+    if (policyId !== claim) return { signerId, policyIds: [policyId] }
     const policy = await privy.policies().create({
       name: 'LanaTools automatic SOL transfers',
       version: '1.0',

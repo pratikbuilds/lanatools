@@ -227,7 +227,12 @@ alone cannot activate a signer.
 Turning off SOL or payments stops new local authorizations first, then removes
 only that feature's signer using the owner's session. Other signers and their
 policy lists are preserved. Pending SOL setup can be canceled, and disabled
-settings retain a removal retry control. A changed provider snapshot is refused;
+settings retain a removal retry control. Re-enabling the same delegation keeps
+its policy ID so a delayed owner attachment remains bound and removable. Changing
+wallets or transaction signers after an issued grant requires review rather than
+dropping that binding. The existing payment signer configuration stays fixed;
+changing that authority requires a separate review of its existing attachments.
+A changed provider snapshot is refused;
 a lost removal response retains a wallet guard and requires provider-state review
 before another signer change. Privy's public list update has no compare-and-swap
 revision, so concurrent signer changes outside this app remain part of the live

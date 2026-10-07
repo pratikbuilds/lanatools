@@ -12,6 +12,8 @@ import {
   signerStatus,
 } from './signer-setup'
 import type { PaymentNetwork } from '../solana/network'
+import { PAYMENT_NETWORKS } from '../solana/network'
+import { disablePaymentDelegation } from './signer-removal'
 
 let db: D1Database
 let dispose: () => Promise<void>
@@ -192,4 +194,54 @@ test('concurrent or ambiguous payment preparation cannot create another policy w
   expect(create).toHaveBeenCalledTimes(1)
   release()
   expect((await first).policyIds).toEqual(['new-policy'])
+})
+
+test('a delayed payment attachment after cancellation stays bound and selectively removable after re-enable', async () => {
+  const userId = crypto.randomUUID()
+  let attached = false
+  const policyId = 'issued-payment-policy'
+  const update = mock(async () => {
+    attached = false
+    return { address: 'wallet-address', additional_signers: [] }
+  })
+  let creations = 0
+  const create = mock(async () => ({
+    id: ++creations === 1 ? policyId : 'replacement-policy',
+  }))
+  const privy = {
+    wallets: () => ({
+      list: async function* () {
+        yield { id: 'wallet', address: 'wallet-address' }
+      },
+      get: async () => ({
+        address: 'wallet-address',
+        additional_signers: attached
+          ? [{ signer_id: 'pay', override_policy_ids: [policyId] }]
+          : [],
+      }),
+      update,
+    }),
+    policies: () => ({ create }),
+  } as unknown as PrivyClient
+  const input = {
+    userId,
+    walletAddress: 'wallet-address',
+    signerId: 'pay',
+    network: PAYMENT_NETWORKS.devnet,
+  }
+  const issued = await prepareSigner(db, privy, input)
+  await disablePaymentDelegation(db, privy, {
+    ...input,
+    userAccessToken: 'owner-token',
+  })
+  expect(await prepareSigner(db, privy, input)).toEqual(issued)
+  expect(create).toHaveBeenCalledTimes(1)
+  attached = true // The old owner attachment finishes after the new prepare.
+  expect((await confirmSigner(db, privy, userId, 'pay')).status).toBe('enabled')
+  await disablePaymentDelegation(db, privy, {
+    ...input,
+    userAccessToken: 'owner-token',
+  })
+  expect(update).toHaveBeenCalledTimes(1)
+  expect((await signerStatus(db, userId)).status).toBe('disabled')
 })

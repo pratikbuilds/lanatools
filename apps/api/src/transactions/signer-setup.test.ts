@@ -246,7 +246,7 @@ test('policy is user-owned native SOL Transfer only and repeat preparation reuse
   expect(f.create).toHaveBeenCalledTimes(1)
 })
 
-test('simultaneous preparation creates one policy; disabled setup creates a fresh one', async () => {
+test('simultaneous preparation and re-enable keep one issued policy binding', async () => {
   const f = fixture()
   const results = await Promise.allSettled(
     Array.from({ length: 8 }, () => prepareSigner(f.env, f.client, f.input)),
@@ -262,9 +262,8 @@ test('simultaneous preparation creates one policy; disabled setup creates a fres
   const previous = f.policy().id
   f.setPolicy({ ...f.policy(), id: 'fresh-policy' })
   const grant = await prepareSigner(f.env, f.client, f.input)
-  expect(grant.policyIds).toEqual(['fresh-policy'])
-  expect(grant.policyIds).not.toContain(previous)
-  expect(f.create).toHaveBeenCalledTimes(2)
+  expect(grant.policyIds).toEqual([previous])
+  expect(f.create).toHaveBeenCalledTimes(1)
 })
 
 test('wrong owner/address, duplicate address and changing wallet ID cannot prepare or confirm', async () => {
@@ -581,7 +580,7 @@ test('failed removal preserves the old policy until retry removes its signer', a
   ])
   f.setPolicy({ ...f.policy(), id: 'fresh-after-removal' })
   expect((await prepareSigner(f.env, f.client, f.input)).policyIds).toEqual([
-    'fresh-after-removal',
+    policyId,
   ])
 })
 
@@ -853,4 +852,55 @@ test('owner routes reject signed-out, malformed and caller-controlled authority 
     (await app.request('/other', { method: 'POST' }, { ...f.env })).status,
   ).toBe(404)
   expect(f.create).not.toHaveBeenCalled()
+})
+
+test('a delayed owner attachment after cancellation and re-enable keeps its policy removable', async () => {
+  const f = fixture()
+  const oldPolicy = structuredClone(f.policy())
+  const issued = await prepareSigner(f.env, f.client, f.input)
+  await disableSigner(f.env, f.client, {
+    ...f.input,
+    userAccessToken: 'owner-token',
+  })
+  f.setPolicy({ ...oldPolicy, id: 'replacement-policy' })
+  const resumed = await prepareSigner(f.env, f.client, f.input)
+  expect(resumed).toEqual(issued)
+  expect(f.create).toHaveBeenCalledTimes(1)
+  f.setPolicy(oldPolicy)
+  f.attach() // The canceled browser attachment finishes late, using its old grant.
+  expect((await confirmSigner(f.env, f.client, f.input)).status).toBe('enabled')
+  await disableSigner(f.env, f.client, {
+    ...f.input,
+    userAccessToken: 'owner-token',
+  })
+  expect(f.wallet().additional_signers).toEqual([
+    { signer_id: 'payments', override_policy_ids: ['payment-policy'] },
+  ])
+  expect((await signerStatus(f.env, f.input.userId)).status).toBe('disabled')
+})
+
+test('an issued disabled setup cannot drop a binding by rotating the signer', async () => {
+  const f = fixture()
+  const issued = await prepareSigner(f.env, f.client, f.input)
+  await disableSigner(f.env, f.client, {
+    ...f.input,
+    userAccessToken: 'owner-token',
+  })
+  await expect(
+    prepareSigner(
+      { ...f.env, PRIVY_TRANSACTION_SIGNER_ID: 'new-signer' },
+      f.client,
+      f.input,
+    ),
+  ).rejects.toThrow('attachment in flight')
+  expect(f.create).toHaveBeenCalledTimes(1)
+  expect(
+    (
+      await drizzle(db)
+        .select()
+        .from(transactionSigner)
+        .where(eq(transactionSigner.privyUserId, f.input.userId))
+        .get()
+    )?.policyId,
+  ).toBe(issued.policyIds[0])
 })

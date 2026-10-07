@@ -134,7 +134,9 @@ their evidence. Owner setup is exposed under `/api/transactions/signer`: status,
 confirm and disable. Prepare claims a pending row before creating its user-owned
 policy; confirm checks the exact policy, sole user quorum and dedicated attachment.
 Cancellation wins over late setup completion. A disabled row keeps its old policy
-until remote removal succeeds, so re-enabling cannot lose its binding.
+across removal and re-enable, so a delayed owner attachment cannot lose its
+binding. Re-enable reuses the issued policy and confirmation verifies its exact
+rules again; wallet/signer rotation after an issued grant requires review.
 
 Selective removal serializes app operations per wallet, compares provider signer
 snapshots before updating and verifies the result. It uses only the authenticated

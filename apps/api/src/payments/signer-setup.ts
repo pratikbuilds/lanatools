@@ -86,6 +86,14 @@ export async function prepareSigner(
     .get()
   await assertNoSignerRemoval(database, walletId)
   if (existing?.status === 'disabled') {
+    if (
+      !existing.policyId.startsWith(PREPARING) &&
+      (existing.walletId !== walletId ||
+        existing.walletAddress !== walletAddress)
+    )
+      throw new SignerSetupError(
+        'The previous payment setup may still have an owner attachment in flight. Review it before changing wallets.',
+      )
     await assertNoSignerRemoval(database, existing.walletId)
     const previous = await ownedWallet(
       privy,
@@ -102,9 +110,7 @@ export async function prepareSigner(
         'Remove the remaining payment signer before enabling payments again',
       )
   }
-  // A setup that is unfinished or already on (say, from another tab) keeps
-  // its policy and status. Turning payments on again after they were turned
-  // off creates a fresh policy, so a wallet never keeps older rules.
+  // An unfinished or enabled setup keeps its policy and status.
   if (existing?.walletId === walletId && existing.status !== 'disabled') {
     if (existing.policyId.startsWith(PREPARING))
       throw new SignerSetupError(
@@ -114,10 +120,15 @@ export async function prepareSigner(
   }
 
   const claim = PREPARING + crypto.randomUUID()
+  // A canceled owner addSigners call can still finish. Keep its policy bound.
+  const policyId =
+    existing && !existing.policyId.startsWith(PREPARING)
+      ? existing.policyId
+      : claim
   const pending = {
     walletId,
     walletAddress,
-    policyId: claim,
+    policyId,
     status: 'pending' as const,
     updatedAt: now,
   }
@@ -138,6 +149,7 @@ export async function prepareSigner(
     .returning()
   if (!claimed)
     throw new SignerSetupError('Payment setup changed. Refresh and try again.')
+  if (policyId !== claim) return { signerId, policyIds: [policyId] }
 
   const policy = await privy.policies().create({
     name: 'LanaTools agent payments',
