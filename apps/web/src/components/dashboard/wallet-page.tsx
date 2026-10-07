@@ -1,6 +1,8 @@
+import { useState } from 'react'
+import type { AgentId } from '#/components/landing/logos'
 import { NETWORK } from '#/lib/solana'
 import { LatestActivity } from './activity'
-import { ConnectClientButton } from './connect-client'
+import { ConnectClientModal, DEFAULT_CLIENT } from './connect-client'
 import { ConnectedClients } from './connected-clients'
 import { PageHead } from './page-head'
 import { useDashboardSession } from './session'
@@ -18,6 +20,8 @@ export function WalletPage({
   onViewActivity: (clientId: string | undefined) => void
 }) {
   const { walletAddress } = useDashboardSession()
+  // The client the setup is open on; closed when there is none.
+  const [connecting, setConnecting] = useState<AgentId | null>(null)
   return (
     <>
       <PageHead title="Wallet">
@@ -25,17 +29,28 @@ export function WalletPage({
           <SolanaMark />
           {NETWORK.label}
         </span>
-        <div className="sm:ml-auto">
-          <ConnectClientButton />
-        </div>
+        <button
+          type="button"
+          className="d-btn sm:ml-auto"
+          onClick={() => setConnecting(DEFAULT_CLIENT)}
+        >
+          <span aria-hidden="true">＋</span> Connect a client
+        </button>
       </PageHead>
       {walletAddress ? (
         <WalletPanel walletAddress={walletAddress} />
       ) : (
         <CreateWallet />
       )}
-      <ConnectedClients onViewActivity={onViewActivity} />
+      <ConnectedClients
+        onViewActivity={onViewActivity}
+        onConnect={setConnecting}
+      />
       <LatestActivity onViewAll={() => onViewActivity(undefined)} />
+      <ConnectClientModal
+        client={connecting}
+        onClose={() => setConnecting(null)}
+      />
     </>
   )
 }

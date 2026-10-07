@@ -64,3 +64,9 @@ export function formatUnits(
   const grouped = whole.toLocaleString('en-US')
   return fraction ? `${grouped}.${fraction}` : grouped
 }
+
+/** Lamports as SOL for display: up to four decimals, with dust shown as such. */
+export function formatSol(lamports: bigint) {
+  const text = formatUnits(lamports, SOL_DECIMALS, { maxFraction: 4 })
+  return text === '0' && lamports > 0n ? '<0.0001' : text
+}
