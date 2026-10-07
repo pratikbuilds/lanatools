@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { BrandMark, Wordmark } from '../landing/brand'
+import { Wordmark } from '../landing/brand'
 import { SideField } from './side-field'
 import { ThemeToggle, useTheme } from './theme'
 
@@ -31,22 +31,19 @@ export function Frame({
 }) {
   const { theme, toggle } = useTheme()
   return (
-    <div data-theme={theme} className="dash flex min-h-screen flex-col pb-9">
+    <div data-theme={theme} className="dash flex min-h-dvh flex-col sm:pb-9">
       <SideField column={artColumn} />
       <header className="relative z-[2] border-b border-hdr-line bg-hdr text-paper">
-        <div className="d-col flex h-[60px] items-center gap-2 px-3 sm:gap-7 sm:px-8">
-          <a href="/" aria-label="lanatools home" className="font-mono">
-            <span className={nav ? 'hidden sm:block' : undefined}>
-              <Wordmark size={22} />
-            </span>
-            {nav && (
-              <span className="sm:hidden">
-                <BrandMark size={22} />
-              </span>
-            )}
+        <div className="d-col flex flex-wrap items-center gap-x-3 px-4 sm:flex-nowrap sm:gap-4 sm:px-8">
+          <a
+            href="/"
+            aria-label="lanatools home"
+            className="shrink-0 py-4 font-mono"
+          >
+            <Wordmark size={22} />
           </a>
           {nav}
-          <div className="ml-auto flex items-center gap-1 sm:gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
             <ThemeToggle theme={theme} onToggle={toggle} />
             {actions}
           </div>

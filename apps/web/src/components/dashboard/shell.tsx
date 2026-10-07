@@ -30,14 +30,17 @@ export function DashboardShell({
       status={status}
       mainClassName="pt-5 pb-12 sm:pt-7"
       nav={
-        <nav aria-label="Main" className="flex self-stretch sm:gap-1.5">
+        <nav
+          aria-label="Main"
+          className="order-last flex h-11 w-full self-stretch sm:order-none sm:h-auto sm:w-auto sm:gap-1.5"
+        >
           {DESTINATIONS.map(({ to, label, exact }) => (
             <Link
               key={to}
               to={to}
               // A filtered Activity page is still the Activity page.
               activeOptions={{ exact, includeSearch: false }}
-              className="relative flex items-center px-2 font-mono text-[13px] font-medium text-hdr-dim transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-[3px] after:scale-x-0 after:rounded-t-[3px] after:bg-paper after:transition-transform hover:text-paper focus-visible:outline-lime aria-[current=page]:font-semibold aria-[current=page]:text-paper aria-[current=page]:after:scale-x-100 sm:px-3 sm:after:inset-x-3"
+              className="relative flex flex-1 items-center justify-center px-2 font-mono text-[13px] font-medium text-hdr-dim transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-[3px] after:scale-x-0 after:rounded-t-[3px] after:bg-paper after:transition-transform hover:text-paper focus-visible:outline-lime aria-[current=page]:font-semibold aria-[current=page]:text-paper aria-[current=page]:after:scale-x-100 sm:px-3 sm:after:inset-x-3"
             >
               {label}
             </Link>
@@ -50,7 +53,7 @@ export function DashboardShell({
         ) : (
           <span
             aria-hidden="true"
-            className="d-hdr-pill w-[34px] animate-pulse opacity-60 sm:w-[150px]"
+            className="d-hdr-pill w-[54px] animate-pulse opacity-60 lg:w-[150px]"
           />
         )
       }
@@ -109,7 +112,7 @@ export function AccountMenu({
           {account?.[0]?.toUpperCase() ?? '?'}
         </span>
         {account && (
-          <span className="hidden max-w-[16rem] truncate sm:block">
+          <span className="hidden max-w-[12rem] truncate lg:block">
             {account}
           </span>
         )}
@@ -121,7 +124,7 @@ export function AccountMenu({
       {open && (
         <div
           role="menu"
-          className="absolute top-[42px] right-0 z-10 min-w-64 rounded-[10px] border border-line bg-panel px-4 pt-3.5 pb-4 text-fg shadow-(--d-shadow)"
+          className="absolute top-[42px] right-0 z-10 w-64 max-w-[calc(100vw-2rem)] rounded-[10px] border border-line bg-panel px-4 pt-3.5 pb-4 text-fg shadow-(--d-shadow)"
         >
           {account && (
             <>

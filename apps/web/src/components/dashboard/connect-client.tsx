@@ -114,7 +114,7 @@ export function ConnectClient({
     <div className="grid gap-6 md:h-full md:grid-cols-[13.5rem_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)] md:gap-7">
       <div role="group" aria-label="Your client" className="md:self-start">
         <p className="d-label">Pick your client</p>
-        <ul className="mt-3 grid grid-cols-2 gap-1.5 md:grid-cols-1">
+        <ul className="mt-3 grid grid-cols-1 gap-1.5 min-[400px]:grid-cols-2 md:grid-cols-1">
           {CLIENT_CARDS.map((agent) => (
             <li key={agent.id}>
               <ClientCard
@@ -151,7 +151,7 @@ function ClientSteps({ id }: { id: AgentId }) {
   ]
 
   return (
-    <div className="min-w-0 md:min-h-0 md:overflow-y-auto md:pr-1">
+    <div className="min-w-0 md:min-h-0 md:overflow-y-auto md:pr-1 [overflow-wrap:anywhere]">
       <p className="d-label">{`Set up ${nameOf(id)}`}</p>
       <ol className="mt-3 grid gap-4">
         {steps.map((step, index) => (
@@ -333,7 +333,7 @@ export function ConnectFirstClient({
         </div>
         <div className="d-pane border-t border-line md:border-t-0 md:border-l">
           <p className="d-label">Pick your client</p>
-          <ul className="mt-3 grid grid-cols-2 gap-2">
+          <ul className="mt-3 grid grid-cols-1 gap-2 min-[400px]:grid-cols-2">
             {CLIENT_CARDS.map((agent) => (
               <li key={agent.id}>
                 <ClientCard id={agent.id} onClick={() => onConnect(agent.id)} />

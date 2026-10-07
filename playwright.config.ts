@@ -10,6 +10,12 @@ export default defineConfig({
   webServer: [
     {
       command:
+        'bun run --cwd apps/web dev --config test-support/vite.config.ts --port 4174',
+      url: 'http://127.0.0.1:4174',
+      reuseExistingServer: false,
+    },
+    {
+      command:
         'bun run --cwd apps/api db:migrate:local && bunx wrangler dev -c apps/api/wrangler.local.jsonc --port 3101 --local',
       url: 'http://127.0.0.1:3101/api/health',
       reuseExistingServer: false,

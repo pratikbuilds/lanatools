@@ -87,7 +87,7 @@ export function LimitEditor({
         decimals={decimalsFor(limit)}
         duration={0.35}
         prefix="$"
-        className="mt-3 mb-2 font-mono text-[3rem] leading-none font-semibold tracking-[-0.05em]"
+        className="mt-3 mb-2 max-w-full overflow-x-auto font-mono text-[clamp(1.5rem,8vw,3rem)] leading-none font-semibold tracking-[-0.05em]"
       />
       <p className="font-mono text-[12px] text-fg-3">
         {formatUsd(Math.max(0, limit - used))} left after {formatUsd(used)} used
@@ -103,7 +103,7 @@ export function LimitEditor({
       )}
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
-        <label className="d-limit-field flex h-[34px] items-center gap-1 rounded-[9px] border border-line-2 pl-3 font-mono font-semibold">
+        <label className="d-limit-field flex h-10 sm:h-[34px] items-center gap-1 rounded-[9px] border border-line-2 pl-3 font-mono font-semibold">
           <span className="text-fg-3">$</span>
           <input
             className="d-limit-input h-full w-28 rounded-r-[9px] bg-transparent pr-2.5 font-mono font-semibold"

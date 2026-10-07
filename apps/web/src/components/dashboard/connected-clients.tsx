@@ -29,7 +29,7 @@ function toolsOf(client: McpClient) {
 }
 
 const ROW =
-  'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-3.5 md:grid-cols-[minmax(9rem,1.5fr)_minmax(9rem,1.7fr)_5.5rem_9.5rem_4.9rem] md:gap-4 md:px-4'
+  'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-3.5 lg:grid-cols-[minmax(9rem,1.5fr)_minmax(9rem,1.7fr)_5.5rem_9.5rem_4.9rem] lg:gap-4 lg:px-4'
 // A client used this recently is shown as working now.
 const ACTIVE_MS = 10 * 60_000
 // Rows shown before the list folds.
@@ -132,11 +132,11 @@ export function ConnectedClients({
           </span>
         )}
         {clients.data && clients.data.length > 0 && (
-          <div className="flex w-full flex-wrap items-center gap-2.5 md:ml-auto md:w-auto">
+          <div className="flex w-full flex-wrap items-center gap-2.5 lg:ml-auto lg:w-auto">
             <ClientTotals clients={clients.data} />
             <input
               type="search"
-              className="d-input w-auto flex-1 md:w-[190px] md:flex-none"
+              className="d-input w-auto flex-1 lg:w-[190px] lg:flex-none"
               placeholder="Find a client…"
               aria-label="Find a client"
               value={search}
@@ -250,7 +250,7 @@ export function ClientTable({
       <div
         role="group"
         aria-label="Sort clients"
-        className={`${ROW} d-th hidden min-h-9 md:grid`}
+        className={`${ROW} d-th hidden min-h-9 lg:grid`}
       >
         {head('name', 'Client', 'text-left')}
         <span className="d-label">Spend / limit</span>
@@ -304,7 +304,7 @@ function ClientRow({
     <button
       type="button"
       onClick={onManage}
-      className={`${ROW} w-full cursor-pointer py-3 text-left hover:bg-surface md:min-h-[54px] md:py-2.5`}
+      className={`${ROW} w-full cursor-pointer py-3 text-left hover:bg-surface lg:min-h-[54px] lg:py-2.5`}
     >
       <span className="min-w-0">
         <b className="block truncate font-semibold" title={clientName(client)}>
@@ -313,7 +313,7 @@ function ClientRow({
       </span>
       {canPay(client) ? (
         <>
-          <span className="col-span-2 row-start-2 min-w-0 md:col-span-1 md:row-auto">
+          <span className="col-span-2 row-start-2 min-w-0 lg:col-span-1 lg:row-auto">
             <UsageTicks client={client} state={state} />
             <span className="mt-1 block font-mono text-[11.5px] text-fg-3">
               {formatUsd(client.spentMicroUsd)} of{' '}
@@ -321,10 +321,10 @@ function ClientRow({
             </span>
           </span>
           <span
-            className={`col-start-2 row-start-1 text-right font-mono text-[14px] font-semibold whitespace-nowrap md:col-auto md:row-auto md:text-left ${state === 'full' ? 'text-bad' : ''}`}
+            className={`col-start-2 row-start-1 text-right font-mono text-[14px] font-semibold whitespace-nowrap lg:col-auto lg:row-auto lg:text-left ${state === 'full' ? 'text-bad' : ''}`}
           >
             {formatUsd(leftOf(client))}
-            <span className="text-[12px] font-normal text-fg-3 md:hidden">
+            <span className="text-[12px] font-normal text-fg-3 lg:hidden">
               {' '}
               remaining
             </span>
@@ -332,15 +332,15 @@ function ClientRow({
         </>
       ) : (
         <>
-          <span className="hidden font-mono text-[11.5px] text-fg-3 md:block">
+          <span className="hidden font-mono text-[11.5px] text-fg-3 lg:block">
             No spending limit
           </span>
-          <span className="col-start-2 row-start-1 text-right font-mono text-fg-3 md:col-auto md:row-auto md:text-left">
+          <span className="col-start-2 row-start-1 text-right font-mono text-fg-3 lg:col-auto lg:row-auto lg:text-left">
             —
           </span>
         </>
       )}
-      <span className="col-span-2 row-start-3 flex flex-wrap items-center gap-x-2 gap-y-1 md:col-span-1 md:row-auto md:flex-col md:items-start">
+      <span className="col-span-2 row-start-3 flex flex-wrap items-center gap-x-2 gap-y-1 lg:col-span-1 lg:row-auto lg:flex-col lg:items-start">
         <span className="d-status" data-state={state}>
           <i />
           {STATE_LABELS[state]}
@@ -351,7 +351,7 @@ function ClientRow({
             : 'Not used yet'}
         </span>
       </span>
-      <span className="hidden md:block">
+      <span className="hidden lg:block">
         <span className="d-btn d-btn-sm">Manage</span>
       </span>
     </button>
