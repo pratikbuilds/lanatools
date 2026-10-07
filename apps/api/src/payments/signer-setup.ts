@@ -16,6 +16,22 @@ export class SignerSetupError extends Error {
   override readonly name = 'SignerSetupError'
 }
 
+/**
+ * The Privy wallet ID of `walletAddress` if it is one of the user's own
+ * Solana wallets, else undefined. Privy's word, not the browser's.
+ */
+export async function findUserWallet(
+  privy: PrivyClient,
+  userId: string,
+  walletAddress: string,
+) {
+  for await (const wallet of privy
+    .wallets()
+    .list({ user_id: userId, chain_type: 'solana' }))
+    if (wallet.address === walletAddress) return wallet.id
+  return undefined
+}
+
 export async function signerStatus(
   database: D1Database,
   userId: string,
@@ -54,11 +70,7 @@ export async function prepareSigner(
   },
   now = Date.now(),
 ): Promise<PaymentSignerGrant> {
-  let walletId: string | undefined
-  for await (const wallet of privy
-    .wallets()
-    .list({ user_id: userId, chain_type: 'solana' }))
-    if (wallet.address === walletAddress) walletId = wallet.id
+  const walletId = await findUserWallet(privy, userId, walletAddress)
   if (!walletId)
     throw new SignerSetupError('That wallet is not your embedded wallet')
 
