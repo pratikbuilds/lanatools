@@ -302,13 +302,24 @@ export const transactionSigner = sqliteTable(
     walletAddress: text('wallet_address').notNull(),
     signerId: text('signer_id').notNull(),
     policyId: text('policy_id').notNull(),
-    status: text('status', { enum: ['enabled', 'disabled'] }).notNull(),
+    status: text('status', {
+      enum: ['pending', 'enabled', 'disabled'],
+    }).notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
-  (t) => [
+  () => [
     check(
       'transaction_signer_status',
-      sql`${t.status} in ('enabled', 'disabled')`,
+      sql`${sql.identifier('status')} in ('pending', 'enabled', 'disabled')`,
     ),
   ],
 )
+
+/** One app-controlled signer removal per wallet; ambiguous writes retain the guard. */
+export const walletSignerRemoval = sqliteTable('wallet_signer_removal', {
+  walletId: text('wallet_id').primaryKey(),
+  privyUserId: text('privy_user_id').notNull(),
+  signerId: text('signer_id').notNull(),
+  token: text('token').notNull(),
+  createdAt: integer('created_at').notNull(),
+})

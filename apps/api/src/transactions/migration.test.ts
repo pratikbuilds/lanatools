@@ -78,3 +78,59 @@ test('transaction permission migration preserves existing grants and links while
     db.close()
   }
 })
+
+test('pending signer migration preserves confirmed delegation and accepts only valid states', async () => {
+  const db = new Database(':memory:')
+  const dir = new URL('../../drizzle/', import.meta.url)
+  const files = (await readdir(dir))
+    .filter((file) => file.endsWith('.sql'))
+    .sort()
+  const apply = async (file: string) => {
+    for (const statement of (await Bun.file(new URL(file, dir)).text()).split(
+      '--> statement-breakpoint',
+    ))
+      db.exec(statement)
+  }
+  try {
+    for (const file of files) {
+      if (file.startsWith('0014')) break
+      await apply(file)
+    }
+    for (const status of ['enabled', 'disabled'])
+      db.run(
+        'insert into transaction_signer (privy_user_id,wallet_id,wallet_address,signer_id,policy_id,status,updated_at) values (?,?,?,?,?,?,?)',
+        [
+          status,
+          'wallet-' + status,
+          'address-' + status,
+          'signer-' + status,
+          'policy-' + status,
+          status,
+          123,
+        ],
+      )
+    const before = db
+      .query('select * from transaction_signer order by privy_user_id')
+      .all()
+    await apply('0014_noisy_hammerhead.sql')
+    expect(
+      db.query('select * from transaction_signer order by privy_user_id').all(),
+    ).toEqual(before)
+    db.run(
+      "update transaction_signer set status='pending' where privy_user_id='disabled'",
+    )
+    expect(
+      db
+        .query(
+          "select status from transaction_signer where privy_user_id='disabled'",
+        )
+        .get(),
+    ).toEqual({ status: 'pending' })
+    expect(() =>
+      db.run("update transaction_signer set status='unknown'"),
+    ).toThrow()
+    expect(db.query('pragma foreign_key_check').all()).toEqual([])
+  } finally {
+    db.close()
+  }
+})

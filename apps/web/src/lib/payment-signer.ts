@@ -15,11 +15,12 @@ async function call(
     },
   })
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as {
-      error?: unknown
-    } | null
+    const body: unknown = await response.json().catch(() => null)
     throw new Error(
-      response.status === 409 && typeof body?.error === 'string'
+      typeof body === 'object' &&
+        body !== null &&
+        'error' in body &&
+        typeof body.error === 'string'
         ? body.error
         : 'Could not update agent payments.',
     )
@@ -76,11 +77,11 @@ export async function enablePaymentSigner(
 export async function disablePaymentSigner(
   getAccessToken: GetAccessToken,
   walletAddress: string,
-  removeSigners: (input: { address: string }) => Promise<unknown>,
 ) {
-  const status = PaymentSignerStatus.assert(
-    await call(getAccessToken, '/disable', { method: 'POST' }),
+  return PaymentSignerStatus.assert(
+    await call(getAccessToken, '/disable', {
+      method: 'POST',
+      body: JSON.stringify({ walletAddress }),
+    }),
   )
-  await removeSigners({ address: walletAddress })
-  return status
 }

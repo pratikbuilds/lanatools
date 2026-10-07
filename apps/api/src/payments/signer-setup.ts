@@ -1,4 +1,6 @@
-import { and, eq, inArray } from 'drizzle-orm'
+import { SignerSetupError } from './signer-setup-error'
+import { assertNoSignerRemoval, ownedWallet } from './selective-signer'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
 import type {
@@ -6,15 +8,17 @@ import type {
   PaymentSignerStatus,
 } from '@lanatools/contracts'
 import type { PrivyClient } from '@privy-io/node'
-import { paymentSigner } from '../db/schema'
+import { paymentSigner, walletSignerRemoval } from '../db/schema'
 import type { PaymentNetwork } from '../solana/network'
+
+export { SignerSetupError }
+
+const PREPARING = 'preparing:'
+const noRemoval = (walletId: string) =>
+  sql`not exists (select 1 from ${walletSignerRemoval} where ${walletSignerRemoval.walletId} = ${walletId})`
 
 const COMPUTE_BUDGET = 'ComputeBudget111111111111111111111111111111'
 const MEMO = 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'
-
-export class SignerSetupError extends Error {
-  override readonly name = 'SignerSetupError'
-}
 
 /**
  * The Privy wallet ID of `walletAddress` if it is one of the user's own
@@ -80,11 +84,60 @@ export async function prepareSigner(
     .from(paymentSigner)
     .where(eq(paymentSigner.privyUserId, userId))
     .get()
+  await assertNoSignerRemoval(database, walletId)
+  if (existing?.status === 'disabled') {
+    await assertNoSignerRemoval(database, existing.walletId)
+    const previous = await ownedWallet(
+      privy,
+      userId,
+      existing.walletId,
+      existing.walletAddress,
+    )
+    if (
+      previous.additional_signers.some(
+        (signer) => signer.signer_id === signerId,
+      )
+    )
+      throw new SignerSetupError(
+        'Remove the remaining payment signer before enabling payments again',
+      )
+  }
   // A setup that is unfinished or already on (say, from another tab) keeps
   // its policy and status. Turning payments on again after they were turned
   // off creates a fresh policy, so a wallet never keeps older rules.
-  if (existing?.walletId === walletId && existing.status !== 'disabled')
+  if (existing?.walletId === walletId && existing.status !== 'disabled') {
+    if (existing.policyId.startsWith(PREPARING))
+      throw new SignerSetupError(
+        'Payment setup outcome is pending or unknown. Turn it off before retrying.',
+      )
     return { signerId, policyIds: [existing.policyId] }
+  }
+
+  const claim = PREPARING + crypto.randomUUID()
+  const pending = {
+    walletId,
+    walletAddress,
+    policyId: claim,
+    status: 'pending' as const,
+    updatedAt: now,
+  }
+  const [claimed] = await db
+    .insert(paymentSigner)
+    .values({ privyUserId: userId, ...pending })
+    .onConflictDoUpdate({
+      target: paymentSigner.privyUserId,
+      set: pending,
+      setWhere: sql`${and(
+        eq(paymentSigner.status, 'disabled'),
+        eq(paymentSigner.policyId, existing?.policyId ?? ''),
+        eq(paymentSigner.walletId, existing?.walletId ?? ''),
+        noRemoval(walletId),
+        noRemoval(existing?.walletId ?? walletId),
+      )}`,
+    })
+    .returning()
+  if (!claimed)
+    throw new SignerSetupError('Payment setup changed. Refresh and try again.')
 
   const policy = await privy.policies().create({
     name: 'LanaTools agent payments',
@@ -120,17 +173,24 @@ export async function prepareSigner(
       },
     ],
   })
-  const row = {
-    walletId,
-    walletAddress,
-    policyId: policy.id,
-    status: 'pending' as const,
-    updatedAt: now,
-  }
-  await db
-    .insert(paymentSigner)
-    .values({ privyUserId: userId, ...row })
-    .onConflictDoUpdate({ target: paymentSigner.privyUserId, set: row })
+  const [prepared] = await db
+    .update(paymentSigner)
+    .set({ policyId: policy.id, updatedAt: Date.now() })
+    .where(
+      and(
+        eq(paymentSigner.privyUserId, userId),
+        eq(paymentSigner.policyId, claim),
+        eq(paymentSigner.status, 'pending'),
+        eq(paymentSigner.walletId, walletId),
+        eq(paymentSigner.walletAddress, walletAddress),
+        noRemoval(walletId),
+      ),
+    )
+    .returning()
+  if (!prepared)
+    throw new SignerSetupError(
+      'Payment setup was stopped or changed meanwhile. Refresh before continuing.',
+    )
   return { signerId, policyIds: [policy.id] }
 }
 
@@ -152,6 +212,7 @@ export async function confirmSigner(
     .where(eq(paymentSigner.privyUserId, userId))
     .get()
   if (!row) throw new SignerSetupError('Set up payments first')
+  await assertNoSignerRemoval(database, row.walletId)
   const wallet = await privy.wallets().get(row.walletId)
   const attached = wallet.additional_signers.some(
     (signer) =>
@@ -173,6 +234,7 @@ export async function confirmSigner(
         eq(paymentSigner.privyUserId, userId),
         eq(paymentSigner.policyId, row.policyId),
         inArray(paymentSigner.status, ['pending', 'enabled']),
+        noRemoval(row.walletId),
       ),
     )
     .returning({ walletAddress: paymentSigner.walletAddress })

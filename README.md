@@ -218,9 +218,27 @@ may finish and retain its evidence.
 Live signing remains disabled. It requires verified, separate transaction
 delegation, `PRIVY_TRANSACTION_SIGNER_ID` and `PRIVY_TRANSACTION_SIGNER_KEY`, plus
 `SOL_TRANSACTION_SIGNING_ENABLED=true` on devnet. Payment signer credentials are
-refused. No delegation setup/attachment endpoint is offered until the isolated
-Privy policy and selective signer-removal proof passes. Configure these only
-after that proof; the permission checkbox alone cannot activate a signer.
+refused. Settings offers explicit owner delegation when the configured gate is
+available: prepare a user-owned native SOL policy, attach the dedicated signer
+through the owner's Privy session, then independently confirm the wallet, policy
+and sole user ownership before enabling execution. The client permission checkbox
+alone cannot activate a signer.
+
+Turning off SOL or payments stops new local authorizations first, then removes
+only that feature's signer using the owner's session. Other signers and their
+policy lists are preserved. Pending SOL setup can be canceled, and disabled
+settings retain a removal retry control. A changed provider snapshot is refused;
+a lost removal response retains a wallet guard and requires provider-state review
+before another signer change. Privy's public list update has no compare-and-swap
+revision, so concurrent signer changes outside this app remain part of the live
+activation proof. No owner token is stored.
+
+Local mocked verification covers owner setup through one automatic execution,
+uncertain submission recovery without signing or sending again, and selective
+removal with payment authority intact. Actual two-signer policy enforcement,
+owner-authorized removal and coexistence still require separately approved live
+validation on the existing devnet app. Configure dedicated transaction credentials
+and enable the gate only after that proof.
 
 `get_transfer_status` reads a request owned by the active user/client connection
 and reconciles exact verified chain evidence. Signing or submission response

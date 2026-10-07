@@ -257,3 +257,15 @@ export const WithdrawalReceipt = type({
   confirmed: 'boolean',
 })
 export type WithdrawalReceipt = typeof WithdrawalReceipt.infer
+/** Wallet-wide automatic SOL delegation, separate from payment authority. */
+export const TransactionSignerStatus = PaymentSignerStatus.and({
+  setupAvailable: 'boolean',
+})
+export type TransactionSignerStatus = typeof TransactionSignerStatus.infer
+export const TransactionSignerGrant = PaymentSignerGrant
+export type TransactionSignerGrant = typeof TransactionSignerGrant.infer
+export const TransactionSignerRequest = type({
+  walletAddress: 'string',
+  '+': 'reject',
+})
+export type TransactionSignerRequest = typeof TransactionSignerRequest.infer

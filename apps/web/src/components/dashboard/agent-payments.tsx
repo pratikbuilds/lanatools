@@ -36,7 +36,7 @@ function useSignerStatus() {
 
 function usePaymentSigner() {
   const { walletAddress, getAccessToken } = useDashboardSession()
-  const { addSigners, removeSigners } = useSigners()
+  const { addSigners } = useSigners()
   const queryClient = useQueryClient()
   const { queryKey, signer } = useSignerStatus()
   const change = useMutation({
@@ -44,7 +44,7 @@ function usePaymentSigner() {
     mutationFn: ({ enable, address }: { enable: boolean; address: string }) =>
       enable
         ? enablePaymentSigner(getAccessToken, address, addSigners)
-        : disablePaymentSigner(getAccessToken, address, removeSigners),
+        : disablePaymentSigner(getAccessToken, address),
     onSettled: () => queryClient.invalidateQueries({ queryKey }),
   })
   // The automatic setup and the Settings switch each call this hook. Both
@@ -194,8 +194,20 @@ export function AgentPaymentsView({
                   : 'Turning agent payments on…'
                 : enabled
                   ? 'Your clients can pay from this wallet. Turn this off to stop every client at once.'
-                  : 'No client can pay, and the LanaTools signer is not on your wallet. Turn this on to let your clients pay.'}
+                  : 'No client can pay while this is off. Turning it off cannot cancel already signed transactions. Turn this on to let your clients pay.'}
           </p>
+          {(status?.status === 'disabled' || status?.status === 'pending') && (
+            <button
+              type="button"
+              className="d-btn d-btn-sm mt-3"
+              disabled={busy}
+              onClick={() => onChange(false)}
+            >
+              {status.status === 'pending'
+                ? 'Cancel payment delegation'
+                : 'Remove remaining payment signer'}
+            </button>
+          )}
           <p role="alert" className="mt-2 text-[13px] text-bad empty:hidden">
             {loadFailed
               ? 'Could not load payment settings.'

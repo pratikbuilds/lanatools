@@ -1,5 +1,6 @@
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import { PrivyClient } from '@privy-io/node'
+import type { PrivyClientOptions } from '@privy-io/node'
 import type { D1Database } from '@cloudflare/workers-types'
 import { saveFeedback } from './agent-feedback'
 import { PayHttpError, payHttp, payKitPayer } from './payments/pay-http'
@@ -54,8 +55,12 @@ export type McpEnv = ProviderEnv & {
 
 export type McpDashboardEnv = McpEnv & { MCP: McpTokenRevoker }
 
-export function privyClient(env: McpEnv) {
+export function privyClient(
+  env: McpEnv,
+  options: Pick<PrivyClientOptions, 'maxRetries' | 'timeout'> = {},
+) {
   return new PrivyClient({
+    ...options,
     appId: env.PRIVY_APP_ID,
     appSecret: env.PRIVY_APP_SECRET,
   })

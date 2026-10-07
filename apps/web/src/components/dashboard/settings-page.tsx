@@ -1,4 +1,5 @@
 import { AgentPayments } from './agent-payments'
+import { AutomaticSOL } from './automatic-sol'
 import { PageHead } from './page-head'
 
 export function SettingsPage() {
@@ -11,6 +12,7 @@ export function SettingsPage() {
           What LanaTools may sign with your wallet.
         </p>
         <AgentPayments />
+        <AutomaticSOL />
       </section>
     </>
   )

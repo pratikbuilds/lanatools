@@ -1,7 +1,7 @@
 # Durable named transactions
 
-This module stores named intent and exact transaction attempts. It has no public
-execution route or MCP tool and does not sign or broadcast. SOL preparation
+This module stores named intent and exact transaction attempts for the external
+signing-link and automatic embedded SOL services. SOL preparation
 reads devnet genesis and blockhash from the configured RPC. The first
 input contract is `transfer_sol`, with exact positive u64 lamports, an explicit
 `embedded` or `external` path and a client-scoped idempotency key.
@@ -130,4 +130,15 @@ enabled transaction signer record matching the canonical owner wallet ID/address
 and trusted configured signer ID. Neither an agent nor a payment signer enables
 that record. Missing or disabled delegation fails closed before a signing permit.
 The owner may disable new claims; already persisted claims may finish and retain
-their evidence. Provisioning and delegation setup are not exposed here.
+their evidence. Owner setup is exposed under `/api/transactions/signer`: status, prepare,
+confirm and disable. Prepare claims a pending row before creating its user-owned
+policy; confirm checks the exact policy, sole user quorum and dedicated attachment.
+Cancellation wins over late setup completion. A disabled row keeps its old policy
+until remote removal succeeds, so re-enabling cannot lose its binding.
+
+Selective removal serializes app operations per wallet, compares provider signer
+snapshots before updating and verifies the result. It uses only the authenticated
+owner JWT, never payment or transaction signing keys. Unknown remote outcomes keep
+the wallet guard and local execution off. This cannot prevent a concurrent signer
+update outside the app because the provider has no public CAS revision; live
+coexistence remains an activation requirement.

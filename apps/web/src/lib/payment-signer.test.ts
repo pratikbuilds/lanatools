@@ -1,5 +1,5 @@
 import { afterAll, afterEach, expect, spyOn, test } from 'bun:test'
-import { enablePaymentSigner } from './payment-signer'
+import { disablePaymentSigner, enablePaymentSigner } from './payment-signer'
 
 const wallet = 'F8ypHfv7gs9JiHVnb51g7aVA2tmmC9ZpF5FdpChYjpV3'
 const grant = { signerId: 'signer-1', policyIds: ['policy-1'] }
@@ -54,4 +54,34 @@ test("Privy's refusal is reported when the server does not find the signer", asy
       Promise.reject(duplicate),
     ),
   ).rejects.toBe(duplicate)
+})
+
+test('payment disable sends the owner wallet to server-side selective removal', async () => {
+  fetchSigner.mockResolvedValue(
+    Response.json({ status: 'disabled', walletAddress: wallet }),
+  )
+  await expect(disablePaymentSigner(getAccessToken, wallet)).resolves.toEqual({
+    status: 'disabled',
+    walletAddress: wallet,
+  })
+  expect(fetchSigner).toHaveBeenCalledWith('/api/payments/signer/disable', {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer token',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ walletAddress: wallet }),
+  })
+})
+
+test('a remote removal failure remains an error so the owner can retry', async () => {
+  fetchSigner.mockResolvedValue(
+    Response.json(
+      { error: 'Payments stopped locally; retry signer removal' },
+      { status: 502 },
+    ),
+  )
+  await expect(disablePaymentSigner(getAccessToken, wallet)).rejects.toThrow(
+    'retry signer removal',
+  )
 })

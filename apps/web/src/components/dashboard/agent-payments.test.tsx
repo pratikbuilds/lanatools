@@ -71,3 +71,19 @@ test('the signing rules name the wallet they apply to', () => {
   expect(html).toContain('USDC only')
   expect(html).toContain(wallet)
 })
+
+test('disabled payments with a removal error offer retry without claiming the signer is gone', () => {
+  const html = render(
+    { status: 'disabled', walletAddress: wallet },
+    { error: 'Removal failed' },
+  )
+  expect(html).toContain('Remove remaining payment signer')
+  expect(html).toContain('cannot cancel already signed transactions')
+  expect(html).not.toContain('signer is not on your wallet')
+})
+
+test('payment signer removal remains available after reloading a disabled state', () => {
+  expect(render({ status: 'disabled', walletAddress: wallet })).toContain(
+    'Remove remaining payment signer',
+  )
+})

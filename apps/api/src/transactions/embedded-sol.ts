@@ -53,7 +53,7 @@ const claimOf = (attempt: { id: string; claimToken: string }) => ({
   token: attempt.claimToken,
 })
 
-function enabledConfiguration(env: EmbeddedSolEnv) {
+export function enabledConfiguration(env: EmbeddedSolEnv) {
   if (
     env.SOL_TRANSACTION_SIGNING_ENABLED !== 'true' ||
     env.SOLANA_NETWORK !== 'devnet' ||
@@ -68,7 +68,7 @@ function enabledConfiguration(env: EmbeddedSolEnv) {
     )
 }
 
-/** No provisioning or owner attachment is exposed before the two-signer proof. */
+/** Runtime authority must match confirmed owner delegation. */
 export async function resolveEmbeddedAuthority(
   env: EmbeddedSolEnv,
   userId: string,
