@@ -42,6 +42,9 @@ ReactDOM.createRoot(rootElement).render(
           },
         },
         embeddedWallets: { solana: { createOnLogin: 'off' } },
+        // Privy's Solana signing flow needs an RPC for the chain it signs on
+        // and throws inside its own tree without one. Its defaults cover
+        // devnet and mainnet; the dashboard's own reads still go through the API.
         plugins: [defaultSolanaRpcsPlugin()],
       }}
     >

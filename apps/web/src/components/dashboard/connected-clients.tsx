@@ -10,6 +10,8 @@ import {
   setMcpClientOutgoing,
   timeAgo,
 } from '#/lib/mcp-clients'
+import type { AgentId } from '#/components/landing/logos'
+import { ConnectFirstClient } from './connect-client'
 import { Drawer, DrawerFacts, DrawerHeader } from './drawer'
 import { LimitEditor } from './limit-editor'
 import { SectionHead } from './page-head'
@@ -87,8 +89,11 @@ const SORTS: Record<SortKey, (a: McpClient, b: McpClient) => number> = {
 
 export function ConnectedClients({
   onViewActivity,
+  onConnect,
 }: {
   onViewActivity: (clientId: string) => void
+  /** Opens the setup for a new client, starting on this one. */
+  onConnect: (client: AgentId) => void
 }) {
   const { userId, walletAddress, getAccessToken } = useDashboardSession()
   const queryClient = useQueryClient()
@@ -162,6 +167,7 @@ export function ConnectedClients({
           clients={clients.data}
           search={search}
           onManage={(client) => manage(client.grantId)}
+          onConnect={onConnect}
         />
       )}
 
@@ -211,24 +217,21 @@ export function ClientTable({
   clients,
   search = '',
   onManage,
+  onConnect,
   now = Date.now(),
 }: {
   clients: McpClient[]
   /** Shows only clients whose name or host contains this. */
   search?: string
   onManage: (client: McpClient) => void
+  onConnect: (client: AgentId) => void
   now?: number
 }) {
   const [sort, setSort] = useState<SortKey>('last')
   const [showAll, setShowAll] = useState(false)
 
-  if (clients.length === 0)
-    return (
-      <p className="d-empty">
-        No clients connected yet. Connect Claude, ChatGPT, Codex, Cursor, or any
-        MCP client, and it appears here with its spending limit.
-      </p>
-    )
+  // Before the first client, the table's place explains how to get one.
+  if (clients.length === 0) return <ConnectFirstClient onConnect={onConnect} />
 
   const term = search.trim().toLowerCase()
   const list = clients

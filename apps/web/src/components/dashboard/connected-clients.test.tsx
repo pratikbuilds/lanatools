@@ -30,7 +30,12 @@ const paying: McpClient = {
 
 function table(clients: McpClient[]) {
   return renderToString(
-    <ClientTable clients={clients} onManage={() => {}} now={now} />,
+    <ClientTable
+      clients={clients}
+      onManage={() => {}}
+      onConnect={() => {}}
+      now={now}
+    />,
   )
 }
 
@@ -72,7 +77,7 @@ test('a client without a stored name or use is still identifiable', () => {
 })
 
 test('with nothing connected, the table says what connecting does', () => {
-  expect(table([])).toContain('No clients connected yet')
+  expect(table([])).toContain('Connect your first client')
 })
 
 test('a client that can pay shows its spend against its limit and what is left', () => {
