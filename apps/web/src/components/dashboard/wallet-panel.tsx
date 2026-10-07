@@ -3,13 +3,13 @@ import { address } from '@solana/kit'
 import { skipToken, useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { AnimatedCounter } from '#/components/ui/animated-counter'
-import { NETWORK, getWalletBalances } from '#/lib/solana'
+import { NETWORK, formatSol, getWalletBalances } from '#/lib/solana'
 import { DepositModal } from './deposit-modal'
 import { WalletAddress } from './wallet-address'
-import { Modal } from './modal'
 import { SolanaShine } from './solana-shine'
 import { SplitPanel } from './split-panel'
 import { useDashboardSession } from './session'
+import { WithdrawModal } from './withdraw-modal'
 
 export function CreateWallet() {
   const { createWallet } = useCreateWallet()
@@ -62,42 +62,88 @@ function wholeCents(usdc: bigint) {
   return Number(usdc / 10_000n) / 100
 }
 
-/**
- * The balance and the ways to move it, as one panel: what is available on
- * the left, the wallet's address with Deposit and Withdraw on the right.
- */
+/** The balance and the ways to move it, for the signed-in user's wallet. */
 export function WalletPanel({ walletAddress }: { walletAddress: string }) {
   const balances = useWalletBalances(walletAddress)
   const [depositing, setDepositing] = useState(false)
   const [withdrawing, setWithdrawing] = useState(false)
 
   return (
+    <>
+      <WalletPanelView
+        walletAddress={walletAddress}
+        balances={balances.data}
+        pending={balances.isPending}
+        failed={balances.isError}
+        onDeposit={() => setDepositing(true)}
+        onWithdraw={() => setWithdrawing(true)}
+      />
+      <DepositModal
+        open={depositing}
+        onClose={() => setDepositing(false)}
+        walletAddress={walletAddress}
+      />
+      {withdrawing && (
+        <WithdrawModal
+          onClose={() => setWithdrawing(false)}
+          walletAddress={walletAddress}
+          balances={balances.data ?? null}
+          loadFailed={balances.isError}
+        />
+      )}
+    </>
+  )
+}
+
+/**
+ * One panel: what is available on the left, the wallet's address with
+ * Deposit and Withdraw on the right. USDC is the figure; the SOL that pays
+ * withdrawal fees sits beside it in small type, so nobody meets the fee for
+ * the first time as a failure.
+ */
+export function WalletPanelView({
+  walletAddress,
+  balances,
+  pending,
+  failed,
+  onDeposit,
+  onWithdraw,
+}: {
+  walletAddress: string
+  balances: { usdc: bigint; sol: bigint } | undefined
+  pending: boolean
+  failed: boolean
+  onDeposit: () => void
+  onWithdraw: () => void
+}) {
+  return (
     <section className="mt-5">
       <SplitPanel
         left={
           <>
             <p className="d-label">Available</p>
-            <p className="mt-4 mb-3 flex items-baseline font-mono text-[44px] leading-none font-semibold tracking-[-0.05em] sm:text-[58px]">
-              {balances.data ? (
+            <p className="mt-4 mb-3 flex flex-wrap items-baseline font-mono text-[44px] leading-none font-semibold tracking-[-0.05em] sm:text-[58px]">
+              {balances ? (
                 <AnimatedCounter
-                  value={wholeCents(balances.data.usdc)}
+                  value={wholeCents(balances.usdc)}
                   decimals={2}
                   prefix="$"
                 />
               ) : (
                 <span
                   className={
-                    balances.isPending
+                    pending
                       ? 'h-[0.95em] w-[3em] animate-pulse rounded-[8px] bg-panel-2'
                       : ''
                   }
                 >
-                  {balances.isPending ? '' : '—'}
+                  {pending ? '' : '—'}
                 </span>
               )}
               <small className="ml-2.5 text-[14px] font-medium tracking-normal text-fg-3">
                 USDC
               </small>
+              {balances && <FeeBalance sol={balances.sol} />}
             </p>
             <p className="max-w-[330px] text-fg-2">
               Your connected clients pay for tools from this balance, each
@@ -107,7 +153,7 @@ export function WalletPanel({ walletAddress }: { walletAddress: string }) {
               role="alert"
               className="mt-2 text-[12.5px] text-bad empty:hidden"
             >
-              {balances.isError ? 'Could not load balances.' : ''}
+              {failed ? 'Could not load balances.' : ''}
             </p>
             <span className="absolute right-[22px] bottom-[18px] text-fg">
               <SolanaShine size={64} />
@@ -121,113 +167,48 @@ export function WalletPanel({ walletAddress }: { walletAddress: string }) {
               <WalletAddress walletAddress={walletAddress} compact />
             </div>
             <p className="mt-3 text-[12.5px] text-fg-3">
-              Only send USDC on {NETWORK.label}. Other tokens or networks won’t
-              show up.
+              Send USDC on {NETWORK.label}, plus a little SOL for withdrawal
+              fees. Other tokens or networks won’t show up.
             </p>
             <div className="mt-5 flex gap-2">
               <button
                 type="button"
                 className="d-btn d-btn-primary"
-                onClick={() => setDepositing(true)}
+                onClick={onDeposit}
               >
                 <span aria-hidden="true">↓</span> Deposit
               </button>
-              <button
-                type="button"
-                className="d-btn"
-                onClick={() => setWithdrawing(true)}
-              >
+              <button type="button" className="d-btn" onClick={onWithdraw}>
                 <span aria-hidden="true">↑</span> Withdraw
               </button>
             </div>
           </>
         }
       />
-
-      <DepositModal
-        open={depositing}
-        onClose={() => setDepositing(false)}
-        walletAddress={walletAddress}
-      />
-
-      <WithdrawModal
-        open={withdrawing}
-        onClose={() => setWithdrawing(false)}
-        available={balances.data ? wholeCents(balances.data.usdc) : null}
-      />
     </section>
   )
 }
 
 /**
- * Where a withdrawal will be filled in, in a centred modal. Sending is not built yet, so the
- * form can be filled but not submitted.
+ * The SOL that pays withdrawal fees, beside the balance in the same small
+ * type as its unit. A wallet with none is told here, in red, before it
+ * tries to withdraw.
  */
-function WithdrawModal({
-  open,
-  onClose,
-  available,
-}: {
-  open: boolean
-  onClose: () => void
-  available: number | null
-}) {
-  const [to, setTo] = useState('')
-  const [amount, setAmount] = useState('')
-
+function FeeBalance({ sol }: { sol: bigint }) {
+  const empty = sol === 0n
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Withdraw USDC"
-      detail={`From your wallet on ${NETWORK.label}`}
+    <small
+      title={
+        empty
+          ? 'Add SOL to this wallet to withdraw.'
+          : 'Pays the network fee when you withdraw.'
+      }
+      className={`ml-2.5 text-[14px] font-medium tracking-normal ${empty ? 'text-bad' : 'text-fg-3'}`}
     >
-      <form className="grid gap-4" onSubmit={(event) => event.preventDefault()}>
-        <label className="grid gap-1.5">
-          <span className="d-label">To address</span>
-          <input
-            className="d-input h-10 font-mono"
-            placeholder="Solana address"
-            value={to}
-            onChange={(event) => setTo(event.target.value)}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <label className="grid gap-1.5">
-          <span className="flex items-baseline justify-between">
-            <span className="d-label">Amount</span>
-            <span className="font-mono text-[12px] text-fg-3">
-              {available === null ? '—' : `$${available.toFixed(2)} available`}
-            </span>
-          </span>
-          <span className="flex gap-2">
-            <input
-              className="d-input h-10 min-w-0 flex-1 font-mono"
-              inputMode="decimal"
-              placeholder="0.00"
-              value={amount}
-              onChange={(event) => setAmount(event.target.value)}
-            />
-            <button
-              type="button"
-              className="d-btn h-10"
-              disabled={available === null}
-              onClick={() =>
-                available !== null && setAmount(available.toFixed(2))
-              }
-            >
-              Max
-            </button>
-          </span>
-        </label>
-        <button type="submit" className="d-btn d-btn-primary h-11" disabled>
-          Withdraw
-        </button>
-        <p className="text-[12.5px] text-fg-3">
-          Withdrawals are coming soon. Nothing is sent from this form yet.
-        </p>
-      </form>
-    </Modal>
+      <span aria-hidden="true" className="mr-2.5 text-fg-3">
+        ·
+      </span>
+      {`${formatSol(sol)} SOL`}
+    </small>
   )
 }
