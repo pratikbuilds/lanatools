@@ -6,6 +6,7 @@ import {
   EMBER_STATE,
   MAX_POSITIONS,
   PHOENIX_PROGRAM,
+  cancelData,
   collateralAmounts,
   decodeOrder,
   decodeRegisterTrader,
@@ -13,7 +14,7 @@ import {
   isOnboardTraderDelegated,
   orderData,
 } from './rise'
-import type { OrderSpec } from './rise'
+import type { CancelTarget, OrderSpec } from './rise'
 
 /**
  * Checks every instruction a trade tool built before it becomes a
@@ -113,6 +114,20 @@ export function checkOrder(instruction: Instruction, spec: OrderSpec) {
       fail(`the order's ${field} does not match the request`)
   if (!sameBytes(data, orderData(spec)))
     fail("the order's encoding differs from the request")
+}
+
+/**
+ * A cancel must be exactly the Phoenix instruction for these orders (or for
+ * all of the account's orders in the market, when `targets` is null).
+ */
+export function checkCancel(
+  instruction: Instruction,
+  targets: readonly CancelTarget[] | null,
+) {
+  if (instruction.programAddress !== PHOENIX_PROGRAM)
+    fail('the cancel is not a Phoenix instruction')
+  if (!sameBytes(bytesOf(instruction), cancelData(targets)))
+    fail('the cancel does not match the orders requested')
 }
 
 // SPL token instruction tags: Approve is 4; the associated token program's

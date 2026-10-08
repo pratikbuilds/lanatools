@@ -62,3 +62,40 @@ export const OrderMarket = z.object({
   isolatedOnly: z.boolean(),
 })
 export type OrderMarket = z.infer<typeof OrderMarket>
+
+const Integer = z.union([z.string().regex(/^-?\d+$/), z.number().int()])
+
+/**
+ * GET /v1/trader/state/{wallet}: positions and resting orders, per
+ * subaccount. Order rows marked `change: "closed"` have left the book.
+ */
+export const TraderBook = z.object({
+  snapshot: z.object({
+    subaccounts: z.array(
+      z.object({
+        subaccountIndex: z.number().int(),
+        positions: z
+          .array(z.object({ symbol: z.string(), basePositionLots: Integer }))
+          .default([]),
+        orders: z
+          .array(
+            z.object({
+              symbol: z.string(),
+              orders: z.array(
+                z.object({
+                  orderSequenceNumber: z.string().regex(/^\d+$/),
+                  priceTicks: z.string().regex(/^\d+$/),
+                  priceUsd: z.string(),
+                  side: z.string(),
+                  sizeRemainingLots: Integer,
+                  change: z.string().nullish(),
+                }),
+              ),
+            }),
+          )
+          .default([]),
+      }),
+    ),
+  }),
+})
+export type TraderBook = z.infer<typeof TraderBook>

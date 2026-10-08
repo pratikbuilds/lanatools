@@ -3,6 +3,7 @@ import { expect, test } from 'bun:test'
 import {
   bookTicks,
   decimalString,
+  fractionOfLots,
   limitRounding,
   priceToTicks,
   slippageLimit,
@@ -102,4 +103,15 @@ test('float prices from Phoenix become decimal strings without exponents', () =>
   expect(decimalString(1e-7)).toBe('0.0000001')
   expect(() => decimalString(0)).toThrow('invalid price')
   expect(() => decimalString(Number.NaN)).toThrow('invalid price')
+})
+
+test('a share of a position rounds down to whole lots', () => {
+  expect(fractionOfLots(25n, 0.5)).toBe(12n)
+  expect(fractionOfLots(25n, 1)).toBe(25n)
+  expect(fractionOfLots(3n, 0.34)).toBe(1n)
+  expect(() => fractionOfLots(2n, 0.4)).toThrow('less than one lot')
+  for (const fraction of [0, -0.1, 1.01, Number.NaN])
+    expect(() => fractionOfLots(10n, fraction)).toThrow(
+      'fraction must be more than 0 and at most 1',
+    )
 })

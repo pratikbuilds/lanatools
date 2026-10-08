@@ -9,6 +9,8 @@ import {
   Side,
   USDC_MINT_ADDRESS,
   baseLots,
+  buildCancelAllIxResolved,
+  buildCancelOrdersByIdIxResolved,
   buildDepositIxsResolved,
   buildPlaceLimitOrderIxResolved,
   buildPlaceMarketOrderIxResolved,
@@ -17,6 +19,8 @@ import {
   buildWithdrawIxsResolved,
   decodeTrader,
   getEmberVaultAddress,
+  getCancelAllEncoder,
+  getCancelOrdersByIdEncoder,
   getDepositFundsDecoder,
   getEmberDepositDecoder,
   getEmberWithdrawDecoder,
@@ -589,3 +593,48 @@ export const collateralAmounts = {
 
 /** Ember's state account, the delegate a withdrawal approves. */
 export const EMBER_STATE = address(EMBER_STATE_ADDRESS)
+
+/** One resting order to cancel, as Phoenix's trader state names it. */
+export type CancelTarget = { priceInTicks: bigint; orderSequenceNumber: bigint }
+
+/** Phoenix cancels at most this many orders by ID in one instruction. */
+export const MAX_CANCEL_IDS = 100
+
+const cancelIds = (targets: readonly CancelTarget[]) =>
+  targets.map((target) => ({
+    nodePointer: null,
+    orderId: {
+      priceInTicks: ticks(target.priceInTicks),
+      orderSequenceNumber: target.orderSequenceNumber,
+    },
+  }))
+
+/**
+ * The exact instruction data of a cancel: these orders by ID, or every
+ * order the account has in the market when `targets` is null.
+ */
+export function cancelData(targets: readonly CancelTarget[] | null) {
+  return Uint8Array.from(
+    targets === null
+      ? getCancelAllEncoder().encode(undefined)
+      : getCancelOrdersByIdEncoder().encode({ orderIds: cancelIds(targets) }),
+  )
+}
+
+/** The cancel instruction, from Rise's resolved builders. */
+export async function cancelInstruction(
+  wallet: Address,
+  keys: ExchangeKeys,
+  market: OrderMarket,
+  targets: readonly CancelTarget[] | null,
+) {
+  const context = await orderContext(wallet, keys, market)
+  return toInstruction(
+    targets === null
+      ? buildCancelAllIxResolved(context)
+      : buildCancelOrdersByIdIxResolved({
+          ...context,
+          orderIds: cancelIds(targets),
+        }),
+  )
+}

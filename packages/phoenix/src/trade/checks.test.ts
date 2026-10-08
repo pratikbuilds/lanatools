@@ -6,6 +6,7 @@ import {
   ASSOCIATED_TOKEN_PROGRAM,
   TOKEN_PROGRAM,
   checkActivation,
+  checkCancel,
   checkCollateral,
   checkInstructions,
   checkOrder,
@@ -20,7 +21,7 @@ import {
   postOnlyData,
   registerTraderData,
 } from './fixtures'
-import { depositInstructions, withdrawInstructions } from './rise'
+import { cancelData, depositInstructions, withdrawInstructions } from './rise'
 import type { OrderSpec } from './rise'
 
 const depositInstructionsFixture = await depositInstructions(
@@ -308,4 +309,28 @@ test('an activation of another shape fails', () => {
     ],
   ] as const)
     expect(() => checkActivation(instructions, activation)).toThrow(reason)
+})
+
+test('a cancel must be exactly the instruction for the orders asked for', () => {
+  const targets = [{ priceInTicks: 5100n, orderSequenceNumber: 9n }]
+  expect(() =>
+    checkCancel(phoenixInstruction(cancelData(targets)), targets),
+  ).not.toThrow()
+  expect(() =>
+    checkCancel(phoenixInstruction(cancelData(null)), null),
+  ).not.toThrow()
+  for (const [data, requested] of [
+    [cancelData(null), targets],
+    [cancelData(targets), null],
+    [cancelData([{ priceInTicks: 5100n, orderSequenceNumber: 10n }]), targets],
+  ] as const)
+    expect(() => checkCancel(phoenixInstruction(data), requested)).toThrow(
+      'the cancel does not match the orders requested',
+    )
+  expect(() =>
+    checkCancel(
+      phoenixInstruction(cancelData(null), { program: TOKEN_PROGRAM }),
+      null,
+    ),
+  ).toThrow('the cancel is not a Phoenix instruction')
 })

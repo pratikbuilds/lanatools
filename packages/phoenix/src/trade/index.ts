@@ -4,6 +4,8 @@
  * read tools never loads the Rise SDK.
  */
 import { activateAccount } from './tools/activate'
+import { cancelOrders } from './tools/cancel'
+import { closePosition } from './tools/close'
 import { deposit } from './tools/deposit'
 import { limitOrder } from './tools/limit-order'
 import { marketOrder } from './tools/market-order'
@@ -15,6 +17,8 @@ export const phoenixTrade = [
   deposit,
   marketOrder,
   limitOrder,
+  cancelOrders,
+  closePosition,
   withdraw,
 ] as const
 

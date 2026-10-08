@@ -7,7 +7,7 @@ import { fetchAccount } from '../chain'
 import { bookTicks } from '../price'
 import type { MarketUnits, Side } from '../price'
 import { PHOENIX_PROGRAM, activationOf, traderAccountAddress } from '../rise'
-import { OrderMarket } from '../schemas'
+import { OrderMarket, TraderBook } from '../schemas'
 import type { TradeContext } from '../tool'
 
 /** Inputs and reads several trade tools share. */
@@ -50,17 +50,19 @@ export async function requireActivated({ rpc }: TradeContext, wallet: Address) {
     )
 }
 
-/** A market's order config; refuses markets these tools cannot trade. */
-export async function tradableMarket(
-  { phoenix }: TradeContext,
-  symbol: string,
-) {
-  const market = await forMarket(symbol, () =>
+/** A market's order config: accounts, tick size, lot decimals. */
+export function marketConfig({ phoenix }: TradeContext, symbol: string) {
+  return forMarket(symbol, () =>
     phoenix.get(
       `/v1/view/exchange/market/${encodeURIComponent(symbol)}`,
       OrderMarket,
     ),
   )
+}
+
+/** A market's order config; refuses markets these tools cannot trade. */
+export async function tradableMarket(context: TradeContext, symbol: string) {
+  const market = await marketConfig(context, symbol)
   if (market.marketStatus !== 'active')
     throw new PhoenixError(
       'market_unavailable',
@@ -128,5 +130,34 @@ export const usd = (value: number) => value.toFixed(2)
 
 /** USD to six places, for fees too small to show in cents. */
 export const fineUsd = (value: number) => Number(value.toFixed(6)).toString()
+
+/**
+ * The wallet's cross-margin account (subaccount 0) as Phoenix's API sees
+ * it: positions and resting orders. These tools trade nothing else.
+ */
+export async function crossAccount({ phoenix }: TradeContext, wallet: Address) {
+  const book = await phoenix
+    .get(`/v1/trader/state/${encodeURIComponent(wallet)}`, TraderBook)
+    .catch((error: unknown) => {
+      if (error instanceof PhoenixError && error.code === 'not_found')
+        throw new PhoenixError(
+          'not_activated',
+          'This wallet has no Phoenix account; call phoenix_activate_account first',
+        )
+      throw error
+    })
+  const cross = book.snapshot.subaccounts.find(
+    (subaccount) => subaccount.subaccountIndex === 0,
+  )
+  return {
+    positions: cross?.positions ?? [],
+    /** Resting orders still on the book in one market. */
+    ordersIn: (symbol: string) =>
+      (cross?.orders ?? [])
+        .filter((market) => market.symbol === symbol)
+        .flatMap((market) => market.orders)
+        .filter((order) => order.change !== 'closed'),
+  }
+}
 
 export { MarketSymbol }

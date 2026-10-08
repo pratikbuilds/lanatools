@@ -1,6 +1,6 @@
 # Phoenix trade tools: tech spec
 
-Status: Phases 1–3 built and code-reviewed 2026-10-08; review fixes in. Phase 4 next.
+Status: Phases 1–4 built 2026-10-08 (all seven tools); Phase 4 waiting for review. Phase 5 (script) next.
 Background: [research-phoenix-transactions.md](research-phoenix-transactions.md).
 
 ## 1. Goal and scope
@@ -363,19 +363,24 @@ the login: it moves no funds and works either way.
 
 | | |
 |---|---|
-| **Input** | `wallet`, `symbol`, `orderIds?` (strings from `phoenix_get_account`; omit to cancel all in the market) |
-| **Reads** | Trader state, to find each order's price in ticks (Rise needs the price *and* the sequence number) |
-| **Builds** | `buildCancelOrdersById` or `buildCancelAll` |
-| **Checks** | Every ID is currently open, otherwise `not_found` and the open IDs are listed. Nothing is open: `not_found`. |
+| **Input** | `wallet`, `symbol`, `orderIds?` (1–100 IDs from `phoenix_get_account`; omit to cancel all in the market) |
+| **Reads** | The market config (accounts; no tradable check, since cancelling is always allowed), activation on chain, exchange keys, and Phoenix's trader state for the cross account (subaccount 0). Rows marked `change: "closed"` have left the book and are skipped. Isolated subaccounts are not touched. |
+| **Builds** | Rise `buildCancelOrdersByIdIxResolved` with each order's `priceTicks` and `orderSequenceNumber` exactly as Phoenix's trader state gives them (a bid's ID is bit-inverted; Rise passes it through as is), or `buildCancelAllIxResolved`. Duplicate IDs are dropped. |
+| **Checks** | `checkCancel`: the instruction data equals Rise's encoding of exactly those orders (or of cancel-all). Every ID must be resting, otherwise `not_found`, which lists the open IDs. Nothing resting: `not_found`. |
+| **Details** | Each cancelled order: side, size and price. |
+| **Warning** | Cancel-all: "This cancels every resting order the account has in this market when it lands, including any placed after this was prepared." |
 
 ### 5.6 `phoenix_close_position`
 
 | | |
 |---|---|
-| **Input** | `wallet`, `symbol`, `fraction?` (0 to 1, default 1), exactly one of `maxSlippageBps` or `limitPrice` |
-| **Reads** | Trader state (position size and direction), market, book |
-| **Builds** | A market order on the opposite side, sized `floor(position lots × fraction)`, with `ReduceOnly` always set |
-| **Checks** | A position exists, and the computed size is at least 1 lot |
+| **Input** | `wallet`, `symbol`, `fraction` (more than 0, at most 1, default 1), exactly one of `maxSlippageBps` or `limitPrice` |
+| **Reads** | The tradable market, activation on chain, and Phoenix's trader state for the cross account's position in that market |
+| **Builds** | The same immediate-or-cancel order as `phoenix_market_order` (`immediateOrder`): the opposite side, `floor(position lots × fraction)` lots, `ReduceOnly` always set, expiry 16 slots after the observed slot |
+| **Checks** | A position exists (`not_found` otherwise), and the share is at least one lot. `checkOrder` checks the order exactly. |
+| **Summary** | "Close 0.12 of the 0.25 SOL long: market sell now, receiving at least $114.58 each; reduce-only, so it can never open a short" |
+
+**The position comes from Phoenix's API**, which can lag the chain by moments. Reduce-only makes that safe: whatever the position is when the order lands, the order can only shrink it, never open or flip one. A position that has already closed is not tested here; the simulation shows what Phoenix does.
 
 ## 6. Script (`packages/phoenix/scripts/trade.ts`)
 
@@ -553,6 +558,28 @@ to these fixes. They are described in place above.
   - Position direction becomes the opposite side; fraction rounding; always reduce-only; no position.
 - **Check (D7):** mainnet simulation, nothing signed.
 - **Exit:** all seven tools done.
+- **Result (2026-10-08):**
+  - `phoenix_cancel_orders` and `phoenix_close_position`, plus `checkCancel`,
+    `fractionOfLots`, the `TraderBook` schema, and shared `marketConfig` and
+    `crossAccount` reads.
+  - 8 new tests (109 in the package), all passing. The package typecheck and
+    lint are clean. Repo: `bun run typecheck` passes and `bun run test`
+    passes (481).
+  - **D7 mainnet simulations, nothing signed:**
+
+    | Tool | Wallet | Result |
+    |---|---|---|
+    | Cancel 1 BTC order by ID | a market maker (`1imt…`) | simulates OK, about 280k CU |
+    | Cancel all 8 BTC orders | same | simulates OK, about 296k CU |
+    | Cancel an unknown ID | same | `not_found`, listing the open IDs |
+    | Close half / all of a 0.04 SOL long | `DuyJ…` | reduce-only sell of 0.02 / 0.04, simulates OK, about 472k / 476k CU |
+    | Close a 1-lot BTC short | `DuyJ…` | reduce-only buy of 0.0001, simulates OK, about 504k CU |
+    | Close half of a 1-lot position | `DuyJ…` | `invalid_input`: less than one lot |
+    | Close with no position | `4WWb…` | `not_found` |
+
+  - The market maker's order IDs changed between two reads seconds apart.
+    Agents should read open orders right before cancelling by ID; a stale ID
+    gets a clear `not_found`.
 
 ### Phase 5: script
 

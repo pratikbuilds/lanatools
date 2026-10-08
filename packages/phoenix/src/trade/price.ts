@@ -173,6 +173,29 @@ export function slippageLimit(
   )
 }
 
+/**
+ * `fraction` (0 < fraction ≤ 1) of a position's lots, rounded down so a
+ * close never asks for more than the position. At least one lot.
+ */
+export function fractionOfLots(lots: bigint, fraction: number) {
+  if (!(fraction > 0 && fraction <= 1))
+    throw new PhoenixError(
+      'invalid_input',
+      'fraction must be more than 0 and at most 1',
+    )
+  const { numerator, denominator } = parseDecimal(
+    decimalString(fraction),
+    'fraction',
+  )
+  const part = (lots * numerator) / denominator
+  if (part < 1n)
+    throw new PhoenixError(
+      'invalid_input',
+      'fraction leaves less than one lot of the position to close',
+    )
+  return part
+}
+
 /** USDC base units (6 decimals) for an amount such as "12.5". */
 export function toUSDCUnits(amount: string) {
   const { numerator, denominator } = parseDecimal(amount, 'amount')
