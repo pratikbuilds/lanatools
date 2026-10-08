@@ -6,7 +6,7 @@ const WORD = 'lanatool'
 const LIME = '#d9ff4a'
 const PAPER = '#b5c1f0'
 const DIM = '#7f92dd'
-const FONT = "'JetBrains Mono', ui-monospace, monospace"
+const FONT = "'Paper Mono', ui-monospace, monospace"
 
 // Glyphs that read as money in motion: amounts, hashes, arrows.
 const INK = '$0123456789abcdef#%&@'
