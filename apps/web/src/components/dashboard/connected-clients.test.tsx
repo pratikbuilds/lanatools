@@ -75,7 +75,7 @@ test('a client without a stored name or use is still identifiable', () => {
 })
 
 test('with nothing connected, the table says what connecting does', () => {
-  expect(table([])).toContain('Connect your first client')
+  expect(table([])).toContain('Let’s bring in your first agent')
 })
 
 test('a client that can pay shows its spend against its limit and what is left', () => {

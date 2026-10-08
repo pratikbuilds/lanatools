@@ -10,7 +10,7 @@ import {
 
 test('the empty state offers every client, Grok bot first', () => {
   const html = renderToString(<ConnectFirstClient onConnect={() => {}} />)
-  expect(html).toContain('Connect your first client')
+  expect(html).toContain('Let’s bring in your first agent')
   // The cards come after the intro, which names the clients in prose.
   const cards = html.slice(html.indexOf('Pick your client'))
   const names = ['Grok bot', 'Codex', 'Claude', 'Cursor', 'Other agents']

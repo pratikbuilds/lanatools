@@ -121,7 +121,7 @@ test('empty client setup and short-screen dialogs fit a small phone', async ({
   await mockDashboard(page, true)
   await page.goto(`${dashboardURL}/dashboard`)
   await expect(
-    page.getByText('Connect your first client', { exact: true }),
+    page.getByText('Let’s bring in your first agent', { exact: true }),
   ).toBeVisible()
   await fitsPage(page)
   await page
