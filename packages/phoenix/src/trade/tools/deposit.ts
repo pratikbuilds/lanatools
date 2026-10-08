@@ -1,0 +1,71 @@
+import { address } from '@solana/kit'
+import { z } from 'zod'
+import { PhoenixError } from '../../client'
+import { Wallet } from '../../tool'
+import { usdc } from '../../units'
+import { fetchAccount, tokenBalance } from '../chain'
+import { toUSDCUnits } from '../price'
+import {
+  PHOENIX_PROGRAM,
+  activationOf,
+  depositInstructions,
+  traderAccountAddress,
+  usdcAccountAddress,
+} from '../rise'
+import { ExchangeKeys } from '../schemas'
+import { defineTradeTool } from '../tool'
+
+/** A USDC amount as the agent types it. */
+export const USDCAmount = z
+  .string()
+  .trim()
+  .describe('USDC amount as a decimal string, e.g. "25" or "12.5"')
+
+export const deposit = defineTradeTool({
+  name: 'phoenix_deposit',
+  title: 'Deposit USDC into Phoenix',
+  description: [
+    "Prepares a deposit of the wallet's USDC into its Phoenix cross-margin account, as collateral for perps.",
+    'Returns an unsigned transaction and its simulation; nothing is signed or sent.',
+  ].join(' '),
+  input: z.object({ wallet: Wallet, amount: USDCAmount }).strict(),
+  async prepare({ phoenix, rpc }, input) {
+    const wallet = address(input.wallet)
+    const amount = toUSDCUnits(input.amount)
+    const [traderAccount, usdcAccount] = await Promise.all([
+      traderAccountAddress(wallet),
+      usdcAccountAddress(wallet),
+    ])
+    const [trader, held, keys] = await Promise.all([
+      fetchAccount(rpc, traderAccount),
+      fetchAccount(rpc, usdcAccount),
+      phoenix.get('/v1/view/exchange/keys', ExchangeKeys),
+    ])
+    if (
+      trader?.owner !== PHOENIX_PROGRAM ||
+      activationOf(trader.data) !== 'activated'
+    )
+      throw new PhoenixError(
+        'not_activated',
+        'This wallet has no activated Phoenix account; call phoenix_activate_account first',
+      )
+    const balance = tokenBalance(held)
+    if (amount > balance)
+      throw new PhoenixError(
+        'insufficient_funds',
+        `The wallet holds ${usdc(balance.toString())} USDC, less than ${usdc(amount.toString())}`,
+      )
+
+    return {
+      kind: 'instructions',
+      wallet,
+      instructions: await depositInstructions(wallet, keys, amount),
+      summary: `Deposit ${usdc(amount.toString())} USDC into the Phoenix cross-margin account`,
+      details: {
+        amountUsdc: usdc(amount.toString()),
+        walletUsdc: usdc(balance.toString()),
+      },
+      warnings: [],
+    }
+  },
+})

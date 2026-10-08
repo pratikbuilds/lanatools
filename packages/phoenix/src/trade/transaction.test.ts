@@ -10,11 +10,9 @@ import {
   SOLANA_ERROR__TRANSACTION_ERROR__INSUFFICIENT_FUNDS_FOR_FEE,
   SolanaError,
   appendTransactionMessageInstructions,
-  blockhash,
   createTransactionMessage,
   decompileTransactionMessage,
   generateKeyPairSigner,
-  getBase58Decoder,
   getBase64EncodedWireTransaction,
   getBase64Encoder,
   getCompiledTransactionMessageDecoder,
@@ -26,41 +24,14 @@ import {
   signTransactionMessageWithSigners,
 } from '@solana/kit'
 import { expect, test } from 'bun:test'
-import { WALLET, phoenixInstruction } from './fixtures'
+import { BLOCKHASH, WALLET, fakeRpc, phoenixInstruction } from './fixtures'
 import {
   MAX_COMPUTE_UNITS,
   buildTransaction,
   sendSignedTransaction,
 } from './transaction'
-import type { TradeRpc } from './transaction'
 
-const BLOCKHASH = blockhash(
-  getBase58Decoder().decode(new Uint8Array(32).fill(7)),
-)
 const FEES = { computeUnitMargin: 0.2, microLamportsPerComputeUnit: 0n }
-
-/** An RPC that answers from memory; `calls` records what was asked. */
-function fakeRpc(
-  answers: Partial<Record<string, (...args: unknown[]) => unknown>>,
-) {
-  const calls: Array<[string, unknown[]]> = []
-  const rpc = new Proxy(
-    {},
-    {
-      get:
-        (_, method: string) =>
-        (...args: unknown[]) => ({
-          send: async () => {
-            calls.push([method, args])
-            const answer = answers[method]
-            if (!answer) throw new Error(`unexpected RPC call ${method}`)
-            return answer(...args)
-          },
-        }),
-    },
-  ) as TradeRpc
-  return { rpc, calls }
-}
 
 const latest = () => ({
   value: { blockhash: BLOCKHASH, lastValidBlockHeight: 500n },

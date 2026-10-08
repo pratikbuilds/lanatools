@@ -2,10 +2,18 @@ import { address } from '@solana/kit'
 import { expect, test } from 'bun:test'
 import {
   ASSOCIATED_TOKEN_PROGRAM,
+  checkActivation,
   checkInstructions,
   checkMarketOrder,
 } from './checks'
-import { OTHER, WALLET, marketOrderData, phoenixInstruction } from './fixtures'
+import {
+  ONBOARD_DATA,
+  OTHER,
+  WALLET,
+  marketOrderData,
+  phoenixInstruction,
+  registerTraderData,
+} from './fixtures'
 
 const SYSTEM_PROGRAM = address('11111111111111111111111111111111')
 const COMPUTE_BUDGET = address('ComputeBudget111111111111111111111111111111')
@@ -61,7 +69,7 @@ test('a signer other than the wallet fails unless named as a co-signer', () => {
   ).not.toThrow()
 })
 
-test('nothing to sign, or nothing the wallet signs, fails', () => {
+test('nothing to sign fails; an instruction the fee payer alone signs passes', () => {
   expect(() => checkInstructions([], { wallet: WALLET })).toThrow(
     'no instructions',
   )
@@ -69,7 +77,7 @@ test('nothing to sign, or nothing the wallet signs, fails', () => {
     checkInstructions([phoenixInstruction(undefined, { signers: [] })], {
       wallet: WALLET,
     }),
-  ).toThrow('the wallet does not sign')
+  ).not.toThrow()
 })
 
 test('check failures are check_failed errors that say nothing was signed', () => {
@@ -124,4 +132,70 @@ test('an instruction that is not a Phoenix market order fails', () => {
       expected,
     ),
   ).toThrow('the order is not a Phoenix instruction')
+})
+
+// phoenixInstruction lists PHOENIX_PROGRAM and the signers as accounts; the
+// trader account is the wallet here, so `traderAccount: WALLET` matches.
+const activation = { traderAccount: WALLET, register: true }
+
+test('a well-formed activation passes', () => {
+  expect(() =>
+    checkActivation(
+      [
+        phoenixInstruction(registerTraderData()),
+        phoenixInstruction(ONBOARD_DATA),
+      ],
+      activation,
+    ),
+  ).not.toThrow()
+  expect(() =>
+    checkActivation([phoenixInstruction(ONBOARD_DATA)], {
+      ...activation,
+      register: false,
+    }),
+  ).not.toThrow()
+})
+
+test('an activation of another shape fails', () => {
+  const onboard = phoenixInstruction(ONBOARD_DATA)
+  for (const [instructions, reason] of [
+    [[onboard], 'activation has unexpected instructions'],
+    [
+      [phoenixInstruction(registerTraderData()), onboard, onboard],
+      'activation has unexpected instructions',
+    ],
+    [
+      [
+        phoenixInstruction(registerTraderData(), {
+          program: ASSOCIATED_TOKEN_PROGRAM,
+        }),
+        onboard,
+      ],
+      'activation calls another program',
+    ],
+    [
+      [phoenixInstruction(registerTraderData(), { signers: [OTHER] }), onboard],
+      "activation is not for the wallet's trader account",
+    ],
+    [
+      [phoenixInstruction(ONBOARD_DATA), onboard],
+      'activation does not register the trader',
+    ],
+    [
+      [phoenixInstruction(registerTraderData({ maxPositions: 64n })), onboard],
+      'activation registers the wrong trader account',
+    ],
+    [
+      [phoenixInstruction(registerTraderData({ subaccountIndex: 1 })), onboard],
+      'activation registers the wrong trader account',
+    ],
+    [
+      [
+        phoenixInstruction(registerTraderData()),
+        phoenixInstruction(registerTraderData()),
+      ],
+      'activation does not onboard the trader',
+    ],
+  ] as const)
+    expect(() => checkActivation(instructions, activation)).toThrow(reason)
 })

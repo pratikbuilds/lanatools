@@ -3,9 +3,18 @@
  * A separate entry point (`@lanatools/phoenix/trade`) so that importing the
  * read tools never loads the Rise SDK.
  */
+import { activateAccount } from './tools/activate'
+import { deposit } from './tools/deposit'
+import { withdraw } from './tools/withdraw'
+
+/** Phoenix trade tools, in the order an agent usually needs them. */
+export const phoenixTrade = [activateAccount, deposit, withdraw] as const
+
+export { LANATOOLS_REFERRAL_CODE } from './tools/activate'
 export { defineTradeTool, runTradeTool } from './tool'
 export type {
-  PreparedInstructions,
+  NothingToDo,
+  Prepared,
   PreparedTransaction,
   Submit,
   TradeContext,
@@ -13,7 +22,9 @@ export type {
   TradeOutcome,
   TradeTool,
 } from './tool'
-export { MAX_COMPUTE_UNITS, sendSignedTransaction } from './transaction'
+export { submitSignedTransaction } from './submit'
+export type { SignedTrade, SubmitOpts } from './submit'
+export { MAX_COMPUTE_UNITS } from './transaction'
 export type {
   FeeSettings,
   SendResult,

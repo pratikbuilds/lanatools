@@ -1,7 +1,14 @@
 import { address, isSignerRole } from '@solana/kit'
 import type { Address, Instruction } from '@solana/kit'
 import { PhoenixError } from '../client'
-import { EMBER_PROGRAM, PHOENIX_PROGRAM, decodeMarketOrder } from './rise'
+import {
+  EMBER_PROGRAM,
+  MAX_POSITIONS,
+  PHOENIX_PROGRAM,
+  decodeMarketOrder,
+  decodeRegisterTrader,
+  isOnboardTraderDelegated,
+} from './rise'
 import type { MarketOrderPacket } from './rise'
 
 /**
@@ -42,23 +49,27 @@ function fail(reason: string): never {
   )
 }
 
+/**
+ * Every instruction calls an allowed program, and nobody but the wallet (and
+ * named co-signers) signs. The wallet always signs as the fee payer, so an
+ * instruction need not list it.
+ */
 export function checkInstructions(
   instructions: readonly Instruction[],
   { wallet, programs = TRADE_PROGRAMS, coSigners = [] }: CheckRules,
 ) {
   if (instructions.length === 0) fail('no instructions')
-  let walletSigns = false
   for (const instruction of instructions) {
     if (!programs.includes(instruction.programAddress))
       fail(`unexpected program ${instruction.programAddress}`)
-    for (const account of instruction.accounts ?? []) {
-      if (!isSignerRole(account.role)) continue
-      if (account.address === wallet) walletSigns = true
-      else if (!coSigners.includes(account.address))
+    for (const account of instruction.accounts ?? [])
+      if (
+        isSignerRole(account.role) &&
+        account.address !== wallet &&
+        !coSigners.includes(account.address)
+      )
         fail(`unexpected signer ${account.address}`)
-    }
   }
-  if (!walletSigns) fail('the wallet does not sign')
 }
 
 /**
@@ -87,4 +98,42 @@ export function checkMarketOrder(
   ] as const)
     if (packet[field] !== expected[field])
       fail(`the order's ${field} does not match the request`)
+}
+
+/**
+ * Checks Rise's referral activation against what Phoenix's onboarding
+ * expects: `RegisterTrader` for the default cross-margin account when it is
+ * missing, then `OnboardTraderDelegated`, both for the wallet's own trader
+ * account. Same idea as solOS's onboarding guards.
+ */
+export function checkActivation(
+  instructions: readonly Instruction[],
+  { traderAccount, register }: { traderAccount: Address; register: boolean },
+) {
+  if (instructions.length !== (register ? 2 : 1))
+    fail('activation has unexpected instructions')
+  const touchesTrader = (instruction: Instruction) =>
+    (instruction.accounts ?? []).some(
+      (account) => account.address === traderAccount,
+    )
+  for (const instruction of instructions) {
+    if (instruction.programAddress !== PHOENIX_PROGRAM)
+      fail('activation calls another program')
+    if (!touchesTrader(instruction))
+      fail("activation is not for the wallet's trader account")
+  }
+  const data = (instruction: Instruction | undefined) =>
+    Uint8Array.from(instruction?.data ?? [])
+  if (register) {
+    const params = decodeRegisterTrader(data(instructions[0]))
+    if (!params) fail('activation does not register the trader')
+    if (
+      params.traderPdaIndex !== 0 ||
+      params.subaccountIndex !== 0 ||
+      params.maxPositions !== MAX_POSITIONS
+    )
+      fail('activation registers the wrong trader account')
+  }
+  if (!isOnboardTraderDelegated(data(instructions.at(-1))))
+    fail('activation does not onboard the trader')
 }

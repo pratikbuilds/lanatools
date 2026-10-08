@@ -8,6 +8,8 @@ import {
   assertIsFullySignedTransaction,
   compileTransaction,
   createTransactionMessage,
+  decompileTransactionMessage,
+  getCompiledTransactionMessageDecoder,
   getBase64EncodedWireTransaction,
   getBase64Encoder,
   getSignatureFromTransaction,
@@ -60,9 +62,11 @@ export type BuiltTransaction = {
   simulation: Simulation
 }
 
-const timeout = () => ({ abortSignal: AbortSignal.timeout(RPC_TIMEOUT_MS) })
+export const rpcTimeout = () => ({
+  abortSignal: AbortSignal.timeout(RPC_TIMEOUT_MS),
+})
 
-const json = (value: unknown) =>
+export const json = (value: unknown) =>
   JSON.stringify(value, (_key, item: unknown) =>
     typeof item === 'bigint' ? item.toString() : item,
   )
@@ -73,6 +77,57 @@ function failure(error: unknown, logs: readonly string[]) {
     .reverse()
     .find((line) => line.startsWith('Program log: '))
   return reason ? `${json(error)}: ${reason.slice(13)}` : json(error)
+}
+
+/**
+ * The fee payer and instructions of a wire transaction, for checking one
+ * that was built elsewhere (Rise builds activation whole).
+ */
+export function messageOf(transaction: string) {
+  const decoded = getTransactionDecoder().decode(
+    getBase64Encoder().encode(transaction),
+  )
+  const message = decompileTransactionMessage(
+    getCompiledTransactionMessageDecoder().decode(decoded.messageBytes),
+  )
+  return {
+    wire: getBase64EncodedWireTransaction(decoded),
+    feePayer: message.feePayer.address,
+    instructions: message.instructions,
+  }
+}
+
+/**
+ * Simulates an unsigned transaction exactly as built: no signature checks,
+ * its own blockhash.
+ */
+export async function simulateTransaction(
+  rpc: TradeRpc,
+  transaction: Base64EncodedWireTransaction,
+): Promise<Simulation> {
+  const { value } = await rpc
+    .simulateTransaction(transaction, {
+      encoding: 'base64',
+      commitment: 'confirmed',
+      sigVerify: false,
+      replaceRecentBlockhash: false,
+    })
+    .send(rpcTimeout())
+  const logs = [...(value.logs ?? [])]
+  const computeUnits = Number(value.unitsConsumed ?? 0n)
+  if (value.err !== null)
+    return {
+      ok: false,
+      computeUnits,
+      error: failure(value.err, logs),
+      logs,
+    }
+  if (computeUnits <= 0)
+    throw new PhoenixError(
+      'upstream_error',
+      'The RPC simulated the transaction but reported no compute use',
+    )
+  return { ok: true, computeUnits, logs }
 }
 
 /**
@@ -98,7 +153,7 @@ export async function buildTransaction(
     throw new RangeError('Fee settings must not be negative')
   const { value: latest } = await rpc
     .getLatestBlockhash({ commitment: 'confirmed' })
-    .send(timeout())
+    .send(rpcTimeout())
 
   const compile = (units: number) =>
     getBase64EncodedWireTransaction(
@@ -128,43 +183,15 @@ export async function buildTransaction(
     )
 
   const probe = compile(MAX_COMPUTE_UNITS)
-  const { value } = await rpc
-    .simulateTransaction(probe, {
-      encoding: 'base64',
-      commitment: 'confirmed',
-      sigVerify: false,
-      replaceRecentBlockhash: false,
-    })
-    .send(timeout())
-  const logs = [...(value.logs ?? [])]
+  const simulation = await simulateTransaction(rpc, probe)
   const lastValidBlockHeight = latest.lastValidBlockHeight.toString()
-  const used = Number(value.unitsConsumed ?? 0n)
-
-  if (value.err !== null)
-    return {
-      transaction: probe,
-      lastValidBlockHeight,
-      simulation: {
-        ok: false,
-        computeUnits: used,
-        error: failure(value.err, logs),
-        logs,
-      },
-    }
-  if (used <= 0)
-    throw new PhoenixError(
-      'upstream_error',
-      'The RPC simulated the transaction but reported no compute use',
-    )
+  if (!simulation.ok)
+    return { transaction: probe, lastValidBlockHeight, simulation }
   const limit = Math.min(
     MAX_COMPUTE_UNITS,
-    Math.ceil(used * (1 + fees.computeUnitMargin)),
+    Math.ceil(simulation.computeUnits * (1 + fees.computeUnitMargin)),
   )
-  return {
-    transaction: compile(limit),
-    lastValidBlockHeight,
-    simulation: { ok: true, computeUnits: used, logs },
-  }
+  return { transaction: compile(limit), lastValidBlockHeight, simulation }
 }
 
 export type SendResult =
@@ -174,14 +201,18 @@ export type SendResult =
   /** Its blockhash expired before it landed: it never will. */
   | { status: 'expired'; signature: Signature }
   /** It may have landed. Check the signature before trying again. */
-  | { status: 'unknown'; signature: Signature }
+  | { status: 'unknown'; signature: Signature; error?: string }
 
-function readSigned(transaction: string) {
+/**
+ * The wire bytes and fee payer signature of a signed transaction. Phoenix
+ * co-signs activation itself, so that route needs only the fee payer's.
+ */
+export function readSigned(transaction: string, { complete = true } = {}) {
   try {
     const decoded = getTransactionDecoder().decode(
       getBase64Encoder().encode(transaction),
     )
-    assertIsFullySignedTransaction(decoded)
+    if (complete) assertIsFullySignedTransaction(decoded)
     return {
       wire: getBase64EncodedWireTransaction(decoded),
       signature: getSignatureFromTransaction(decoded),
@@ -189,7 +220,9 @@ function readSigned(transaction: string) {
   } catch {
     throw new PhoenixError(
       'invalid_input',
-      'The transaction is not a fully signed Solana transaction',
+      complete
+        ? 'The transaction is not a fully signed Solana transaction'
+        : 'The transaction is not signed by its fee payer',
     )
   }
 }
@@ -209,7 +242,6 @@ export async function sendSignedTransaction(
   { intervalMs = 2_000 } = {},
 ): Promise<SendResult> {
   const { wire, signature } = readSigned(transaction)
-  const lastValid = BigInt(lastValidBlockHeight)
 
   try {
     await rpc
@@ -217,7 +249,7 @@ export async function sendSignedTransaction(
         encoding: 'base64',
         preflightCommitment: 'confirmed',
       })
-      .send(timeout())
+      .send(rpcTimeout())
   } catch (error) {
     // Preflight refused it, so it was never broadcast.
     if (
@@ -234,11 +266,25 @@ export async function sendSignedTransaction(
     return { status: 'unknown', signature }
   }
 
+  return waitForConfirmation(rpc, signature, lastValidBlockHeight, intervalMs)
+}
+
+/**
+ * Polls a sent transaction until it confirms, fails, or its blockhash
+ * expires. A status that cannot be read is `unknown`, never `failed`.
+ */
+export async function waitForConfirmation(
+  rpc: TradeRpc,
+  signature: Signature,
+  lastValidBlockHeight: string,
+  intervalMs: number,
+): Promise<SendResult> {
+  const lastValid = BigInt(lastValidBlockHeight)
   try {
     for (;;) {
       const {
         value: [status],
-      } = await rpc.getSignatureStatuses([signature]).send(timeout())
+      } = await rpc.getSignatureStatuses([signature]).send(rpcTimeout())
       if (status?.err)
         return { status: 'failed', signature, error: json(status.err) }
       if (
@@ -248,14 +294,14 @@ export async function sendSignedTransaction(
         return { status: 'confirmed', signature }
       const height = await rpc
         .getBlockHeight({ commitment: 'confirmed' })
-        .send(timeout())
+        .send(rpcTimeout())
       if (height > lastValid) {
         // It may have landed in the last valid blocks.
         const {
           value: [last],
         } = await rpc
           .getSignatureStatuses([signature], { searchTransactionHistory: true })
-          .send(timeout())
+          .send(rpcTimeout())
         if (!last) return { status: 'expired', signature }
         if (last.err)
           return { status: 'failed', signature, error: json(last.err) }

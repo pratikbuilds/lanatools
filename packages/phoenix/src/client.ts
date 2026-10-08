@@ -58,18 +58,20 @@ export function createPhoenixClient(opts: PhoenixOpts = {}) {
   const baseURL = opts.baseURL ?? PHOENIX_API_URL
   const timeoutMs = opts.timeoutMs ?? TIMEOUT_MS
 
-  async function get<T extends z.ZodType>(
-    path: string,
+  async function request<T extends z.ZodType>(
+    url: URL,
     schema: T,
-    query: Record<string, string | number | undefined> = {},
+    init: { method?: 'POST'; body?: unknown; token?: string } = {},
   ): Promise<z.output<T>> {
-    const url = new URL(path, baseURL)
-    for (const [key, value] of Object.entries(query))
-      if (value !== undefined) url.searchParams.set(key, String(value))
+    const headers: Record<string, string> = { accept: 'application/json' }
+    if (init.body !== undefined) headers['content-type'] = 'application/json'
+    if (init.token) headers.authorization = `Bearer ${init.token}`
     let response: Response
     try {
       response = await fetcher(url.toString(), {
-        headers: { accept: 'application/json' },
+        method: init.method ?? 'GET',
+        headers,
+        ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
         // Workers only support follow/manual. Reject redirects via status below.
         redirect: 'manual',
         signal: AbortSignal.timeout(timeoutMs),
@@ -99,5 +101,30 @@ export function createPhoenixClient(opts: PhoenixOpts = {}) {
     return parsed.data
   }
 
-  return { get }
+  function get<T extends z.ZodType>(
+    path: string,
+    schema: T,
+    query: Record<string, string | number | undefined> = {},
+  ) {
+    const url = new URL(path, baseURL)
+    for (const [key, value] of Object.entries(query))
+      if (value !== undefined) url.searchParams.set(key, String(value))
+    return request(url, schema)
+  }
+
+  /** A JSON POST; only trade tools use it (login and account activation). */
+  function post<T extends z.ZodType>(
+    path: string,
+    schema: T,
+    body: unknown,
+    { token }: { token?: string } = {},
+  ) {
+    return request(new URL(path, baseURL), schema, {
+      method: 'POST',
+      body,
+      ...(token ? { token } : {}),
+    })
+  }
+
+  return { get, post }
 }

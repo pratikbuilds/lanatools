@@ -2,42 +2,23 @@ import { address } from '@solana/kit'
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
 import { PhoenixError } from '../client'
-import { WALLET, phoenixInstruction } from './fixtures'
+import { BLOCKHASH, WALLET, fakeRpc, phoenixInstruction } from './fixtures'
 import { defineTradeTool, runTradeTool } from './tool'
-import type { TradeRpc } from './transaction'
-import type { PreparedInstructions } from './tool'
+import type { Prepared } from './tool'
 
-const BLOCKHASH = '8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR'
-
-function fakeRpc() {
-  const calls: string[] = []
-  const answers: Record<string, () => unknown> = {
+const rpcFor = () =>
+  fakeRpc({
     getLatestBlockhash: () => ({
       value: { blockhash: BLOCKHASH, lastValidBlockHeight: 500n },
     }),
     simulateTransaction: () => ({
       value: { err: null, unitsConsumed: 10_000n, logs: [] },
     }),
-  }
-  const rpc = new Proxy(
-    {},
-    {
-      get: (_, method: string) => () => ({
-        send: async () => {
-          calls.push(method)
-          const answer = answers[method]
-          if (!answer) throw new Error(`unexpected RPC call ${method}`)
-          return answer()
-        },
-      }),
-    },
-  ) as TradeRpc
-  return { rpc, calls }
-}
+  })
 
 const FEES = { computeUnitMargin: 0.2, microLamportsPerComputeUnit: 0n }
 
-function tool(prepare: () => Promise<PreparedInstructions>) {
+function tool(prepare: () => Promise<Prepared>) {
   return defineTradeTool({
     name: 'phoenix_test',
     title: 'Test',
@@ -47,7 +28,8 @@ function tool(prepare: () => Promise<PreparedInstructions>) {
   })
 }
 
-const prepared = (instructions = [phoenixInstruction()]) => ({
+const prepared = (instructions = [phoenixInstruction()]): Prepared => ({
+  kind: 'instructions',
   wallet: WALLET,
   instructions,
   summary: 'Buy 0.1 SOL',
@@ -56,7 +38,7 @@ const prepared = (instructions = [phoenixInstruction()]) => ({
 })
 
 test('a tool result is checked, simulated and returned unsigned', async () => {
-  const { rpc, calls } = fakeRpc()
+  const { rpc, calls } = rpcFor()
   const outcome = await runTradeTool(
     tool(async () => prepared()),
     { size: '0.1' },
@@ -71,15 +53,19 @@ test('a tool result is checked, simulated and returned unsigned', async () => {
       warnings: [],
       lastValidBlockHeight: '500',
       simulation: { ok: true, computeUnits: 10_000 },
+      status: 'ready',
       submit: { via: 'rpc' },
     },
   })
   expect(outcome.ok && 'instructions' in outcome.result).toBe(false)
-  expect(calls).toEqual(['getLatestBlockhash', 'simulateTransaction'])
+  expect(calls.map(([method]) => method)).toEqual([
+    'getLatestBlockhash',
+    'simulateTransaction',
+  ])
 })
 
 test('invalid input never reaches the tool', async () => {
-  const { rpc, calls } = fakeRpc()
+  const { rpc, calls } = rpcFor()
   let reached = false
   const outcome = await runTradeTool(
     tool(async () => {
@@ -98,7 +84,7 @@ test('invalid input never reaches the tool', async () => {
 })
 
 test('instructions that fail the checks are never simulated', async () => {
-  const { rpc, calls } = fakeRpc()
+  const { rpc, calls } = rpcFor()
   const system = address('11111111111111111111111111111111')
   const outcome = await runTradeTool(
     tool(async () =>
@@ -112,7 +98,7 @@ test('instructions that fail the checks are never simulated', async () => {
 })
 
 test('Phoenix errors pass through; anything else becomes a safe error', async () => {
-  const { rpc } = fakeRpc()
+  const { rpc } = rpcFor()
   expect(
     await runTradeTool(
       tool(async () => {

@@ -1,6 +1,6 @@
 # Phoenix trade tools: tech spec
 
-Status: Phase 1 (foundation) built 2026-10-08, waiting for review. No tools yet.
+Status: Phase 2 (account and collateral tools) built 2026-10-08, waiting for review.
 Background: [research-phoenix-transactions.md](research-phoenix-transactions.md).
 
 ## 1. Goal and scope
@@ -68,13 +68,17 @@ packages/phoenix/
   src/
     client.ts, tool.ts, schemas.ts, units.ts, tools/*   existing read code (unchanged)
     trade/
-      rise.ts          the only Rise import: client setup + convert its instructions to kit 6
+      rise.ts          the only Rise import: resolved (network-free) builders, decoders, kit 4 → kit 6
       transaction.ts   build, simulate, send, confirm
+      submit.ts        routes a signed transaction to the RPC or to Phoenix (activation)
+      chain.ts         on-chain reads: accounts, token balances
+      schemas.ts       Phoenix API responses the trade tools read
       price.ts         size → lots, price → ticks, slippage → limit price (BigInt)
       checks.ts        checks every built instruction before it is returned
       tool.ts          TradeTool type, defineTradeTool, runTradeTool
       index.ts         the `@lanatools/phoenix/trade` entry point
-      fixtures.ts      test data: a real Rise market order, sample instructions
+      fixtures.ts      test data: a real Rise market order, exchange keys, fakes
+      fixtures/        a real trader account from mainnet
       tools/
         activate.ts  deposit.ts  withdraw.ts  market-order.ts  limit-order.ts  cancel.ts  close.ts
       *.test.ts
@@ -85,10 +89,14 @@ packages/phoenix/
 
 Reading state:
 
-- Trade tools read state (collateral, positions, open orders, book) through the
-  **existing** Phoenix API client.
-- On mainnet that client agrees with the chain.
-- No new RPC readers are needed beyond what Rise and the transaction core use.
+- **The chain** answers whether an account exists or is activated, and what
+  the wallet holds (`chain.ts`).
+- **Phoenix's API** answers collateral, positions, open orders, the book and
+  the exchange accounts (`/v1/view/exchange/keys`), through the existing
+  client, which gained a `post` for login and activation.
+- Rise is used only to build and decode. Its own client, which needs an RPC
+  URL and fetches metadata, is not used: every account the builders need is a
+  derivation or comes from the exchange keys.
 
 ## 4. Shared design
 
@@ -100,60 +108,70 @@ type TradeTool<S extends z.ZodObject> = {
   title: string
   description: string
   input: S
-  prepare: (ctx: TradeContext, input: z.output<S>) => Promise<PreparedInstructions>
+  programs?: readonly Address[] // when not the default trade programs
+  prepare: (ctx: TradeContext, input: z.output<S>) => Promise<Prepared>
 }
 
-type TradeContext = {
-  phoenix: PhoenixClient // existing read client (API)
-  rise: RiseBuilders     // narrow wrapper from rise.ts, faked in tests
-  rpc: Rpc               // kit 6, used only by transaction.ts
-}
+type TradeContext = { phoenix: PhoenixClient; rpc: TradeRpc } // kit 6 RPC
 
-type PreparedInstructions = {
+type Prepared =
+  // Instructions the shared builder turns into a transaction (most tools).
+  | (Described & { kind: 'instructions'; instructions: Instruction[] })
+  // A whole transaction built elsewhere (activation), checked and simulated as is.
+  | (Described & {
+      kind: 'transaction'
+      transaction: Base64EncodedWireTransaction
+      lastValidBlockHeight: string
+      coSigners: readonly Address[]
+      submit: Submit
+    })
+  // Nothing to sign, e.g. the account is already activated.
+  | { kind: 'nothing_to_do'; wallet: Address; summary: string }
+
+type Described = {
   wallet: Address
-  instructions: Instruction[] // Phoenix (and ATA/token) instructions; no compute budget
-  summary: string             // "Buy 0.10 SOL at up to $117.30 (market, IOC)"
+  summary: string // "Buy 0.10 SOL at up to $117.30 (market, IOC)"
   details: Record<string, string>
   warnings: string[]
 }
 ```
 
-`runTradeTool(name, input, opts)` does four steps:
+`runTradeTool(tool, input, opts)` validates the input and calls `prepare`.
 
-1. Validate the input.
-2. Call `prepare`.
-3. Run `checks.ts`.
-4. Run `transaction.build`.
+- For `instructions`, it runs `checks.ts`, then builds and simulates with
+  compute budget instructions.
+- For `transaction`, it checks that the wallet pays and runs `checks.ts` on the
+  decoded instructions. Then it simulates the bytes as they are.
 
-It returns a `PreparedTransaction`, or `{ ok: false, error }`, the same way
-`runPhoenixTool` does. **It never throws.**
+Its result is `{ status: 'ready', ... }` (below), `{ status: 'nothing_to_do' }`,
+or `{ ok: false, error }`, the same way `runPhoenixTool` does. **It never
+throws.** `phoenixTrade` lists the tools; the MCP layer can look them up by
+name later.
 
 ```ts
-type PreparedTransaction = PreparedInstructions & {
-  transaction: string           // base64 v0 wire, unsigned
+type PreparedTransaction = Described & {
+  status: 'ready'
+  transaction: Base64EncodedWireTransaction // v0 wire, unsigned
   lastValidBlockHeight: string
   simulation: { ok: boolean; computeUnits: number; error?: string; logs: string[] }
-  submit: Submit                // where the signed transaction goes
+  submit: Submit // where the signed transaction goes
 }
 
 type Submit =
-  | { via: 'rpc' } // every tool except activation
-  | { via: 'phoenix-referral'; referralCode: string; login: { message: string; nonceId: string } }
+  | { via: 'rpc' }
+  | { via: 'phoenix-referral'; referralCode: string; recentBlockhash: string; login: { message: string; nonceId: string } }
 ```
 
-Activation is the only tool where Phoenix, not our RPC, sends the
-transaction. `sendSignedTransaction` reads `submit` and routes the signed
-transaction there:
+`submitSignedTransaction(prepared, { transaction, loginSignature? }, opts)`
+sends a signed transaction where `submit` says:
 
-- `rpc` sends to our RPC.
-- `phoenix-referral` sends to Phoenix's referral route. The caller also passes
-  a signature of `login.message`.
+- `rpc` sends it to the RPC. It must be fully signed.
+- `phoenix-referral`:
+  1. Logs in to Phoenix with the wallet's signature of `login.message`.
+  2. Posts the wallet-signed transaction to `/v1/referral/activate-tx`.
+  3. Waits for confirmation on the RPC.
 
-The caller never picks the route; it comes from the tool.
-
-When simulation fails, the result is still `ok: true`, with
-`simulation.ok: false` and Phoenix's log reason. The caller decides whether
-to stop. The script always stops.
+The caller never picks the route.
 
 ### 4.2 Transaction core (`transaction.ts`)
 
@@ -191,7 +209,12 @@ an error, never a warning.
   - Ember `EMBERpYN…`
   - SPL Token
   - Associated Token
-- The only signer on every instruction is `wallet`. The one exception is activation, where the Phoenix onboarder also signs (see 5.0).
+- Nobody but `wallet` signs any instruction. The one exception is activation,
+  where the Phoenix onboarder also signs (see 5.0). The wallet always signs as
+  the fee payer, so an instruction need not list it.
+  - Phase 2 changed this rule. It used to say "the wallet must sign some
+    instruction", which wrongly refused a registered-but-not-activated wallet:
+    its activation's only instruction lists the wallet nowhere.
 - Order instructions:
   - The decoded side, size and price limit match what `prepare` computed.
   - The reduce-only flag matches.
@@ -243,24 +266,28 @@ existing `MarketSymbol` schema. Sizes are token amounts as decimal strings (**D3
 
 | | |
 |---|---|
-| **Input** | `wallet`, `referralCode?` (defaults to the LanaTools code `4L2RQ06K`, kept in one constant, `LANATOOLS_REFERRAL_CODE`) |
-| **Reads** | Trader state. If the account is already active, the tool returns `{ status: 'already_activated' }` and no transaction. It also reads the wallet's SOL balance, which must cover rent plus fees. |
-| **Builds** | 1. Get a Phoenix login nonce for `wallet` (`/v1/auth/nonce`). 2. `buildActivateReferralTxRequest({ referralCode, traderAuthority: wallet, traderPdaIndex: 0, traderSubaccountIndex: 0, registerTraderMaxPositions: 128n, recentBlockhash, … })` gives unsigned v0 bytes. |
-| **Checks** | Every instruction is `RegisterTrader` or `OnboardTraderDelegated` on the Phoenix program, plus System. `RegisterTrader` decodes to PDA 0, subaccount 0, 128 positions, payer = wallet, trader PDA = derived from wallet. The only signers are `wallet` and the Phoenix onboarder from `activation-permission` (which co-signs on their side). Same idea as solOS `phoenix-onboard-guards.js`. |
-| **Submit** | `phoenix-referral`: sign the login message and the transaction. Phoenix co-signs and submits. |
-| **After submit** | Phoenix responds with `activated`, `submitted` or `already_activated`. We then poll trader state until the account appears. If the HTTP call fails after signing, we report "may have landed" and check state before allowing another try. |
-| **Summary** | "Activate your Phoenix trading account (one-time, about 0.028 SOL rent, paid by your wallet)" |
+| **Input** | `wallet`, `referralCode?` (defaults to `LANATOOLS_REFERRAL_CODE`, `4L2RQ06K`) |
+| **Reads** | The trader account on chain: missing, registered, or activated (Phoenix's can-deposit flag). If activated, the result is `nothing_to_do` and nothing else is read. Then, in parallel: exchange keys, `/v1/referral/activation-permission` (the onboarder), a login nonce (`/v1/auth/nonce`), and a finalized blockhash. The wallet's SOL balance is shown in `details`; the simulation decides whether it is enough. |
+| **Builds** | Rise `buildReferralActivationTransaction`: `RegisterTrader` (only when missing; PDA 0, subaccount 0, 128 positions), then `OnboardTraderDelegated`. **No compute budget instructions**: Phoenix validates the exact shape. |
+| **Checks** | `checkActivation`: the instruction count, Phoenix only, every instruction names the wallet's trader account, `RegisterTrader` decodes to 0/0/128, and the last instruction is `OnboardTraderDelegated`. Signers are the wallet and the onboarder only. |
+| **Submit** | `phoenix-referral`: the wallet signs the login message and the transaction. Phoenix co-signs and submits. |
+| **After submit** | A failed login means nothing was sent: `failed`. A lost answer from `activate-tx` is `unknown` ("check the account before trying again"). `already_activated` is `failed` (nothing was sent). A different signature from Phoenix is `unknown`. Otherwise we wait for confirmation on the RPC. |
+| **Summary** | "Activate this wallet's Phoenix account with referral code 4L2RQ06K: a one-time account rent of about 0.028 SOL plus the fee, paid by the wallet" |
 
 The login signature only proves wallet ownership to Phoenix's API. It moves no
-funds, and the summary says so.
+funds, and a warning says so.
+
+**Login:** Phoenix's docs page says `activate-tx` needs a login, but its
+OpenAPI spec lists no auth and Rise's client sends it without one. We keep
+the login: it moves no funds and works either way.
 
 ### 5.1 `phoenix_deposit`
 
 | | |
 |---|---|
 | **Input** | `wallet`, `amount` (USDC) |
-| **Reads** | Trader state (must be activated) and the wallet's USDC balance |
-| **Builds** | `rise.buildDepositIxs({ authority, amount, traderPdaIndex: 0, traderSubaccountIndex: 0 })`: Phoenix USD ATA (idempotent), `EmberDeposit`, `DepositFunds` |
+| **Reads** | The trader account on chain (must be activated), the wallet's USDC token account, and the exchange keys |
+| **Builds** | Rise `buildDepositIxsResolved`: Phoenix USD ATA (idempotent), `EmberDeposit`, `DepositFunds` |
 | **Checks** | `amount > 0`, and `amount ≤` the USDC balance |
 | **Summary** | "Deposit 100 USDC into your Phoenix cross-margin account" |
 
@@ -269,8 +296,8 @@ funds, and the summary says so.
 | | |
 |---|---|
 | **Input** | `wallet`, `amount` (USDC) |
-| **Reads** | Trader state (collateral), exchange status (`withdrawalsAvailable`) |
-| **Builds** | `rise.buildWithdrawIxs(...)`: 5 instructions (ATA, approve, ATA, `WithdrawFunds`, `EmberWithdraw`) |
+| **Reads** | Trader state from Phoenix's API (collateral; 404 means not activated), exchange status (`active`, `withdrawalsAvailable`), exchange keys |
+| **Builds** | Rise `buildWithdrawIxsResolved`: 5 instructions (ATA, approve, ATA, `WithdrawFunds`, `EmberWithdraw`) |
 | **Checks** | `amount ≤` collateral. Margin is enforced on-chain and appears in the simulation. |
 | **Warning (always)** | "Withdrawals go through Phoenix's queue and may be delayed or dropped." |
 
@@ -387,16 +414,39 @@ phase on this branch.
   - **Finding for Phase 3:** Rise's market-order packet sets
     `minBaseLotsToFill` to the full size (all-or-nothing) by default. D4
     allows partial fills, so the market tool must pass a minimum of one lot.
-  - **D5 proposal (needs your approval):** see the D5 row.
+  - **D5:** 20% compute margin, no priority fee (approved).
 
 ### Phase 2: account and collateral tools
 
-- **Build:** `phoenix_activate_account`, `phoenix_deposit`, `phoenix_withdraw`, the submit routing in `sendSignedTransaction`, and the `phoenixTrade` export.
+- **Build:** `phoenix_activate_account`, `phoenix_deposit`, `phoenix_withdraw`, the submit routing (`submitSignedTransaction`), and the `phoenixTrade` export.
 - **Tests:**
   - Activation: already-activated, low SOL, an instruction or signer that fails the checks, each Phoenix response status, and the "may have landed" path.
   - Collateral: input errors, not-activated, insufficient funds, the exact instruction list, summaries and warnings.
-- **Check (D7):** mainnet simulation as the public trader address, nothing signed.
+- **Check (D7):** mainnet simulation as public trader addresses, nothing signed.
 - **Exit:** both tools return a checked unsigned transaction in tests.
+- **Result (2026-10-08):**
+  - `phoenix_activate_account`, `phoenix_deposit`, `phoenix_withdraw`,
+    `submitSignedTransaction` (RPC and Phoenix referral routes), and the
+    `phoenixTrade` list. The Phoenix client gained `post`.
+  - 21 new tests (76 in the package), all passing. The package typecheck and
+    lint are clean. Repo: `bun run typecheck` passes and `bun run test`
+    passes (448).
+  - **D7 mainnet simulations, nothing signed:**
+
+    | Tool | Wallet | Result |
+    |---|---|---|
+    | activate | CLI wallet `Du3X…V9mu` (not activated) | simulates OK, 29,578 CU (solOS measured 28,426) |
+    | activate | `DuyJ…vDdm` (active trader) | `nothing_to_do` |
+    | deposit 1 USDC | `4WWb…xY2z` (active, holds USDC) | simulates OK, about 28,600 CU |
+    | withdraw 1 USDC | `DuyJ…vDdm` / `4WWb…xY2z` | simulates OK, 311,435 / 47,077 CU |
+    | deposit / withdraw | CLI wallet | `not_activated` |
+
+  - Withdraw compute varies sixfold between traders, which supports measuring
+    over a fixed limit (D5).
+  - **Found and fixed:** the signer rule in 4.3 would have refused activation
+    for a registered-but-not-activated wallet.
+  - **Unverified until Phase 6:** whether `activate-tx` accepts our login and
+    transaction. Only Phoenix can say, by submitting.
 
 ### Phase 3: order tools
 
@@ -450,9 +500,9 @@ Only when you say go. Each step needs your typed `yes` in the script.
 | D2 | Order expiry | **Decided:** IOC orders (market, close) expire at observed slot + 16, as in solOS. Limit orders have no expiry. | — |
 | D3 | Size unit | **Decided:** token amounts. A USD-notional input and a leverage cap come later. | — |
 | D4 | Market fill rule | **Decided:** partial fills allowed, minimum 1 lot, as in solOS. Results report the actual fill. | — |
-| D5 | Compute and priority fee | **Decided:** measure compute by simulating; never use a fixed limit like solOS's 500k, which would have failed the 507k order in our spike. **Phase 1 proposal, waiting for approval:** a 20% compute margin and no priority fee for now. Both are settings the caller passes (`FeeSettings`); there are no defaults in code. | — |
+| D5 | Compute and priority fee | **Decided:** measure compute by simulating; never use a fixed limit like solOS's 500k, which would have failed the 507k order in our spike. **Approved 2026-10-08:** a 20% compute margin and no priority fee for now; revisit if the mainnet run lands slowly. Both are settings the caller passes (`FeeSettings`); there are no defaults in code. | — |
 | D6 | Mainnet test amounts | **Decided:** you approve a budget for each Phase 6 step, and every lamport is recorded. Activation is about 0.028 SOL; the wallet has 0.0416. | — |
-| D7 | Mainnet simulation during phases 2–5 | **Decided:** simulate as a public, already-activated trader address. Read-only, nothing signed. The address is recorded in the spec in Phase 2. | — |
+| D7 | Mainnet simulation during phases 2–5 | **Decided:** simulate as a public, already-activated trader address. Read-only, nothing signed. Addresses used: `DuyJffWSmNtaauW2UDiULLUeT1J57UQWphUoZCwvvDdm` (withdraw, already-active), `4WWbYhZR2iT3ZyGHC5G6saVczHZeoPFXEe2zKdQCxY2z` (holds USDC: deposit), and our CLI wallet for activation. | — |
 | D8 | PRs | **Decided:** one PR for all phases. Each phase is one commit and still stops for your approval. | — |
 | D9 | Referral code | **Decided:** `4L2RQ06K` is the LanaTools code and the default for every activation. | — |
 | D10 | Activation route | **Decided:** referral route only. There is no builder-route fallback; if the referral route fails in Phase 6, we stop and discuss. | — |
