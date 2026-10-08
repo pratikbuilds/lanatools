@@ -5,7 +5,7 @@ import { registerTools, toCallToolResult } from '@lanatools/toolkit/mcp'
 import { jupiter } from './index'
 import type { JupiterFetch } from './index'
 
-test('MCP discovers nine read-only schemas and calls them through the executor', async () => {
+test('MCP discovers ten read-only schemas and calls them through the executor', async () => {
   const server = new McpServer({ name: 'jupiter-test', version: '1' })
   const fetch: JupiterFetch = async (url) => {
     const path = new URL(url).pathname
@@ -31,6 +31,12 @@ test('MCP discovers nine read-only schemas and calls them through the executor',
         inAmount: '1000000000',
         outAmount: '100000000',
         routePlan: [],
+        taker: new URL(url).searchParams.get('taker'),
+        transaction:
+          'AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAAAQabiFf+q4GE+2h/Y0YYwDXaxDncGus7VZig8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==',
+        requestId: 'request-1',
+        router: 'metis',
+        lastValidBlockHeight: '9007199254740993',
       })
     if (path.includes('getTriggerOrders'))
       return Response.json({ orders: [], hasMoreData: false })
@@ -60,6 +66,7 @@ test('MCP discovers nine read-only schemas and calls them through the executor',
       'jupiter_get_lending_positions',
       'jupiter_get_trigger_orders',
       'jupiter_quote_swap',
+      'jupiter_build_swap',
       'jupiter_get_swap_venues',
     ])
     for (const tool of tools) {
@@ -129,6 +136,15 @@ test('MCP discovers nine read-only schemas and calls them through the executor',
         name: 'jupiter_quote_swap',
         arguments: { inputMint: sol, outputMint: usdc, amount: '1' },
       },
+      {
+        name: 'jupiter_build_swap',
+        arguments: {
+          inputMint: sol,
+          outputMint: usdc,
+          amount: '1',
+          wallet: sol,
+        },
+      },
       { name: 'jupiter_get_swap_venues', arguments: {} },
     ]
     for (const call of remaining) {
@@ -138,6 +154,20 @@ test('MCP discovers nine read-only schemas and calls them through the executor',
         source: 'jupiter',
         network: 'mainnet-beta',
       })
+      if (call.name === 'jupiter_build_swap') {
+        expect(response.structuredContent).toMatchObject({
+          data: {
+            wallet: sol,
+            transaction:
+              'AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAAAQabiFf+q4GE+2h/Y0YYwDXaxDncGus7VZig8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==',
+            requestId: 'request-1',
+          },
+        })
+        expect(response.content[0]).toMatchObject({
+          type: 'text',
+          text: expect.stringContaining('Prepared unsigned swap'),
+        })
+      }
       expect(response.content).toContainEqual({
         type: 'text',
         text: JSON.stringify(response.structuredContent),
