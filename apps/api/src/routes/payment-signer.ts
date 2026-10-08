@@ -4,12 +4,14 @@ import { HTTPException } from 'hono/http-exception'
 import { PaymentSignerRequest } from '@lanatools/contracts'
 import type {
   PaymentSignerGrant,
+  PaymentSignerRefusal,
   PaymentSignerStatus,
 } from '@lanatools/contracts'
 import { privyClient } from '../mcp-service'
 import type { McpEnv } from '../mcp-service'
 import { paymentConfig } from '../solana/network'
 import {
+  SignerNotAttachedError,
   SignerSetupError,
   confirmSigner,
   disableSigner,
@@ -62,7 +64,12 @@ export const paymentSignerRoutes = new Hono<{
       return c.json(status satisfies PaymentSignerStatus)
     } catch (error) {
       if (error instanceof SignerSetupError)
-        return c.json({ error: error.message }, 409)
+        return c.json(
+          (error instanceof SignerNotAttachedError
+            ? { error: error.message, code: 'signer-not-attached' }
+            : { error: error.message }) satisfies PaymentSignerRefusal,
+          409,
+        )
       throw error
     }
   })

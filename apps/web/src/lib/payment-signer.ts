@@ -1,6 +1,21 @@
-import { PaymentSignerGrant, PaymentSignerStatus } from '@lanatools/contracts'
+import {
+  PaymentSignerGrant,
+  PaymentSignerRefusal,
+  PaymentSignerStatus,
+} from '@lanatools/contracts'
 import { authorized } from './mcp-clients'
 import type { GetAccessToken } from './mcp-clients'
+
+/** The API refused a signer change; `code` says why when it matters. */
+export class SignerRefusedError extends Error {
+  override readonly name = 'SignerRefusedError'
+  constructor(
+    message: string,
+    readonly code: PaymentSignerRefusal['code'],
+  ) {
+    super(message)
+  }
+}
 
 async function call(
   getAccessToken: GetAccessToken,
@@ -15,14 +30,10 @@ async function call(
     },
   })
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as {
-      error?: unknown
-    } | null
-    throw new Error(
-      response.status === 409 && typeof body?.error === 'string'
-        ? body.error
-        : 'Could not update agent payments.',
-    )
+    const body: unknown = await response.json().catch(() => null)
+    if (response.status === 409 && PaymentSignerRefusal.allows(body))
+      throw new SignerRefusedError(body.error, body.code)
+    throw new Error('Could not update agent payments.')
   }
   return response.json()
 }
@@ -72,10 +83,16 @@ export async function attachPaymentSigner(
     // the server's check turns payments on. With another policy, as from an
     // earlier setup or another LanaTools deployment on the same Privy app,
     // the old signer is replaced. LanaTools adds no other signer to the
-    // wallet, so removing all of them removes only its own.
+    // wallet, so removing all of them removes only its own. Any other
+    // refusal, such as access removed meanwhile, leaves the wallet alone.
     try {
       return await confirm()
-    } catch {
+    } catch (refusal) {
+      if (
+        !(refusal instanceof SignerRefusedError) ||
+        refusal.code !== 'signer-not-attached'
+      )
+        throw refusal
       await removeSigners({ address: walletAddress })
       await add()
     }

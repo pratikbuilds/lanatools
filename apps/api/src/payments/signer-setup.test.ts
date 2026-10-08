@@ -6,6 +6,8 @@ import { paymentSigner } from '../db/schema'
 import { testDatabase } from '../test-database'
 import { eq } from 'drizzle-orm'
 import {
+  SignerNotAttachedError,
+  SignerSetupError,
   confirmSigner,
   disableSigner,
   prepareSigner,
@@ -58,7 +60,25 @@ test('a confirmation that finishes after setup moved on leaves it pending', asyn
   expect((await signerStatus(db, user)).status).toBe('pending')
 })
 
-function privyWith(create: () => Promise<{ id: string }>) {
+/** A stored policy that allows USDC transfers of `mint`. */
+function policyFor(mint: string) {
+  return {
+    rules: [
+      {
+        conditions: [
+          {
+            field_source: 'solana_token_program_instruction',
+            field: 'TransferChecked.mint',
+            operator: 'eq',
+            value: mint,
+          },
+        ],
+      },
+    ],
+  }
+}
+
+function privyWith(create: () => Promise<{ id: string }>, storedMint = 'mint') {
   return {
     wallets: () => ({
       list: async function* () {
@@ -66,7 +86,7 @@ function privyWith(create: () => Promise<{ id: string }>) {
       },
       get: async () => attached('policy-1'),
     }),
-    policies: () => ({ create }),
+    policies: () => ({ create, get: async () => policyFor(storedMint) }),
   } as unknown as PrivyClient
 }
 
@@ -142,7 +162,7 @@ test('a confirmation that finishes after a removal leaves access removed', async
   expect((await signerStatus(db, user)).status).toBe('disabled')
 })
 
-test('preparing again while payments are on keeps them on', async () => {
+async function enabledUser() {
   const user = `user-${crypto.randomUUID()}`
   await drizzle(db).insert(paymentSigner).values({
     privyUserId: user,
@@ -152,6 +172,66 @@ test('preparing again while payments are on keeps them on', async () => {
     status: 'enabled',
     updatedAt: Date.now(),
   })
+  return user
+}
+
+test('preparing again while payments are on keeps them on', async () => {
+  const user = await enabledUser()
+  const create = mock(async () => ({ id: 'policy-2' }))
+  const grant = await prepareSigner(db, privyWith(create), setup(user, false))
+  expect(grant.policyIds).toEqual(['policy-1'])
+  expect(create).not.toHaveBeenCalled()
+  expect((await signerStatus(db, user)).status).toBe('enabled')
+})
+
+test("a stored policy for another network's USDC is replaced", async () => {
+  const user = await enabledUser()
+  const create = mock(async () => ({ id: 'policy-2' }))
+  const grant = await prepareSigner(
+    db,
+    privyWith(create, 'devnet-mint'),
+    setup(user, false),
+  )
+  expect(grant.policyIds).toEqual(['policy-2'])
+  expect(create).toHaveBeenCalledTimes(1)
+  expect((await signerStatus(db, user)).status).toBe('pending')
+})
+
+test('confirming tells the dashboard when the signer has another policy', async () => {
+  const user = `user-${crypto.randomUUID()}`
+  await drizzle(db).insert(paymentSigner).values({
+    privyUserId: user,
+    walletId: 'wallet-1',
+    walletAddress: 'wallet-address',
+    policyId: 'policy-2',
+    status: 'pending',
+    updatedAt: Date.now(),
+  })
+  await expect(
+    confirmSigner(
+      db,
+      privyWith(async () => ({ id: 'unused' })),
+      user,
+      'signer-1',
+    ),
+  ).rejects.toBeInstanceOf(SignerNotAttachedError)
+})
+
+test('confirming removed access refuses without the not-attached code', async () => {
+  const user = await removedUser()
+  const error = await confirmSigner(
+    db,
+    privyWith(async () => ({ id: 'unused' })),
+    user,
+    'signer-1',
+  ).catch((caught: unknown) => caught)
+  expect(error).toBeInstanceOf(SignerSetupError)
+  expect(error).not.toBeInstanceOf(SignerNotAttachedError)
+  expect((await signerStatus(db, user)).status).toBe('disabled')
+})
+
+test('a removal during setup wins over replacing the policy', async () => {
+  const user = await enabledUser()
   const create = mock(async () => ({ id: 'policy-2' }))
   const privy = {
     wallets: () => ({
@@ -159,17 +239,18 @@ test('preparing again while payments are on keeps them on', async () => {
         yield { id: 'wallet-1', address: 'wallet-address' }
       },
     }),
-    policies: () => ({ create }),
+    policies: () => ({
+      create,
+      // The user removes access while setup asks Privy about the policy.
+      get: async () => {
+        await disableSigner(db, user)
+        return policyFor('devnet-mint')
+      },
+    }),
   } as unknown as PrivyClient
 
-  const grant = await prepareSigner(db, privy, {
-    userId: user,
-    walletAddress: 'wallet-address',
-    signerId: 'signer-1',
-    network: { usdcMint: 'mint' } as PaymentNetwork,
-    restore: false,
-  })
-  expect(grant.policyIds).toEqual(['policy-1'])
-  expect(create).not.toHaveBeenCalled()
-  expect((await signerStatus(db, user)).status).toBe('enabled')
+  await expect(prepareSigner(db, privy, setup(user, false))).rejects.toThrow(
+    'removed or set up again meanwhile',
+  )
+  expect((await signerStatus(db, user)).status).toBe('disabled')
 })

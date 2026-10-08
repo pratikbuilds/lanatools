@@ -29,7 +29,12 @@ function serve(...confirms: Array<() => Response>) {
 const enabled = () =>
   Response.json({ status: 'enabled', walletAddress: wallet })
 const notAttached = () =>
-  Response.json({ error: 'Not on this wallet yet' }, { status: 409 })
+  Response.json(
+    { error: 'Not on this wallet yet', code: 'signer-not-attached' },
+    { status: 409 },
+  )
+const removedMeanwhile = () =>
+  Response.json({ error: 'You removed LanaTools access.' }, { status: 409 })
 
 const getAccessToken = () => Promise.resolve('token')
 
@@ -92,6 +97,17 @@ test('a signer left on the wallet with another policy is replaced', async () => 
     ['add', { address: wallet, signers: [grant] }],
   ])
   expect(status).toEqual({ status: 'enabled', walletAddress: wallet })
+})
+
+test('access removed during setup leaves the wallet alone', async () => {
+  serve(removedMeanwhile)
+  const signers = privy({ addFails: 1 })
+  await expect(
+    attachPaymentSigner(getAccessToken, wallet, false, signers),
+  ).rejects.toThrow('You removed LanaTools access')
+  expect(signers.calls).toEqual([
+    ['add', { address: wallet, signers: [grant] }],
+  ])
 })
 
 test('setup fails when Privy still refuses the signer after replacing it', async () => {

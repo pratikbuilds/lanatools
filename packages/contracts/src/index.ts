@@ -223,6 +223,17 @@ export const PaymentSignerRequest = type({
 })
 export type PaymentSignerRequest = typeof PaymentSignerRequest.infer
 
+/**
+ * Why the API refused a signer change. `signer-not-attached`: Privy does not
+ * show the signer on the wallet with the current policy, so the dashboard may
+ * replace a signer Privy holds under another policy.
+ */
+export const PaymentSignerRefusal = type({
+  error: 'string',
+  'code?': "'signer-not-attached'",
+})
+export type PaymentSignerRefusal = typeof PaymentSignerRefusal.infer
+
 /** What the browser passes to Privy's addSigners for the payment signer. */
 export const PaymentSignerGrant = type({
   signerId: 'string',
