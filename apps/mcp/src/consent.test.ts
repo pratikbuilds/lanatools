@@ -34,7 +34,11 @@ function card(props: Partial<ComponentProps<typeof ConsentCard>> = {}) {
       hasHandle: true,
       ready: true,
       signedIn: true,
-      account: 'user@example.com',
+      account: {
+        label: 'User',
+        detail: 'user@example.com',
+        wallet: false,
+      },
       scopes: DEFAULT_TOOL_SCOPES,
       limitUsd: '1.00',
       busy: undefined,
@@ -95,6 +99,18 @@ test('the card names the client and the account it connects to', () => {
   expect(html).toContain('user@example.com')
   expect(html).toContain('>Connect</button>')
   expect(html).toContain('>Deny</button>')
+})
+
+test('a wallet account shows its address with both ends readable', () => {
+  const address = 'huYN3HrKQvoMS2EnNas5ZTUSQPU4x7MNsxyiSJHiiY4'
+  const html = card({
+    account: { label: 'huYN…iiY4', detail: address, wallet: true },
+  })
+  expect(html).toContain('Signed in as')
+  expect(html).toContain(`title="${address}"`)
+  expect(html).toContain('>huYN</strong>')
+  expect(html).toContain('>iiY4</strong>')
+  expect(html).toContain('Use another account')
 })
 
 test('a signed-out user is asked to sign in before connecting', () => {

@@ -55,13 +55,18 @@ describe('getAccountName', () => {
   test('names a Google account by its email', () => {
     expect(
       getAccountName({ google: google, linkedAccounts: [google, embedded] }),
-    ).toEqual({ label: 'person@example.com', detail: 'person@example.com' })
+    ).toEqual({
+      label: 'person@example.com',
+      detail: 'person@example.com',
+      wallet: false,
+    })
   })
 
   test('names a wallet sign-in by the external wallet, not the payment wallet', () => {
     expect(getAccountName({ linkedAccounts: [embedded, phantom] })).toEqual({
       label: 'Phan…1111',
       detail: phantom.address,
+      wallet: true,
     })
   })
 

@@ -57,7 +57,11 @@ test('the latest calls follow the clients that made them', () => {
 test('the account control names who is signed in', () => {
   const html = renderToString(
     <AccountMenu
-      account={{ label: 'pratik@example.com', detail: 'pratik@example.com' }}
+      account={{
+        label: 'pratik@example.com',
+        detail: 'pratik@example.com',
+        wallet: false,
+      }}
       onSignOut={() => {}}
       signOutFailed={false}
     />,
@@ -70,7 +74,11 @@ test('the account control names who is signed in', () => {
 test('a wallet sign-in is named by its address', () => {
   const html = renderToString(
     <AccountMenu
-      account={{ label: 'Phan…1111', detail: 'PhantomAddress1111' }}
+      account={{
+        label: 'Phan…1111',
+        detail: 'PhantomAddress1111',
+        wallet: true,
+      }}
       onSignOut={() => {}}
       signOutFailed={false}
     />,

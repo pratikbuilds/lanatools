@@ -32,21 +32,25 @@ export function getSignInWallet(user: Pick<User, 'linkedAccounts'>) {
   )
 }
 
+/** Who is signed in: a short label, and the full name or address. */
+export type AccountName = { label: string; detail: string; wallet: boolean }
+
 /**
- * How the account menu names who is signed in: the Google name or email,
- * else the wallet they signed in with, shortened for the header and in full
- * in the menu.
+ * Names who is signed in: the Google name or email, else the wallet they
+ * signed in with, shortened for tight spaces and in full where it is checked.
  */
 export function getAccountName(
   user: Pick<User, 'google' | 'email' | 'linkedAccounts'>,
-) {
-  const name = user.google?.name || user.google?.email || user.email?.address
-  if (name) return { label: name, detail: name }
+): AccountName | undefined {
+  const email = user.google?.email || user.email?.address
+  const name = user.google?.name || email
+  if (name) return { label: name, detail: email || name, wallet: false }
   const wallet = getSignInWallet(user)
   if (!wallet) return undefined
   const { address } = wallet
   return {
     label: `${address.slice(0, 4)}…${address.slice(-4)}`,
     detail: address,
+    wallet: true,
   }
 }

@@ -1,5 +1,5 @@
 import { CheckIcon, CopyIcon, WarningCircleIcon } from '@phosphor-icons/react'
-import { CopyStatus, copyLabel, useCopy } from '#/components/landing/copy-url'
+import { CopyStatus, copyLabel, useCopy } from '../landing/copy-url'
 
 /** Keep the address intact for selection, with its ends easier to verify. */
 export function WalletAddressText({

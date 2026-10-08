@@ -1,7 +1,9 @@
 import { Link } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import type { AccountName } from '#/lib/payer'
 import { Frame } from './frame'
+import { WalletAddressText } from './wallet-address'
 
 // Navigation holds destinations only. Wallet data lives on the pages.
 const DESTINATIONS = [
@@ -62,9 +64,6 @@ export function DashboardShell({
     </Frame>
   )
 }
-
-/** A short label for the header and the full name for the menu. */
-type AccountName = { label: string; detail: string }
 
 /** Who is signed in, and the way out, behind one control. */
 export function AccountMenu({
@@ -132,8 +131,14 @@ export function AccountMenu({
           {account && (
             <>
               <p className="d-label">Signed in as</p>
-              <p className="mt-1 mb-3.5 font-semibold break-words">
-                {account.detail}
+              <p
+                className={`mt-1 mb-3.5 font-semibold ${account.wallet ? 'font-mono text-[12.5px] break-all' : 'break-words'}`}
+              >
+                {account.wallet ? (
+                  <WalletAddressText walletAddress={account.detail} />
+                ) : (
+                  account.detail
+                )}
               </p>
             </>
           )}
