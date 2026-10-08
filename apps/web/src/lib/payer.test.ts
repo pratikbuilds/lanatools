@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { User, WalletWithMetadata } from '@privy-io/react-auth'
-import { getEmbeddedPayer } from './payer'
+import { getAccountName, getEmbeddedPayer } from './payer'
 
 type Accounts = User['linkedAccounts']
 
@@ -48,5 +48,24 @@ describe('getEmbeddedPayer', () => {
   test('ignores embedded wallets on other chains', () => {
     const linkedAccounts = [wallet('0xEmbedded', 'privy', 'ethereum')]
     expect(getEmbeddedPayer({ linkedAccounts })).toBeNull()
+  })
+})
+
+describe('getAccountName', () => {
+  test('names a Google account by its email', () => {
+    expect(
+      getAccountName({ google: google, linkedAccounts: [google, embedded] }),
+    ).toEqual({ label: 'person@example.com', detail: 'person@example.com' })
+  })
+
+  test('names a wallet sign-in by the external wallet, not the payment wallet', () => {
+    expect(getAccountName({ linkedAccounts: [embedded, phantom] })).toEqual({
+      label: 'Phan…1111',
+      detail: phantom.address,
+    })
+  })
+
+  test('has no name before any account is known', () => {
+    expect(getAccountName({ linkedAccounts: [embedded] })).toBeUndefined()
   })
 })

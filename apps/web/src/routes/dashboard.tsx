@@ -7,7 +7,7 @@ import { DashboardSessionProvider } from '#/components/dashboard/session'
 import { DashboardShell } from '#/components/dashboard/shell'
 import { SplitPanel } from '#/components/dashboard/split-panel'
 import { NetworkStatus, PaymentStatus } from '#/components/dashboard/status-bar'
-import { getEmbeddedPayer } from '#/lib/payer'
+import { getAccountName, getEmbeddedPayer } from '#/lib/payer'
 
 export const Route = createFileRoute('/dashboard')({
   component: DashboardRoute,
@@ -64,8 +64,7 @@ function Dashboard() {
       <PaymentSetup />
       <DashboardShell
         session={{
-          account:
-            user.google?.name || user.google?.email || user.email?.address,
+          account: getAccountName(user),
           onSignOut: () => void signOut(),
           signOutFailed,
         }}

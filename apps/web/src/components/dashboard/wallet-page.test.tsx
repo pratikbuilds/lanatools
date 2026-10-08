@@ -57,7 +57,7 @@ test('the latest calls follow the clients that made them', () => {
 test('the account control names who is signed in', () => {
   const html = renderToString(
     <AccountMenu
-      account="pratik@example.com"
+      account={{ label: 'pratik@example.com', detail: 'pratik@example.com' }}
       onSignOut={() => {}}
       signOutFailed={false}
     />,
@@ -65,6 +65,19 @@ test('the account control names who is signed in', () => {
   expect(html).toContain('pratik@example.com')
   expect(html).toContain('aria-label="Account, pratik@example.com"')
   expect(html).toContain('>P<')
+})
+
+test('a wallet sign-in is named by its address', () => {
+  const html = renderToString(
+    <AccountMenu
+      account={{ label: 'Phan…1111', detail: 'PhantomAddress1111' }}
+      onSignOut={() => {}}
+      signOutFailed={false}
+    />,
+  )
+  expect(html).toContain('Phan…1111')
+  expect(html).toContain('aria-label="Account, PhantomAddress1111"')
+  expect(html).not.toContain('>?<')
 })
 
 test('the SOL that pays withdrawal fees sits beside the balance', () => {

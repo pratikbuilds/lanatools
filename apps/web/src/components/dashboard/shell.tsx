@@ -17,7 +17,7 @@ export function DashboardShell({
 }: {
   /** Who is signed in; left out while that is still being checked. */
   session?: {
-    account: string | undefined
+    account: AccountName | undefined
     onSignOut: () => void
     signOutFailed: boolean
   }
@@ -63,13 +63,16 @@ export function DashboardShell({
   )
 }
 
+/** A short label for the header and the full name for the menu. */
+type AccountName = { label: string; detail: string }
+
 /** Who is signed in, and the way out, behind one control. */
 export function AccountMenu({
   account,
   onSignOut,
   signOutFailed,
 }: {
-  account: string | undefined
+  account: AccountName | undefined
   onSignOut: () => void
   signOutFailed: boolean
 }) {
@@ -101,7 +104,7 @@ export function AccountMenu({
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={account ? `Account, ${account}` : 'Account'}
+        aria-label={account ? `Account, ${account.detail}` : 'Account'}
         onClick={() => setOpen(!open)}
         className="d-hdr-pill pr-2 pl-1 focus-visible:outline-lime sm:pr-3"
       >
@@ -109,11 +112,11 @@ export function AccountMenu({
           aria-hidden="true"
           className="grid size-6 place-items-center rounded-full bg-paper text-[12px] font-bold text-ink"
         >
-          {account?.[0]?.toUpperCase() ?? '?'}
+          {account?.label[0]?.toUpperCase() ?? '?'}
         </span>
         {account && (
           <span className="hidden max-w-[12rem] truncate lg:block">
-            {account}
+            {account.label}
           </span>
         )}
         <span
@@ -129,7 +132,9 @@ export function AccountMenu({
           {account && (
             <>
               <p className="d-label">Signed in as</p>
-              <p className="mt-1 mb-3.5 font-semibold break-words">{account}</p>
+              <p className="mt-1 mb-3.5 font-semibold break-words">
+                {account.detail}
+              </p>
             </>
           )}
           <button
