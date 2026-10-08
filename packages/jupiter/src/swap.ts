@@ -58,6 +58,7 @@ function safeQuote(value: unknown): unknown {
 export async function swapOrder(
   context: ReadContext,
   input: z.output<typeof QuoteSwapInput>,
+  taker?: string,
 ): Promise<{ quote: QuoteSwapData; raw: ProviderRecord }> {
   const tokens = context.tokens(
     await context.get('/tokens/v2/search', {
@@ -92,6 +93,10 @@ export async function swapOrder(
   }
   if (input.maxSlippageBps !== undefined)
     parameters.slippageBps = String(input.maxSlippageBps)
+  if (taker !== undefined) {
+    parameters.taker = taker
+    parameters.maxSupportedTransactionVersion = '0'
+  }
   const raw = await context.get('/swap/v2/order', parameters)
   if (!isRecord(raw)) throw unavailable()
   if (
@@ -159,9 +164,10 @@ export async function swapOrder(
     'rentFeePayer',
   ])
     if (raw[field] !== undefined) fees[field] = providerQuote[field]
-  context.warnings.push(
-    'This is a quote only; no transaction was requested or returned. Prices and routes may change before execution.',
-  )
+  if (taker === undefined)
+    context.warnings.push(
+      'This is a quote only; no transaction was requested or returned. Prices and routes may change before execution.',
+    )
   if (satisfied === false)
     context.warnings.push(
       'The quote does not satisfy the requested constraints.',
