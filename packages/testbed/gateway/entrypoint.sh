@@ -1,7 +1,7 @@
-#!/bin/sh
+#!/bin/bash
 # Serves the testbed merchant on devnet. pay keeps the gateway's fee payer in
 # $HOME, so HOME must be a persistent volume or every deploy needs new SOL.
-set -eu
+set -euo pipefail
 
 : "${RECIPIENT:?Set RECIPIENT to the wallet that receives payments}"
 RPC_URL="${DEVNET_RPC_URL:-https://api.devnet.solana.com}"
@@ -19,13 +19,32 @@ fi
 
 mkdir -p "$HOME"
 spec="$HOME/merchant.yaml"
-sed "s/network: 'localnet'/network: 'devnet'/" /app/merchant.yaml >"$spec"
-if ! grep -q "network: 'devnet'" "$spec"; then
-  echo 'merchant.yaml no longer declares network localnet' >&2
-  exit 1
-fi
+bun /app/src/merchant-server.ts --write-gateway-spec "$spec"
+
+fixture_pid=
+gateway_pid=
+cleanup() {
+  # pay 0.28 ignores SIGTERM. Stop both children when either exits.
+  kill -KILL ${fixture_pid:+"$fixture_pid"} ${gateway_pid:+"$gateway_pid"} 2>/dev/null || true
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+bun /app/src/merchant-server.ts &
+fixture_pid=$!
+for attempt in {1..50}; do
+  if curl -fsS http://127.0.0.1:1403/health >/dev/null 2>&1; then break; fi
+  if ! kill -0 "$fixture_pid" 2>/dev/null || [ "$attempt" -eq 50 ]; then
+    echo 'merchant fixture server did not start' >&2
+    exit 1
+  fi
+  sleep 0.1
+done
 
 # On first start pay creates the fee payer and exits until it holds SOL; its
 # address is in the error. Send it devnet SOL and the service restarts.
-exec pay gate api "$spec" --no-register \
-  --bind "0.0.0.0:${PORT:-1402}" --rpc-url "$RPC_URL" --recipient "$RECIPIENT"
+pay gate api "$spec" --no-register \
+  --bind '127.0.0.1:1404' --rpc-url "$RPC_URL" --recipient "$RECIPIENT" &
+gateway_pid=$!
+wait -n "$fixture_pid" "$gateway_pid"
+exit 1

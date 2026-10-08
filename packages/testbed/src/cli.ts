@@ -11,10 +11,10 @@ import {
 import { Receipt } from 'mppx'
 import { MERCHANT_ORIGIN, selectProfile } from './networks'
 import { tokenReceived } from './rpc'
+import { createGatewaySpec, startMerchant } from './merchant-server'
 
 const PRICE = 10_000n // 0.01 USDC in base units, as in merchant.yaml
 const ROUTE = `${MERCHANT_ORIGIN}/api/v1/fixed`
-const DIR = join(import.meta.dir, '..')
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
@@ -43,8 +43,12 @@ const env = {
 }
 
 let gateway: Subprocess | undefined
+let merchant: ReturnType<typeof startMerchant> | undefined
 // pay's gateway ignores SIGINT and SIGTERM, so every exit path SIGKILLs it.
-process.on('exit', () => gateway?.kill('SIGKILL'))
+process.on('exit', () => {
+  gateway?.kill('SIGKILL')
+  void merchant?.stop(true)
+})
 process.on('SIGINT', () => process.exit(130))
 process.on('SIGTERM', () => process.exit(143))
 
@@ -59,12 +63,11 @@ async function start() {
   mkdirSync(env.HOME, { recursive: true })
 
   // One merchant spec for every network; only its operator network changes.
-  const spec = Bun.YAML.parse(
-    await Bun.file(join(DIR, 'merchant.yaml')).text(),
-  ) as { operator: { network: string } }
+  const spec = createGatewaySpec()
   spec.operator.network = profile.network
   const specPath = join(profile.stateDir, 'merchant.yaml')
   await Bun.write(specPath, Bun.YAML.stringify(spec, null, 2))
+  merchant = startMerchant()
 
   const argv = [
     ...profile.payFlags,
@@ -73,7 +76,7 @@ async function start() {
     specPath,
     '--no-register',
     '--bind',
-    '127.0.0.1:1402',
+    '127.0.0.1:1404',
     ...profile.gateFlags(),
   ]
   const unfunded = await launch(argv)
@@ -98,7 +101,7 @@ async function launch(argv: Array<string>) {
     stdout: Bun.file(log),
     stderr: Bun.file(log),
   })
-  for (let i = 0; !(await fetch(ROUTE).catch(() => null)); i++) {
+  for (let i = 0; (await fetch(ROUTE).catch(() => null))?.status !== 402; i++) {
     if (gateway.exitCode !== null) {
       // pay prints this error as JSON, so the address follows an escaped
       // newline; accept a real line break too.

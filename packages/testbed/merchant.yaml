@@ -4,11 +4,12 @@
 name: lanatools-testbed
 subdomain: lanatools-testbed
 title: 'LanaTools testbed merchant'
-description: 'Local MPP and x402 payment fixtures for LanaTools.'
+description: 'MPP and x402 fixtures with dynamic inputs, formats, prices, delays, and errors.'
 category: ai_ml
 version: v1
 routing:
-  type: respond
+  type: proxy
+  url: http://127.0.0.1:1403
 operator:
   currencies:
     usd: ['USDC']
@@ -18,6 +19,8 @@ endpoints:
   - method: GET
     path: 'api/v1/fixed'
     description: 'Fixed 0.01 USDC charge over MPP or x402.'
+    routing:
+      type: respond
     metering:
       schemes: [mpp-charge, x402-exact]
       dimensions:
@@ -28,7 +31,9 @@ endpoints:
             - price_usd: 0.01
   - method: GET
     path: 'api/v1/policy-denied'
-    description: 'MPP 0.02 USDC charge that the Privy policy must refuse.'
+    description: 'MPP 0.02 USDC payer-policy test. Refusal depends on the configured payer policy.'
+    routing:
+      type: respond
     metering:
       schemes: [mpp-charge]
       dimensions:
@@ -37,3 +42,177 @@ endpoints:
           scale: 1
           tiers:
             - price_usd: 0.02
+  - method: GET
+    path: 'health'
+    description: 'Free health check of the dynamic fixture server.'
+  - method: GET
+    path: 'api/v1/scenarios'
+    description: 'Free route catalog with prices, input examples, and testing notes.'
+  - method: POST
+    path: 'api/v1/preview'
+    description: 'Free output preview. JSON body: {path, method, query, body}. No payment is performed.'
+  - method: GET
+    path: 'api/v1/echo'
+    description: 'Echo query parameters including repeated keys. 0.01 USDC.'
+    metering:
+      schemes: [mpp-charge, x402-exact]
+      dimensions:
+        - direction: usage
+          unit: requests
+          scale: 1
+          tiers:
+            - price_usd: 0.01
+  - method: POST
+    path: 'api/v1/echo'
+    description: 'Echo any JSON body, up to 64 KiB, and query parameters. 0.01 USDC.'
+    metering:
+      schemes: [mpp-charge, x402-exact]
+      dimensions:
+        - direction: usage
+          unit: requests
+          scale: 1
+          tiers:
+            - price_usd: 0.01
+  - method: GET
+    path: 'api/v1/quote'
+    description: 'Simulated quote. Query: symbol=SOL|BTC|ETH|USDC, seed=string. Same seed gives the same price. 0.01 USDC.'
+    metering:
+      schemes: [mpp-charge, x402-exact]
+      dimensions:
+        - direction: usage
+          unit: requests
+          scale: 1
+          tiers:
+            - price_usd: 0.01
+  - method: POST
+    path: 'api/v1/summarize'
+    description: 'Simulated text summary and counts. JSON body: {text: string}, max 16384 characters. 0.01 USDC.'
+    metering:
+      schemes: [mpp-charge, x402-exact]
+      dimensions:
+        - direction: usage
+          unit: requests
+          scale: 1
+          tiers:
+            - price_usd: 0.01
+  - method: GET
+    path: 'api/v1/dataset'
+    description: 'Deterministic dataset. Query: count=1..1000, seed=string, format=json|csv. 0.01 USDC.'
+    metering:
+      schemes: [mpp-charge, x402-exact]
+      dimensions:
+        - direction: usage
+          unit: requests
+          scale: 1
+          tiers:
+            - price_usd: 0.01
+  - method: GET
+    path: 'api/v1/text'
+    description: 'Plain text output. Query: message=string, max 16384 characters. 0.01 USDC.'
+    metering:
+      schemes: [mpp-charge, x402-exact]
+      dimensions:
+        - direction: usage
+          unit: requests
+          scale: 1
+          tiers:
+            - price_usd: 0.01
+  - method: GET
+    path: 'api/v1/large'
+    description: 'Sized plain text response. Query: bytes=1..1048576, default 262144. Test truncation. 0.01 USDC.'
+    metering:
+      schemes: [mpp-charge, x402-exact]
+      dimensions:
+        - direction: usage
+          unit: requests
+          scale: 1
+          tiers:
+            - price_usd: 0.01
+  - method: GET
+    path: 'api/v1/delay'
+    description: 'Delayed response. Query: ms=0..30000, default 1000. Payment can settle before a timeout. 0.01 USDC.'
+    metering:
+      schemes: [mpp-charge, x402-exact]
+      dimensions:
+        - direction: usage
+          unit: requests
+          scale: 1
+          tiers:
+            - price_usd: 0.01
+  - method: GET
+    path: 'api/v1/status'
+    description: 'Deliberate paid error. Query: code=400|404|422|429|500|503. 429 and 503 include Retry-After. Payment is charged before the error. 0.01 USDC.'
+    metering:
+      schemes: [mpp-charge, x402-exact]
+      dimensions:
+        - direction: usage
+          unit: requests
+          scale: 1
+          tiers:
+            - price_usd: 0.01
+  - method: GET
+    path: 'api/v1/mpp-only'
+    description: 'MPP-only successful JSON response. 0.01 USDC.'
+    metering:
+      schemes: [mpp-charge]
+      dimensions:
+        - direction: usage
+          unit: requests
+          scale: 1
+          tiers:
+            - price_usd: 0.01
+  - method: GET
+    path: 'api/v1/x402-only'
+    description: 'x402-only successful JSON response. 0.01 USDC.'
+    metering:
+      schemes: [x402-exact]
+      dimensions:
+        - direction: usage
+          unit: requests
+          scale: 1
+          tiers:
+            - price_usd: 0.01
+  - method: GET
+    path: 'api/v1/price/minimum'
+    description: 'Minimum charge for payment tests. 0.01 USDC.'
+    metering:
+      schemes: [mpp-charge, x402-exact]
+      dimensions:
+        - direction: usage
+          unit: requests
+          scale: 1
+          tiers:
+            - price_usd: 0.01
+  - method: GET
+    path: 'api/v1/price/expensive'
+    description: '2 USDC charge for per-call and cumulative limit tests.'
+    metering:
+      schemes: [mpp-charge, x402-exact]
+      dimensions:
+        - direction: usage
+          unit: requests
+          scale: 1
+          tiers:
+            - price_usd: 2
+  - method: GET
+    path: 'api/v1/price/one'
+    description: '1 USDC fixed charge for spending-limit tests.'
+    metering:
+      schemes: [mpp-charge, x402-exact]
+      dimensions:
+        - direction: usage
+          unit: requests
+          scale: 1
+          tiers:
+            - price_usd: 1
+  - method: GET
+    path: 'api/v1/priced'
+    description: 'Quantity-priced JSON dataset. Query: units=1..200, default 1; seed=string. Charge is units x 0.01 USDC, from 0.01 to 2 USDC. Invalid units fail before payment.'
+    metering:
+      schemes: [mpp-charge, x402-exact]
+      dimensions:
+        - direction: usage
+          unit: requests
+          scale: 1
+          tiers:
+            - price_usd: 0.01

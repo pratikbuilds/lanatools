@@ -3,10 +3,15 @@
   "build": {
     "builder": "DOCKERFILE",
     "dockerfilePath": "Dockerfile",
-    "watchPatterns": ["Dockerfile", "merchant.yaml", "gateway/**"]
+    "watchPatterns": [
+      "Dockerfile",
+      "merchant.yaml",
+      "gateway/**",
+      "src/merchant-server.ts"
+    ]
   },
   "deploy": {
-    "healthcheckPath": "/openapi.json",
+    "healthcheckPath": "/health",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
