@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
+import { formatUsd } from '@lanatools/contracts'
 import { mcpGrant, paymentActivity, paymentSigner } from '../db/schema'
 import { activeGrantFor, authorizeGrant, grantHasScope } from '../mcp-grants'
 import type { GrantAccess, GrantIdentity } from '../mcp-grants'
@@ -142,7 +143,7 @@ export async function reservationRefusal(
     .where(activeGrantFor(identity))
     .get()
   const remaining = Math.max(0, (grant?.limit ?? 0) - (grant?.committed ?? 0))
-  return `The charge exceeds this client's remaining limit of ${remaining} micro-USD`
+  return `The charge is more than this client's remaining limit of ${formatUsd(remaining)}`
 }
 
 /**

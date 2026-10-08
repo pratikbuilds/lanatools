@@ -312,7 +312,7 @@ test('refuses a charge above max_usd', async () => {
   const payer = mock(() => fakePayer())
   await expect(
     payHttp(deps({ payer }), grant, input({ maxUsd: '0.009' })),
-  ).rejects.toThrow('exceeds max_usd')
+  ).rejects.toThrow('This call costs $0.01, more than its max_usd of $0.009')
   expect(payer).not.toHaveBeenCalled()
 })
 
@@ -321,7 +321,7 @@ test('refuses a charge above the client limit', async () => {
   await enableSigner()
   const payer = mock(() => fakePayer())
   await expect(payHttp(deps({ payer }), grant, input())).rejects.toThrow(
-    'remaining limit of 9999',
+    'remaining limit of $0.009999',
   )
   expect(payer).not.toHaveBeenCalled()
   expect(await totals()).toEqual({ spent: 0, reserved: 0 })
@@ -433,7 +433,7 @@ test('a lost response after signing stays reserved and is never repeated', async
   expect(await totals()).toEqual({ spent: 0, reserved: 10_000 })
   // The held reservation still counts: a second charge would overspend.
   await expect(payHttp(deps({ payer }), grant, input())).rejects.toThrow(
-    'remaining limit of 5000',
+    'remaining limit of $0.005',
   )
   expect(payer).toHaveBeenCalledTimes(1)
 })
@@ -502,7 +502,7 @@ test('each client spends only against its own limit', async () => {
   await enableSigner()
   await payHttp(deps(), a, input())
   await expect(payHttp(deps(), a, input())).rejects.toThrow(
-    'remaining limit of 0',
+    'remaining limit of $0.00',
   )
   await payHttp(deps(), b, input())
   expect(await totals('client-a')).toEqual({ spent: 10_000, reserved: 0 })
@@ -607,7 +607,7 @@ test('the next call releases an ended reservation that was never signed', async 
     },
   )
   await expect(payHttp(deps(), grant, input())).rejects.toThrow(
-    'remaining limit of 0',
+    'remaining limit of $0.00',
   )
   await ageActivity(10)
 

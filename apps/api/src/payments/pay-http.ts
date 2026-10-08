@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
-import { parseUsd } from '@lanatools/contracts'
+import { formatUsd, parseUsd } from '@lanatools/contracts'
 import type { PrivyClient } from '@privy-io/node'
 import { address } from '@solana/kit'
 import {
@@ -181,7 +181,8 @@ export async function payHttp(
   }
   if (charge.amount > BigInt(maxAtomic))
     return refuse(
-      `The charge of ${charge.amount} USDC base units exceeds max_usd ${input.maxUsd}`,
+      // One USDC base unit is one micro-USD.
+      `This call costs ${formatUsd(Number(charge.amount))}, more than its max_usd of ${formatUsd(maxAtomic)}`,
       { charge, httpStatus: 402 },
     )
   const signer = await enabledSigner(deps.db, identity.userId)

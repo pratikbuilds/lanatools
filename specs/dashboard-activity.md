@@ -84,7 +84,7 @@ A Klein blue bar: wordmark, three destinations (Wallet, Activity, Settings) with
 
 **Outcome column.** A paid call shows the settled amount on a lime tag. A refused call shows "Refused" on a coral tag, with its reason on a second line in the row. A free call shows "Free" and a failed call "Failed", both in grey; a failed call also shows its reason.
 
-The reasons are shown as recorded. Two of them print raw units today ("remaining limit of 660000 micro-USD", "charge of 10000 USDC base units"); rewording them belongs to the later look at how denials are recorded.
+The reasons are shown as recorded. Amounts in them are in dollars ("remaining limit of $0.66", "This call costs $0.10, more than its max_usd of $0.05"); rows recorded before that still show raw units.
 
 ### Settings
 
