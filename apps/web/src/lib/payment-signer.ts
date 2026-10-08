@@ -32,48 +32,62 @@ export async function getPaymentSigner(getAccessToken: GetAccessToken) {
 }
 
 /**
- * Turns on agent payments: the server prepares a policy-bound signer, the
- * user's own Privy session attaches it to the wallet, and the server checks
- * Privy before it allows any payment.
+ * Sets up agent payments: the server prepares a policy-bound signer, the
+ * user's own Privy session adds it to the wallet, and the server checks
+ * Privy before it allows any payment. Safe to run again at any point.
+ * `restore` sets up again after the user removed LanaTools access; without
+ * it the server refuses, so only the user undoes a removal.
  */
-export async function enablePaymentSigner(
+export async function attachPaymentSigner(
   getAccessToken: GetAccessToken,
   walletAddress: string,
-  addSigners: (input: {
-    address: string
-    signers: Array<{ signerId: string; policyIds: string[] }>
-  }) => Promise<unknown>,
+  restore: boolean,
+  {
+    addSigners,
+    removeSigners,
+  }: {
+    addSigners: (input: {
+      address: string
+      signers: Array<{ signerId: string; policyIds: string[] }>
+    }) => Promise<unknown>
+    removeSigners: (input: { address: string }) => Promise<unknown>
+  },
 ) {
   const grant = PaymentSignerGrant.assert(
     await call(getAccessToken, '/prepare', {
       method: 'POST',
-      body: JSON.stringify({ walletAddress }),
+      body: JSON.stringify({ walletAddress, restore }),
     }),
   )
   const confirm = async () =>
     PaymentSignerStatus.assert(
       await call(getAccessToken, '/confirm', { method: 'POST' }),
     )
+  const add = () => addSigners({ address: walletAddress, signers: [grant] })
   try {
-    await addSigners({ address: walletAddress, signers: [grant] })
-  } catch (error) {
-    // Privy refuses a signer that is already on the wallet, as after another
-    // tab or an attempt that stopped before the check below. The server's
-    // check decides; if it disagrees, Privy's refusal is the failure.
+    await add()
+  } catch {
+    // Privy refuses a signer that is already on the wallet. With this
+    // setup's policy, as after another tab or an attempt that stopped early,
+    // the server's check turns payments on. With another policy, as from an
+    // earlier setup or another LanaTools deployment on the same Privy app,
+    // the old signer is replaced. LanaTools adds no other signer to the
+    // wallet, so removing all of them removes only its own.
     try {
       return await confirm()
     } catch {
-      throw error
+      await removeSigners({ address: walletAddress })
+      await add()
     }
   }
   return confirm()
 }
 
 /**
- * Stops agent payments. The server switch goes first, so no client can
- * start a payment even if removing the signer from the wallet fails.
+ * Removes LanaTools access. The server stop goes first, so no client can
+ * start a payment even if removing the signer from the wallet then fails.
  */
-export async function disablePaymentSigner(
+export async function removePaymentSigner(
   getAccessToken: GetAccessToken,
   walletAddress: string,
   removeSigners: (input: { address: string }) => Promise<unknown>,
@@ -81,6 +95,13 @@ export async function disablePaymentSigner(
   const status = PaymentSignerStatus.assert(
     await call(getAccessToken, '/disable', { method: 'POST' }),
   )
-  await removeSigners({ address: walletAddress })
+  try {
+    await removeSigners({ address: walletAddress })
+  } catch (cause) {
+    throw new Error(
+      'Payments are stopped, but Privy could not remove the LanaTools signer from your wallet. Try again.',
+      { cause },
+    )
+  }
   return status
 }

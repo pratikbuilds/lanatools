@@ -509,15 +509,15 @@ test('each client spends only against its own limit', async () => {
   expect(await totals('client-b')).toEqual({ spent: 10_000, reserved: 0 })
 })
 
-test('turning payments off or revoking the client blocks the next call', async () => {
+test('payments that are not set up or a revoked client block the next call', async () => {
   const grant = await connectClient(50_000)
   const payer = mock(() => fakePayer())
   await expect(payHttp(deps({ payer }), grant, input())).rejects.toThrow(
-    'Payments are turned off',
+    'Payments are not set up',
   )
   await enableSigner('disabled')
   await expect(payHttp(deps({ payer }), grant, input())).rejects.toThrow(
-    'Payments are turned off',
+    'Payments are not set up',
   )
   await enableSigner('enabled')
   await payHttp(deps({ payer }), grant, input())

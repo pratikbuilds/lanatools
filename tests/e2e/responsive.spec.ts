@@ -107,7 +107,7 @@ for (const width of [320, 390, 640, 768, 1024, 1440]) {
     await page.getByRole('button', { name: 'Close', exact: true }).click()
     await page.getByRole('link', { name: 'Settings', exact: true }).click()
     await expect(
-      page.getByRole('switch', { name: 'Agent payments' }),
+      page.getByRole('heading', { name: 'Agent payments' }),
     ).toBeVisible()
     await fitsPage(page)
     expect(errors).toEqual([])

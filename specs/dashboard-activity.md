@@ -49,7 +49,7 @@ Content and behaviour:
 - No icons, avatars or letter tiles in activity rows.
 - Older calls load on scroll.
 - The wallet, clients and activity refetch every 15 s, the interval the wallet balance already uses, and when the tab regains focus.
-- Agent payments are on by default; the switch stays as the emergency stop, in Settings.
+- Agent payments are on once set up; there is no on/off switch. Removing LanaTools access, in Settings, is the emergency stop.
 - A limit is changed two ways, kept in sync: by dragging a tick ruler, as in Rare UI's AnimatedCounter demo, or by typing an exact amount. Either way the limit is shown with the AnimatedCounter and rolls live.
 - Rare UI is credited in `README.md`, as its license requires a visible link to rareui.com.
 
@@ -88,7 +88,7 @@ The reasons are shown as recorded. Two of them print raw units today ("remaining
 
 ### Settings
 
-Permissions: the agent payments switch with what on and off mean. Off turns the explanation coral: no client can pay, and the LanaTools signer is removed from the wallet.
+Permissions: whether agent payments are set up, the signing rules, a retry when setup failed, and "Remove LanaTools access" behind a confirmation. Removal stops every client at once and removes the signer from the wallet; "Set up again" undoes it.
 
 ### Drawers
 
@@ -125,11 +125,11 @@ Clicking a row, or an action that needs detail, opens a drawer from the right; t
 
 Today the LanaTools signer is attached only when the user presses "Turn on" (`enablePaymentSigner`: the server prepares a policy-bound signer, the user's Privy session calls `addSigners`, the server confirms). It starts off, so a newly connected client is refused until the user finds the switch.
 
-- Attach the signer as part of wallet setup: right after the wallet is created, and on dashboard load for an existing wallet that has never had one (status `none`).
-- A wallet the user turned off (status `disabled`) stays off. Only the user turns it back on.
+- Attach the signer as part of wallet setup: right after the wallet is created, and on dashboard load for any wallet whose payments are not on.
+- Access the user removed (status `disabled`) stays removed. The server refuses automatic setup for it; only "Set up again" restores it.
 - Attaching has to run in the user's signed-in browser session. It is attempted once per visit, without a click. Still to verify in P4: whether Privy's `addSigners` completes without a click or a prompt. If it needs one, it folds into the "Create wallet" button and a one-time "Finish setup" step.
-- The switch keeps its current behaviour as the "wallet-wide emergency stop" in agent-payments.md: off stops every client at once and removes the signer from the wallet.
-- If attaching fails, Settings says so and the switch retries it.
+- There is no on/off switch. One client is stopped by disconnecting it or by its limit; every client by removing LanaTools access.
+- If attaching fails, Settings says so and retries it.
 
 ## Known gap
 

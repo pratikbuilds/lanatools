@@ -42,6 +42,7 @@ export const paymentSignerRoutes = new Hono<{
         walletAddress: body.walletAddress,
         signerId: c.env.PRIVY_PAYMENT_SIGNER_ID,
         network,
+        restore: body.restore ?? false,
       })
       return c.json(grant satisfies PaymentSignerGrant)
     } catch (error) {

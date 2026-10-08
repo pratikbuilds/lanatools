@@ -12,40 +12,60 @@ function render(
     <AgentPaymentsView
       status={status}
       loadFailed={false}
-      busy={false}
-      error={undefined}
+      running={undefined}
+      failed={undefined}
       walletAddress={wallet}
-      onChange={() => {}}
+      onSetUp={() => {}}
+      onRemove={() => {}}
       {...props}
     />,
   )
 }
 
-test('payments that were never set up show as off and can be turned on', () => {
+test('payments that are not set up say so and can be retried', () => {
   const html = render({ status: 'none', walletAddress: null })
-  expect(html).toContain('>Off<')
-  expect(html).toContain('No client can pay')
-  expect(html).toContain('aria-checked="false"')
+  expect(html).toContain('>Not set up<')
+  expect(html).toContain('Your clients cannot pay')
+  expect(html).toContain('Try again')
 })
 
-test('enabled payments can be stopped for every client', () => {
+test('payments that are on can have LanaTools access removed, not toggled', () => {
   const html = render({ status: 'enabled', walletAddress: wallet })
   expect(html).toContain('>On<')
-  expect(html).toContain('stop every client at once')
-  expect(html).toContain('aria-checked="true"')
+  expect(html).toContain('Disconnect a client to stop just that one')
+  expect(html).toContain('Remove LanaTools access')
+  expect(html).not.toContain('role="switch"')
+  expect(html).not.toContain('Try again')
 })
 
 test('a signer on a different wallet does not count as on', () => {
   expect(render({ status: 'enabled', walletAddress: 'Other1111' })).toContain(
-    'aria-checked="false"',
+    '>Not set up<',
   )
 })
 
-test('the switch waits for the saved state, and nothing is called off before it', () => {
+test('removed access says so and is set up again only by the user', () => {
+  const html = render({ status: 'disabled', walletAddress: wallet })
+  expect(html).toContain('>Removed<')
+  expect(html).toContain('You removed LanaTools access')
+  expect(html).toContain('Set up again')
+  expect(html).not.toContain('Try removing again')
+})
+
+test('a removal that Privy failed can be tried again', () => {
+  const html = render(
+    { status: 'disabled', walletAddress: wallet },
+    { failed: { change: 'remove', message: 'Payments are stopped, but…' } },
+  )
+  expect(html).toContain('Payments are stopped, but…')
+  expect(html).toContain('Try removing again')
+})
+
+test('nothing is called not set up before the saved state loads', () => {
   const html = render(undefined)
-  expect(html).not.toContain('role="switch"')
-  expect(html).not.toContain('>Off<')
-  expect(html).not.toContain('No client can pay')
+  expect(html).not.toContain('Not set up')
+  expect(html).not.toContain('Try again')
+  expect(html).not.toContain('Remove LanaTools access')
   expect(html).toContain('Checking your wallet')
 })
 
@@ -55,15 +75,32 @@ test('a load failure is reported instead of a state', () => {
   expect(html).not.toContain('Checking your wallet')
 })
 
-test('the switch cannot start a second change while one is running', () => {
-  const html = render(
+test('a change in progress cannot be started again', () => {
+  const setup = render(
     { status: 'pending', walletAddress: wallet },
-    { busy: true },
+    {
+      running: 'setup',
+      failed: { change: 'setup', message: 'Earlier failure' },
+    },
   )
-  expect(html).toContain('Turning agent payments on…')
-  expect(html).toMatch(
-    /<button[^>]*disabled=""[^>]*role="switch"|<button[^>]*role="switch"[^>]*disabled=""/,
+  expect(setup).toContain('Setting up agent payments…')
+  expect(setup).not.toContain('Try again')
+  expect(setup).not.toContain('Earlier failure')
+  const removing = render(
+    { status: 'enabled', walletAddress: wallet },
+    { running: 'remove' },
   )
+  expect(removing).toContain('Removing LanaTools access…')
+  expect(removing).not.toContain('Remove LanaTools access')
+})
+
+test('a failed setup shows why', () => {
+  expect(
+    render(
+      { status: 'pending', walletAddress: wallet },
+      { failed: { change: 'setup', message: 'Nope' } },
+    ),
+  ).toContain('Nope')
 })
 
 test('the signing rules name the wallet they apply to', () => {

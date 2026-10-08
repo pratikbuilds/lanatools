@@ -132,7 +132,7 @@ export async function reservationRefusal(
   if (access !== 'active') return GRANT_REFUSALS[access]
   const signer = await enabledSigner(database, identity.userId)
   if (signer?.walletId !== walletId)
-    return 'Payments are turned off for this wallet'
+    return 'Payments are not set up for this wallet'
   const grant = await drizzle(database)
     .select({
       limit: mcpGrant.limitMicroUsd,

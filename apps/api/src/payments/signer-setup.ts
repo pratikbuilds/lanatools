@@ -62,11 +62,14 @@ export async function prepareSigner(
     walletAddress,
     signerId,
     network,
+    restore,
   }: {
     userId: string
     walletAddress: string
     signerId: string
     network: PaymentNetwork
+    /** The user asked to set up again after removing LanaTools access. */
+    restore: boolean
   },
   now = Date.now(),
 ): Promise<PaymentSignerGrant> {
@@ -80,11 +83,23 @@ export async function prepareSigner(
     .from(paymentSigner)
     .where(eq(paymentSigner.privyUserId, userId))
     .get()
-  // A setup that is unfinished or already on (say, from another tab) keeps
-  // its policy and status. Turning payments on again after they were turned
-  // off creates a fresh policy, so a wallet never keeps older rules.
-  if (existing?.walletId === walletId && existing.status !== 'disabled')
+  // Access the user removed comes back only when they ask, so the automatic
+  // setup in a stale tab cannot undo a removal.
+  if (existing?.status === 'disabled' && !restore)
+    throw new SignerSetupError(
+      'You removed LanaTools access. Set it up again in Settings.',
+    )
+  // Setup for the same wallet keeps its policy, whether it is unfinished,
+  // already on (say, from another tab), or set up again after a removal. A
+  // signer left on the wallet then still matches, so setup can always finish.
+  if (existing?.walletId === walletId) {
+    if (existing.status === 'disabled')
+      await db
+        .update(paymentSigner)
+        .set({ status: 'pending', updatedAt: now })
+        .where(eq(paymentSigner.privyUserId, userId))
     return { signerId, policyIds: [existing.policyId] }
+  }
 
   const policy = await privy.policies().create({
     name: 'LanaTools agent payments',
@@ -163,7 +178,7 @@ export async function confirmSigner(
     throw new SignerSetupError(
       'Privy does not show the LanaTools signer on this wallet yet',
     )
-  // Only the setup that was checked can be enabled: a turn-off or a new setup
+  // Only the setup that was checked can be enabled: a removal or a new setup
   // since the read above wins.
   const [enabled] = await db
     .update(paymentSigner)
@@ -178,14 +193,15 @@ export async function confirmSigner(
     .returning({ walletAddress: paymentSigner.walletAddress })
   if (!enabled)
     throw new SignerSetupError(
-      'Payments were turned off or set up again meanwhile. Try again.',
+      'LanaTools access was removed or set up again meanwhile. Try again.',
     )
   return { status: 'enabled', walletAddress: enabled.walletAddress }
 }
 
 /**
- * The wallet-wide emergency stop. Every payment checks this row inside its
- * reservation, so no client can start a payment after it returns.
+ * Removes LanaTools access, the user's wallet-wide stop. Every payment checks
+ * this row inside its reservation, so no client can start a payment after it
+ * returns. The dashboard then removes the signer from the wallet.
  */
 export async function disableSigner(
   database: D1Database,

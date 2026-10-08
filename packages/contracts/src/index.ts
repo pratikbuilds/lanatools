@@ -216,7 +216,11 @@ export const PaymentSignerStatus = type({
 })
 export type PaymentSignerStatus = typeof PaymentSignerStatus.infer
 
-export const PaymentSignerRequest = type({ walletAddress: 'string' })
+export const PaymentSignerRequest = type({
+  walletAddress: 'string',
+  /** Set up again after the user removed LanaTools access. */
+  'restore?': 'boolean',
+})
 export type PaymentSignerRequest = typeof PaymentSignerRequest.infer
 
 /** What the browser passes to Privy's addSigners for the payment signer. */

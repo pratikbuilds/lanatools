@@ -187,7 +187,7 @@ export async function payHttp(
   const signer = await enabledSigner(deps.db, identity.userId)
   if (!signer)
     return refuse(
-      'Payments are turned off. Turn them on for your wallet in the LanaTools dashboard.',
+      'Payments are not set up for your wallet. Set them up in the LanaTools dashboard.',
       { charge, httpStatus: 402 },
     )
   await reconcile(deps, identity, rpcUrl)

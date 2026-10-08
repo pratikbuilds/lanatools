@@ -5,12 +5,12 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { PaymentSignerStatus } from '@lanatools/contracts'
 import {
-  disablePaymentSigner,
-  enablePaymentSigner,
+  attachPaymentSigner,
   getPaymentSigner,
+  removePaymentSigner,
 } from '#/lib/payment-signer'
 import { useDashboardSession } from './session'
 import { SplitPanel } from './split-panel'
@@ -34,111 +34,146 @@ function useSignerStatus() {
   return { queryKey, signer }
 }
 
+/** A change to LanaTools access: setting it up, or removing it. */
+export type AccessChange = 'setup' | 'remove'
+
 function usePaymentSigner() {
-  const { walletAddress, getAccessToken } = useDashboardSession()
-  const { addSigners, removeSigners } = useSigners()
+  const { userId, walletAddress, getAccessToken } = useDashboardSession()
+  const signers = useSigners()
   const queryClient = useQueryClient()
   const { queryKey, signer } = useSignerStatus()
-  const change = useMutation({
-    mutationKey: queryKey,
-    mutationFn: ({ enable, address }: { enable: boolean; address: string }) =>
-      enable
-        ? enablePaymentSigner(getAccessToken, address, addSigners)
-        : disablePaymentSigner(getAccessToken, address, removeSigners),
-    onSettled: () => queryClient.invalidateQueries({ queryKey }),
+  const onSettled = () => queryClient.invalidateQueries({ queryKey })
+  const attach = useMutation({
+    mutationKey: [...queryKey, 'setup'],
+    mutationFn: ({ address, restore }: { address: string; restore: boolean }) =>
+      attachPaymentSigner(getAccessToken, address, restore, signers),
+    onSettled,
   })
-  // The automatic setup and the Settings switch each call this hook. Both
-  // read the latest change from either, so the switch waits out a setup that
-  // is still running instead of starting a second one.
+  const remove = useMutation({
+    mutationKey: [...queryKey, 'remove'],
+    mutationFn: (address: string) =>
+      removePaymentSigner(getAccessToken, address, signers.removeSigners),
+    onSettled,
+  })
+  // The automatic setup and Settings each call this hook. Both read the
+  // latest change from either, so Settings waits out a setup that is still
+  // running instead of starting a second change.
   const latest = useMutationState({
     filters: { mutationKey: queryKey },
-    select: (mutation) => mutation.state,
+    select: (mutation) => ({
+      change: mutation.options.mutationKey?.at(-1),
+      state: mutation.state,
+    }),
   }).at(-1)
+  const change: AccessChange | undefined =
+    latest?.change === 'remove' ? 'remove' : latest ? 'setup' : undefined
   return {
+    userId,
     walletAddress,
     signer,
-    change,
-    busy: latest?.status === 'pending',
-    error: latest?.status === 'error' ? latest.error?.message : undefined,
+    attach,
+    remove,
+    running: latest?.state.status === 'pending' ? change : undefined,
+    failed:
+      latest?.state.status === 'error'
+        ? { change, message: latest.state.error?.message }
+        : undefined,
   }
 }
 
 /** Whether agents can pay from the wallet shown, as far as is known. */
 export function usePaymentsState():
-  'on' | 'off' | 'no-wallet' | 'loading' | 'unknown' {
+  'on' | 'off' | 'removed' | 'no-wallet' | 'loading' | 'unknown' {
   const { walletAddress } = useDashboardSession()
   const { signer } = useSignerStatus()
   if (!walletAddress) return 'no-wallet'
   if (signer.isError) return 'unknown'
   if (!signer.data) return 'loading'
+  if (signer.data.status === 'disabled') return 'removed'
   return paymentsOn(signer.data, walletAddress) ? 'on' : 'off'
 }
 
 /**
- * Turns agent payments on for a wallet that has never had them, so a newly
- * connected client can pay without the user finding a switch first. A wallet
- * the user turned off stays off.
+ * Sets up agent payments for the wallet shown whenever they are not on, so a
+ * connected client can pay without the user doing anything. Access the user
+ * removed stays removed until they set it up again in Settings.
  */
 export function useAttachPaymentSigner() {
-  const { walletAddress, signer, change } = usePaymentSigner()
-  const status = signer.data?.status
-  const attempted = useRef(false)
+  const { userId, walletAddress, signer, attach, running } = usePaymentSigner()
+  const attempted = useRef<string | null>(null)
 
   useEffect(() => {
-    // `pending` is an attach that was prepared and never finished: the user
-    // has not turned payments off, so it is picked up again.
-    if (!walletAddress || (status !== 'none' && status !== 'pending')) return
-    // One attempt per visit; a failure is retried from Settings.
-    if (attempted.current) return
-    attempted.current = true
-    change.mutate({ enable: true, address: walletAddress })
-  }, [walletAddress, status, change])
+    if (!walletAddress || !signer.data || running) return
+    if (signer.data.status === 'disabled') return
+    if (paymentsOn(signer.data, walletAddress)) return
+    // One automatic attempt per account and wallet per visit, so switching
+    // accounts sets up the new one. Settings retries a failure.
+    const attempt = `${userId}:${walletAddress}`
+    if (attempted.current === attempt) return
+    attempted.current = attempt
+    attach.mutate({ address: walletAddress, restore: false })
+  }, [userId, walletAddress, signer.data, running, attach])
 }
 
 /**
- * The wallet-wide switch for agent payments. Turning it off stops every
- * connected client at once; each client's own limit is set on the Wallet page.
+ * Whether agents can pay from the wallet. Setup runs on its own; here the
+ * user retries a failed setup, or removes LanaTools access and sets it up
+ * again. Each client's limit is set on the Wallet page.
  */
 export function AgentPayments() {
-  const { walletAddress, signer, change, busy, error } = usePaymentSigner()
+  const { walletAddress, signer, attach, remove, running, failed } =
+    usePaymentSigner()
   if (!walletAddress)
     return (
       <p className="d-empty">
-        Create your payment wallet first. Agent payments turn on with it.
+        Create your payment wallet first. Agent payments are set up with it.
       </p>
     )
   return (
     <AgentPaymentsView
       status={signer.data}
       loadFailed={signer.isError}
-      busy={busy}
-      error={error}
+      running={running}
+      failed={failed}
       walletAddress={walletAddress}
-      onChange={(enable) => change.mutate({ enable, address: walletAddress })}
+      onSetUp={() =>
+        attach.mutate({
+          address: walletAddress,
+          restore: signer.data?.status === 'disabled',
+        })
+      }
+      onRemove={() => remove.mutate(walletAddress)}
     />
   )
 }
 
 /**
- * Whether agents can pay, as one panel: the state and its switch on the left,
- * what the LanaTools signer is held to on the right.
+ * Whether agents can pay, as one panel: the state and what can be done about
+ * it on the left, what the LanaTools signer is held to on the right.
  */
 export function AgentPaymentsView({
   status,
   loadFailed,
-  busy,
-  error,
+  running,
+  failed,
   walletAddress,
-  onChange,
+  onSetUp,
+  onRemove,
 }: {
   status: PaymentSignerStatus | undefined
   loadFailed: boolean
-  busy: boolean
-  error: string | undefined
+  running: AccessChange | undefined
+  failed:
+    | { change: AccessChange | undefined; message: string | undefined }
+    | undefined
   walletAddress: string
-  onChange: (enable: boolean) => void
+  onSetUp: () => void
+  onRemove: () => void
 }) {
+  const [confirming, setConfirming] = useState(false)
   const enabled = paymentsOn(status, walletAddress)
+  const removed = status?.status === 'disabled'
+  const idle = status && !running
 
   return (
     <SplitPanel
@@ -151,8 +186,10 @@ export function AgentPaymentsView({
                 {status ? (
                   enabled ? (
                     'On'
+                  ) : removed ? (
+                    'Removed'
                   ) : (
-                    'Off'
+                    'Not set up'
                   )
                 ) : loadFailed ? (
                   '—'
@@ -161,48 +198,76 @@ export function AgentPaymentsView({
                 )}
               </p>
             </div>
-            {status ? (
+            {idle && !enabled && (
               <button
                 type="button"
-                role="switch"
-                aria-checked={enabled}
-                aria-label="Agent payments"
-                disabled={busy}
-                onClick={() => onChange(!enabled)}
-                className="relative h-[26px] w-11 shrink-0 cursor-pointer rounded-full border border-line-2 bg-panel-2 transition-colors after:absolute after:top-[3px] after:left-[3px] after:size-[18px] after:rounded-full after:bg-fg-3 after:transition-transform disabled:cursor-wait aria-checked:border-accent aria-checked:bg-accent aria-checked:after:translate-x-[18px] aria-checked:after:bg-on-accent motion-reduce:transition-none motion-reduce:after:transition-none"
-              />
-            ) : (
-              // Holds the switch's place until the saved state is known.
-              !loadFailed && (
-                <span
-                  aria-hidden="true"
-                  className="h-[26px] w-11 shrink-0 animate-pulse rounded-full bg-panel-2"
-                />
-              )
+                onClick={onSetUp}
+                className="d-btn d-btn-sm shrink-0"
+              >
+                {removed ? 'Set up again' : 'Try again'}
+              </button>
             )}
           </div>
-          <p
-            className={`mt-4 max-w-[34rem] empty:hidden ${status && !busy && !enabled ? 'text-bad' : 'text-fg-2'}`}
-          >
+          <p className="mt-4 max-w-[34rem] text-fg-2 empty:hidden">
             {!status
               ? loadFailed
                 ? ''
                 : 'Checking your wallet…'
-              : busy
-                ? enabled
-                  ? 'Turning agent payments off…'
-                  : 'Turning agent payments on…'
-                : enabled
-                  ? 'Your clients can pay from this wallet. Turn this off to stop every client at once.'
-                  : 'No client can pay, and the LanaTools signer is not on your wallet. Turn this on to let your clients pay.'}
+              : running === 'remove'
+                ? 'Removing LanaTools access…'
+                : running === 'setup'
+                  ? 'Setting up agent payments…'
+                  : enabled
+                    ? 'Your clients can pay from this wallet, each within its own limit. Disconnect a client to stop just that one.'
+                    : removed
+                      ? 'You removed LanaTools access. No client can pay, and LanaTools cannot sign from your wallet.'
+                      : 'Your clients cannot pay until the LanaTools signer is on your wallet.'}
           </p>
           <p role="alert" className="mt-2 text-[13px] text-bad empty:hidden">
             {loadFailed
               ? 'Could not load payment settings.'
-              : error
-                ? error
+              : idle && failed?.message
+                ? failed.message
                 : ''}
           </p>
+          {idle &&
+            (enabled || (removed && failed?.change === 'remove')) &&
+            (confirming && enabled ? (
+              <div className="mt-5 rounded-[10px] border border-line bg-surface px-3.5 py-3">
+                <p className="text-[13px]">
+                  Remove LanaTools access? Every client stops paying right away,
+                  and the LanaTools signer is removed from your wallet. You can
+                  set it up again later.
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    type="button"
+                    className="d-btn d-btn-sm d-btn-danger"
+                    onClick={() => {
+                      setConfirming(false)
+                      onRemove()
+                    }}
+                  >
+                    Remove access
+                  </button>
+                  <button
+                    type="button"
+                    className="d-btn d-btn-sm"
+                    onClick={() => setConfirming(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="d-btn d-btn-sm d-btn-danger-quiet mt-5"
+                onClick={() => (enabled ? setConfirming(true) : onRemove())}
+              >
+                {enabled ? 'Remove LanaTools access' : 'Try removing again'}
+              </button>
+            ))}
         </>
       }
       right={
