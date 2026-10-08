@@ -10,66 +10,83 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as DashboardRouteImport } from './routes/dashboard'
-import { Route as SignInRouteImport } from './routes/sign-in'
-import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
-import { Route as DashboardActivityRouteImport } from './routes/dashboard/activity'
-import { Route as DashboardSettingsRouteImport } from './routes/dashboard/settings'
+import { Route as AccountRouteImport } from './routes/_account'
+import { Route as AccountDashboardRouteImport } from './routes/_account/dashboard'
+import { Route as AccountSignInRouteImport } from './routes/_account/sign-in'
+import { Route as TxLinkIdRouteImport } from './routes/tx.$linkId'
+import { Route as AccountDashboardIndexRouteImport } from './routes/_account/dashboard/index'
+import { Route as AccountDashboardActivityRouteImport } from './routes/_account/dashboard/activity'
+import { Route as AccountDashboardSettingsRouteImport } from './routes/_account/dashboard/settings'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DashboardRoute = DashboardRouteImport.update({
+const AccountRoute = AccountRouteImport.update({
+  id: '/_account',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccountDashboardRoute = AccountDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AccountRoute,
 } as any)
-const SignInRoute = SignInRouteImport.update({
+const AccountSignInRoute = AccountSignInRouteImport.update({
   id: '/sign-in',
   path: '/sign-in',
+  getParentRoute: () => AccountRoute,
+} as any)
+const TxLinkIdRoute = TxLinkIdRouteImport.update({
+  id: '/tx/$linkId',
+  path: '/tx/$linkId',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DashboardIndexRoute = DashboardIndexRouteImport.update({
+const AccountDashboardIndexRoute = AccountDashboardIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => DashboardRoute,
+  getParentRoute: () => AccountDashboardRoute,
 } as any)
-const DashboardActivityRoute = DashboardActivityRouteImport.update({
-  id: '/activity',
-  path: '/activity',
-  getParentRoute: () => DashboardRoute,
-} as any)
-const DashboardSettingsRoute = DashboardSettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => DashboardRoute,
-} as any)
+const AccountDashboardActivityRoute =
+  AccountDashboardActivityRouteImport.update({
+    id: '/activity',
+    path: '/activity',
+    getParentRoute: () => AccountDashboardRoute,
+  } as any)
+const AccountDashboardSettingsRoute =
+  AccountDashboardSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => AccountDashboardRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/dashboard': typeof DashboardRouteWithChildren
-  '/sign-in': typeof SignInRoute
-  '/dashboard/activity': typeof DashboardActivityRoute
-  '/dashboard/settings': typeof DashboardSettingsRoute
-  '/dashboard/': typeof DashboardIndexRoute
+  '/dashboard': typeof AccountDashboardRouteWithChildren
+  '/sign-in': typeof AccountSignInRoute
+  '/tx/$linkId': typeof TxLinkIdRoute
+  '/dashboard/activity': typeof AccountDashboardActivityRoute
+  '/dashboard/settings': typeof AccountDashboardSettingsRoute
+  '/dashboard/': typeof AccountDashboardIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/sign-in': typeof SignInRoute
-  '/dashboard/activity': typeof DashboardActivityRoute
-  '/dashboard/settings': typeof DashboardSettingsRoute
-  '/dashboard': typeof DashboardIndexRoute
+  '/sign-in': typeof AccountSignInRoute
+  '/tx/$linkId': typeof TxLinkIdRoute
+  '/dashboard/activity': typeof AccountDashboardActivityRoute
+  '/dashboard/settings': typeof AccountDashboardSettingsRoute
+  '/dashboard': typeof AccountDashboardIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/dashboard': typeof DashboardRouteWithChildren
-  '/sign-in': typeof SignInRoute
-  '/dashboard/activity': typeof DashboardActivityRoute
-  '/dashboard/settings': typeof DashboardSettingsRoute
-  '/dashboard/': typeof DashboardIndexRoute
+  '/_account': typeof AccountRouteWithChildren
+  '/_account/dashboard': typeof AccountDashboardRouteWithChildren
+  '/_account/sign-in': typeof AccountSignInRoute
+  '/tx/$linkId': typeof TxLinkIdRoute
+  '/_account/dashboard/activity': typeof AccountDashboardActivityRoute
+  '/_account/dashboard/settings': typeof AccountDashboardSettingsRoute
+  '/_account/dashboard/': typeof AccountDashboardIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -77,6 +94,7 @@ export interface FileRouteTypes {
     | '/'
     | '/dashboard'
     | '/sign-in'
+    | '/tx/$linkId'
     | '/dashboard/activity'
     | '/dashboard/settings'
     | '/dashboard/'
@@ -84,23 +102,26 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/sign-in'
+    | '/tx/$linkId'
     | '/dashboard/activity'
     | '/dashboard/settings'
     | '/dashboard'
   id:
     | '__root__'
     | '/'
-    | '/dashboard'
-    | '/sign-in'
-    | '/dashboard/activity'
-    | '/dashboard/settings'
-    | '/dashboard/'
+    | '/_account'
+    | '/_account/dashboard'
+    | '/_account/sign-in'
+    | '/tx/$linkId'
+    | '/_account/dashboard/activity'
+    | '/_account/dashboard/settings'
+    | '/_account/dashboard/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  DashboardRoute: typeof DashboardRouteWithChildren
-  SignInRoute: typeof SignInRoute
+  AccountRoute: typeof AccountRouteWithChildren
+  TxLinkIdRoute: typeof TxLinkIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -112,64 +133,90 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/dashboard': {
-      id: '/dashboard'
+    '/_account': {
+      id: '/_account'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AccountRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_account/dashboard': {
+      id: '/_account/dashboard'
       path: '/dashboard'
       fullPath: '/dashboard'
-      preLoaderRoute: typeof DashboardRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AccountDashboardRouteImport
+      parentRoute: typeof AccountRoute
     }
-    '/sign-in': {
-      id: '/sign-in'
+    '/_account/sign-in': {
+      id: '/_account/sign-in'
       path: '/sign-in'
       fullPath: '/sign-in'
-      preLoaderRoute: typeof SignInRouteImport
+      preLoaderRoute: typeof AccountSignInRouteImport
+      parentRoute: typeof AccountRoute
+    }
+    '/tx/$linkId': {
+      id: '/tx/$linkId'
+      path: '/tx/$linkId'
+      fullPath: '/tx/$linkId'
+      preLoaderRoute: typeof TxLinkIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/dashboard/': {
-      id: '/dashboard/'
+    '/_account/dashboard/': {
+      id: '/_account/dashboard/'
       path: '/'
       fullPath: '/dashboard/'
-      preLoaderRoute: typeof DashboardIndexRouteImport
-      parentRoute: typeof DashboardRoute
+      preLoaderRoute: typeof AccountDashboardIndexRouteImport
+      parentRoute: typeof AccountDashboardRoute
     }
-    '/dashboard/activity': {
-      id: '/dashboard/activity'
+    '/_account/dashboard/activity': {
+      id: '/_account/dashboard/activity'
       path: '/activity'
       fullPath: '/dashboard/activity'
-      preLoaderRoute: typeof DashboardActivityRouteImport
-      parentRoute: typeof DashboardRoute
+      preLoaderRoute: typeof AccountDashboardActivityRouteImport
+      parentRoute: typeof AccountDashboardRoute
     }
-    '/dashboard/settings': {
-      id: '/dashboard/settings'
+    '/_account/dashboard/settings': {
+      id: '/_account/dashboard/settings'
       path: '/settings'
       fullPath: '/dashboard/settings'
-      preLoaderRoute: typeof DashboardSettingsRouteImport
-      parentRoute: typeof DashboardRoute
+      preLoaderRoute: typeof AccountDashboardSettingsRouteImport
+      parentRoute: typeof AccountDashboardRoute
     }
   }
 }
 
-interface DashboardRouteChildren {
-  DashboardActivityRoute: typeof DashboardActivityRoute
-  DashboardSettingsRoute: typeof DashboardSettingsRoute
-  DashboardIndexRoute: typeof DashboardIndexRoute
+interface AccountDashboardRouteChildren {
+  AccountDashboardActivityRoute: typeof AccountDashboardActivityRoute
+  AccountDashboardSettingsRoute: typeof AccountDashboardSettingsRoute
+  AccountDashboardIndexRoute: typeof AccountDashboardIndexRoute
 }
 
-const DashboardRouteChildren: DashboardRouteChildren = {
-  DashboardActivityRoute: DashboardActivityRoute,
-  DashboardSettingsRoute: DashboardSettingsRoute,
-  DashboardIndexRoute: DashboardIndexRoute,
+const AccountDashboardRouteChildren: AccountDashboardRouteChildren = {
+  AccountDashboardActivityRoute: AccountDashboardActivityRoute,
+  AccountDashboardSettingsRoute: AccountDashboardSettingsRoute,
+  AccountDashboardIndexRoute: AccountDashboardIndexRoute,
 }
 
-const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
-  DashboardRouteChildren,
-)
+const AccountDashboardRouteWithChildren =
+  AccountDashboardRoute._addFileChildren(AccountDashboardRouteChildren)
+
+interface AccountRouteChildren {
+  AccountDashboardRoute: typeof AccountDashboardRouteWithChildren
+  AccountSignInRoute: typeof AccountSignInRoute
+}
+
+const AccountRouteChildren: AccountRouteChildren = {
+  AccountDashboardRoute: AccountDashboardRouteWithChildren,
+  AccountSignInRoute: AccountSignInRoute,
+}
+
+const AccountRouteWithChildren =
+  AccountRoute._addFileChildren(AccountRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  DashboardRoute: DashboardRouteWithChildren,
-  SignInRoute: SignInRoute,
+  AccountRoute: AccountRouteWithChildren,
+  TxLinkIdRoute: TxLinkIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

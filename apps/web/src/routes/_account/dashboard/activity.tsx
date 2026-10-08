@@ -3,7 +3,7 @@ import { ActivityPage } from '#/components/dashboard/activity'
 import { ACTIVITY_OUTCOMES } from '#/lib/activity'
 import type { ActivityFilter } from '#/lib/activity'
 
-export const Route = createFileRoute('/dashboard/activity')({
+export const Route = createFileRoute('/_account/dashboard/activity')({
   // The filters live in the address, so a filtered view can be linked to
   // and survives a reload. Anything unrecognised is dropped.
   validateSearch: (search: Record<string, unknown>): ActivityFilter => ({

@@ -15,6 +15,11 @@ import {
   revokeGrant,
 } from './mcp-grants'
 import type { ConsentInput, GrantIdentity } from './mcp-grants'
+import {
+  createTransactionLink,
+  transactionLinkStatus,
+} from './transactions/requests'
+import type { TransactionLinkEnv } from './transactions/requests'
 import { paymentConfig } from './solana/network'
 import { callTool } from './tools/call-tool'
 import type { ProviderEnv } from './tools/providers'
@@ -28,15 +33,16 @@ export type McpTokenRevoker = {
   ) => Promise<void>
 }
 
-export type McpEnv = ProviderEnv & {
-  DB: D1Database
-  PRIVY_APP_ID: string
-  PRIVY_APP_SECRET: string
-  /** Key quorum ID of the LanaTools payment signer. */
-  PRIVY_PAYMENT_SIGNER_ID: string
-  /** That quorum's P-256 authorization key. Never leaves this Worker. */
-  PRIVY_PAYMENT_SIGNER_KEY: string
-}
+export type McpEnv = ProviderEnv &
+  TransactionLinkEnv & {
+    DB: D1Database
+    PRIVY_APP_ID: string
+    PRIVY_APP_SECRET: string
+    /** Key quorum ID of the LanaTools payment signer. */
+    PRIVY_PAYMENT_SIGNER_ID: string
+    /** That quorum's P-256 authorization key. Never leaves this Worker. */
+    PRIVY_PAYMENT_SIGNER_KEY: string
+  }
 
 export type McpDashboardEnv = McpEnv & { MCP: McpTokenRevoker }
 
@@ -137,6 +143,18 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
   /** Saves feedback from the grant's agent; false once it is revoked. */
   async sendFeedback(identity: GrantIdentity, feedback: string) {
     return saveFeedback(this.env.DB, identity, feedback)
+  }
+
+  async createTransactionLink(
+    identity: GrantIdentity,
+    name: string,
+    input: unknown,
+  ) {
+    return createTransactionLink(this.env, identity, name, input)
+  }
+
+  async transactionLinkStatus(identity: GrantIdentity, id: string) {
+    return transactionLinkStatus(this.env, identity, id)
   }
 
   /** Runs any provider tool, recording it in the client's activity. */

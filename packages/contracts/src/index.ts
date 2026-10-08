@@ -17,7 +17,7 @@ export type EarlyAccessResponse = typeof EarlyAccessResponse.infer
 /**
  * One scope per tool family. The user picks these for each client on the
  * consent screen; the scopes the client requested do not decide them.
- * Catalog tools have no scope: every connected client may search the catalog.
+ * Catalog and transaction-link tools require only an active connection.
  */
 export const TOOL_SCOPES = [
   'helius:read',
@@ -48,7 +48,7 @@ export function isMcpScope(value: string): value is McpScope {
 /**
  * A grant's scopes for the tool families the user chose, in a fixed order, or
  * null if the choice is not a set of tool families. Choosing none leaves the
- * catalog only.
+ * catalog and transaction-link tools.
  */
 export function grantScopes(toolScopes: readonly string[]): McpScope[] | null {
   if (
@@ -266,3 +266,58 @@ export const WithdrawalReceipt = type({
   confirmed: 'boolean',
 })
 export type WithdrawalReceipt = typeof WithdrawalReceipt.infer
+
+/** Fixed intent before preparation; a builder later supplies exact terms. */
+export const TransactionReview = type({
+  title: 'string',
+  description: 'string',
+  actionLabel: 'string',
+  fields: type({ label: 'string', value: 'string' }).array(),
+})
+export type TransactionReview = typeof TransactionReview.infer
+
+export const TransactionLinkStatus = type(
+  "'open' | 'preparing' | 'ready' | 'transaction_expired' | 'submitting' | 'confirmed' | 'failed' | 'expired' | 'unknown' | 'unavailable'",
+)
+export type TransactionLinkStatus = typeof TransactionLinkStatus.infer
+
+export const TransactionReceipt = type({
+  signature: 'string',
+  slot: 'string',
+  commitment: "'confirmed' | 'finalized'",
+})
+export type TransactionReceipt = typeof TransactionReceipt.infer
+
+export const PreparedTransaction = type({
+  transaction: 'string',
+  account: 'string',
+  network: "'mainnet' | 'devnet'",
+  review: TransactionReview,
+  blockhash: 'string',
+  lastValidBlockHeight: 'string',
+})
+export type PreparedTransaction = typeof PreparedTransaction.infer
+
+/** Public fields only: never creator identity, request keys or stored bytes. */
+export const TransactionLink = type({
+  id: 'string',
+  tool: 'string',
+  network: "'mainnet' | 'devnet'",
+  review: TransactionReview,
+  status: TransactionLinkStatus,
+  account: 'string | null',
+  signature: 'string | null',
+  receipt: TransactionReceipt.or('null'),
+  createdAt: 'number',
+  expiresAt: 'number',
+})
+export type TransactionLink = typeof TransactionLink.infer
+
+export const CreatedTransactionLink = type({
+  linkId: 'string',
+  reviewUrl: 'string',
+  network: "'mainnet' | 'devnet'",
+  review: TransactionReview,
+  expiresAt: 'number',
+})
+export type CreatedTransactionLink = typeof CreatedTransactionLink.infer

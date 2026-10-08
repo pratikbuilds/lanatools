@@ -1,0 +1,158 @@
+import {
+  address,
+  createClient,
+  getBase58Decoder,
+  getBase64Encoder,
+  getBase64EncodedWireTransaction,
+  getPublicKeyFromAddress,
+  getTransactionDecoder,
+  signature,
+  verifySignature,
+} from '@solana/kit'
+import type { Blockhash } from '@solana/kit'
+import { solanaRpcConnection } from '@solana/kit-plugin-rpc'
+import type {
+  PreparedTransaction,
+  TransactionReceipt,
+} from '@lanatools/contracts'
+import { PAYMENT_NETWORKS } from '../solana/network'
+
+export type TransactionRpc = {
+  genesisHash: () => Promise<string>
+  latestBlockhash: () => Promise<{
+    blockhash: Blockhash
+    lastValidBlockHeight: bigint
+  }>
+  blockHeight: (commitment?: 'confirmed' | 'finalized') => Promise<bigint>
+  send: (transaction: string) => Promise<string>
+  status: (signature: string) => Promise<{
+    err: unknown
+    slot: bigint
+    confirmationStatus: 'processed' | 'confirmed' | 'finalized' | null
+  } | null>
+}
+
+const request = () => ({ abortSignal: AbortSignal.timeout(5_000) })
+
+export function transactionRpc(url: string): TransactionRpc {
+  const { rpc } = createClient().use(solanaRpcConnection({ rpcUrl: url }))
+  return {
+    genesisHash: () => rpc.getGenesisHash().send(request()),
+    latestBlockhash: async () =>
+      (
+        await rpc
+          .getLatestBlockhash({ commitment: 'confirmed' })
+          .send(request())
+      ).value,
+    blockHeight: (commitment = 'confirmed') =>
+      rpc.getBlockHeight({ commitment }).send(request()),
+    send: (wire) =>
+      rpc
+        .sendTransaction(wire as Parameters<typeof rpc.sendTransaction>[0], {
+          encoding: 'base64',
+          preflightCommitment: 'confirmed',
+          skipPreflight: false,
+          maxRetries: 2n,
+        })
+        .send(request()),
+    status: async (value) =>
+      (
+        await rpc
+          .getSignatureStatuses([signature(value)], {
+            searchTransactionHistory: true,
+          })
+          .send(request())
+      ).value[0] ?? null,
+  }
+}
+
+export async function verifyRpcNetwork(
+  rpc: TransactionRpc,
+  network: 'mainnet' | 'devnet',
+) {
+  if ((await rpc.genesisHash()) !== PAYMENT_NETWORKS[network].genesisHash)
+    throw new Error('RPC network mismatch')
+}
+
+/** The exact persisted message is the authorization boundary, never client claims. */
+export async function verifySignedTransaction(
+  wire: string,
+  candidate: PreparedTransaction,
+) {
+  const decoder = getTransactionDecoder()
+  const encoded = getBase64Encoder().encode(wire)
+  if (encoded.length > 1232) throw new Error('Transaction exceeds packet size')
+  const signed = decoder.decode(encoded)
+  // Round-tripping rejects trailing data and noncanonical base64 encodings.
+  if (getBase64EncodedWireTransaction(signed) !== wire)
+    throw new Error('Noncanonical transaction')
+  const unsigned = decoder.decode(
+    getBase64Encoder().encode(candidate.transaction),
+  )
+  if (
+    signed.messageBytes.length !== unsigned.messageBytes.length ||
+    !signed.messageBytes.every(
+      (byte, index) => byte === unsigned.messageBytes[index],
+    )
+  )
+    throw new Error('Transaction message changed')
+  const required = Object.keys(unsigned.signatures)
+  if (
+    required.length !== 1 ||
+    required[0] !== candidate.account ||
+    Object.keys(signed.signatures).length !== required.length
+  )
+    throw new Error('Unsupported required signers')
+  for (const signer of required) {
+    const bytes = signed.signatures[address(signer)]
+    if (
+      !bytes ||
+      !(await verifySignature(
+        await getPublicKeyFromAddress(address(signer)),
+        bytes,
+        signed.messageBytes,
+      ))
+    )
+      throw new Error('Invalid required signature')
+  }
+  return getBase58Decoder().decode(
+    signed.signatures[address(candidate.account)]!,
+  )
+}
+
+export type ChainObservation =
+  | { status: 'confirmed'; receipt: TransactionReceipt }
+  | { status: 'failed' | 'unknown'; receipt: null }
+
+/** Bounded observation; RPC acceptance (or a timeout) never means confirmation. */
+export async function observeSubmission(
+  rpc: TransactionRpc,
+  transactionSignature: string,
+  options: { attempts?: number; intervalMs?: number } = {},
+): Promise<ChainObservation> {
+  const { attempts = 4, intervalMs = 750 } = options
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      const result = await rpc.status(transactionSignature)
+      if (
+        result?.confirmationStatus === 'confirmed' ||
+        result?.confirmationStatus === 'finalized'
+      ) {
+        if (result.err !== null) return { status: 'failed', receipt: null }
+        return {
+          status: 'confirmed',
+          receipt: {
+            signature: transactionSignature,
+            slot: result.slot.toString(),
+            commitment: result.confirmationStatus,
+          },
+        }
+      }
+    } catch {
+      return { status: 'unknown', receipt: null }
+    }
+    if (attempt + 1 < attempts)
+      await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+  return { status: 'unknown', receipt: null }
+}

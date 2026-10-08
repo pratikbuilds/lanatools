@@ -15,7 +15,9 @@ import { Frame } from '#/components/dashboard/frame'
 import { SolanaMark } from '#/components/dashboard/solana-mark'
 import { BrandMark } from '#/components/landing/brand'
 
-export const Route = createFileRoute('/sign-in')({ component: SignInRoute })
+export const Route = createFileRoute('/_account/sign-in')({
+  component: SignInRoute,
+})
 
 const appId = import.meta.env.VITE_PRIVY_APP_ID
 const wallets = [

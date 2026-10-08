@@ -11,6 +11,18 @@ const identity = {
   clientId: 'client-1',
 }
 const address = '11111111111111111111111111111111'
+const linkId = 'da42e012-0d1b-4f4a-92db-086c7458a93d'
+const review = {
+  title: 'Send SOL',
+  description: 'Send 0.01 SOL',
+  actionLabel: 'Review transfer',
+  fields: [{ label: 'Recipient', value: address }],
+}
+const transferInput = {
+  recipient: address,
+  amountLamports: '10000000',
+  idempotencyKey: 'request-1',
+}
 
 async function connect(
   scopes = ['helius:read'],
@@ -35,6 +47,35 @@ async function connect(
     sendFeedback: mock<ServerDependencies['api']['sendFeedback']>(
       async () => true,
     ),
+    createTransactionLink: mock<
+      ServerDependencies['api']['createTransactionLink']
+    >(async () => ({
+      ok: true,
+      result: {
+        linkId,
+        reviewUrl: `http://localhost:5173/tx/${linkId}`,
+        network: 'devnet',
+        review,
+        expiresAt: 1_900_000,
+      },
+    })),
+    transactionLinkStatus: mock<
+      ServerDependencies['api']['transactionLinkStatus']
+    >(async () => ({
+      ok: true,
+      result: {
+        id: linkId,
+        tool: 'solana_transfer',
+        network: 'devnet',
+        review,
+        status: 'open',
+        account: null,
+        signature: null,
+        receipt: null,
+        createdAt: 1_000_000,
+        expiresAt: 1_900_000,
+      },
+    })),
   }
   const revokeClient = mock<ServerDependencies['revokeClient']>(() => {})
   const server = createServer(
@@ -300,6 +341,8 @@ test('each client sees the catalog and only the tool families it was given', asy
       'list_catalog',
       'search_catalog',
       'send_feedback',
+      'solana_transfer',
+      'get_transaction_request',
       'whoami',
     ].sort(),
   )
@@ -316,6 +359,135 @@ test('each client sees the catalog and only the tool families it was given', asy
   const pay = await list(['account:read', 'payments:pay'])
   expect(pay).toContain('call')
   expect(pay).not.toContain('pay_http')
+})
+
+test('transaction links work without a new scope and preserve structured results', async () => {
+  const session = await connect([])
+  try {
+    const tools = (await session.client.listTools()).tools
+    const transfer = tools.find((tool) => tool.name === 'solana_transfer')
+    expect(transfer?.annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+    })
+    expect(transfer?.inputSchema.properties).not.toHaveProperty('network')
+    expect(transfer?.inputSchema.properties).not.toHaveProperty('account')
+
+    const created = await session.client.callTool({
+      name: 'solana_transfer',
+      arguments: transferInput,
+    })
+    expect(created.isError).not.toBe(true)
+    expect(created.structuredContent).toMatchObject({
+      linkId,
+      network: 'devnet',
+    })
+    expect(created.content).toEqual([
+      { type: 'text', text: JSON.stringify(created.structuredContent) },
+    ])
+    expect(session.api.createTransactionLink).toHaveBeenCalledWith(
+      identity,
+      'solana_transfer',
+      transferInput,
+    )
+    const status = await session.client.callTool({
+      name: 'get_transaction_request',
+      arguments: { linkId },
+    })
+    expect(status.structuredContent).toMatchObject({
+      id: linkId,
+      status: 'open',
+      signature: null,
+    })
+    expect(session.api.transactionLinkStatus).toHaveBeenCalledWith(
+      identity,
+      linkId,
+    )
+    expect(session.api.whoami).toHaveBeenCalledTimes(2)
+  } finally {
+    await session.close()
+  }
+})
+
+test('transaction tool input rejects authority and network overrides before API access', async () => {
+  const session = await connect([])
+  try {
+    for (const args of [
+      { ...transferInput, network: 'mainnet' },
+      { ...transferInput, account: address },
+      { ...transferInput, recipient: 'invalid' },
+      { ...transferInput, amountLamports: '0' },
+      { ...transferInput, amountLamports: '18446744073709551616' },
+      { ...transferInput, amountLamports: '0.01' },
+      { ...transferInput, idempotencyKey: '' },
+    ]) {
+      const result = await session.client.callTool({
+        name: 'solana_transfer',
+        arguments: args,
+      })
+      expect(result.isError).toBe(true)
+    }
+    expect(session.api.whoami).not.toHaveBeenCalled()
+    expect(session.api.createTransactionLink).not.toHaveBeenCalled()
+  } finally {
+    await session.close()
+  }
+})
+
+test('transaction tools refuse inactive or malformed connection identity', async () => {
+  for (const [active, props] of [
+    [false, identity],
+    [true, { ...identity, grantId: 'invalid' }],
+  ] as const) {
+    const session = await connect([], active, props)
+    try {
+      for (const [name, args] of [
+        ['solana_transfer', transferInput],
+        ['get_transaction_request', { linkId }],
+      ] as const) {
+        const result = await session.client.callTool({ name, arguments: args })
+        expect(result.isError).toBe(true)
+      }
+      expect(session.api.createTransactionLink).not.toHaveBeenCalled()
+      expect(session.api.transactionLinkStatus).not.toHaveBeenCalled()
+      if (!active) expect(session.revokeClient).toHaveBeenCalledWith(identity)
+    } finally {
+      await session.close()
+    }
+  }
+})
+
+test('transaction service failures are safe and API revocation still revokes the client', async () => {
+  const session = await connect([])
+  try {
+    session.api.createTransactionLink.mockImplementationOnce(async () => {
+      throw new Error('private-database-detail')
+    })
+    const failed = await session.client.callTool({
+      name: 'solana_transfer',
+      arguments: transferInput,
+    })
+    expect(failed.isError).toBe(true)
+    expect(JSON.stringify(failed)).toContain('service_unavailable')
+    expect(JSON.stringify(failed)).not.toContain('private-database-detail')
+    session.api.transactionLinkStatus.mockImplementationOnce(async () => ({
+      ok: false,
+      error: {
+        code: 'unauthorized',
+        message: 'Connection revoked',
+        retryable: false,
+      },
+    }))
+    const revoked = await session.client.callTool({
+      name: 'get_transaction_request',
+      arguments: { linkId },
+    })
+    expect(revoked.isError).toBe(true)
+    expect(session.revokeClient).toHaveBeenCalledWith(identity)
+  } finally {
+    await session.close()
+  }
 })
 
 test('catalog tools work for any active grant', async () => {

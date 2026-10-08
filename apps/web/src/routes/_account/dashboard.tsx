@@ -9,7 +9,7 @@ import { SplitPanel } from '#/components/dashboard/split-panel'
 import { NetworkStatus, PaymentStatus } from '#/components/dashboard/status-bar'
 import { getAccountName, getEmbeddedPayer } from '#/lib/payer'
 
-export const Route = createFileRoute('/dashboard')({
+export const Route = createFileRoute('/_account/dashboard')({
   component: DashboardRoute,
 })
 
