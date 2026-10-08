@@ -28,9 +28,12 @@ for (const width of [1280, 390]) {
       await expect(heading).toHaveText('Let your agents work.On Solana.')
       await expect(heading).toBeVisible()
       const original = await heading.elementHandle()
-      const form = page.getByRole('form').first()
+      await expect(
+        page.getByRole('link', { name: 'Connect your agents' }),
+      ).toHaveAttribute('href', '/sign-in')
+      const form = page.getByRole('form', { name: 'Get updates by email' })
       const input = form.getByRole('textbox', { name: 'Email address' })
-      const submit = form.getByRole('button', { name: 'Get early access' })
+      const submit = form.getByRole('button', { name: 'Get updates' })
       await expect(form).toBeVisible()
       await expect(submit).toBeDisabled()
       await input.fill('nope@')
