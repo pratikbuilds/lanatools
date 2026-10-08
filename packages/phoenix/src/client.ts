@@ -25,7 +25,18 @@ export type PhoenixOpts = {
 }
 
 export type PhoenixErrorCode =
-  'invalid_input' | 'not_found' | 'rate_limited' | 'timeout' | 'upstream_error'
+  | 'invalid_input'
+  | 'not_found'
+  | 'rate_limited'
+  | 'timeout'
+  | 'upstream_error'
+  // Trade tools only.
+  | 'not_activated'
+  | 'insufficient_funds'
+  | 'market_unavailable'
+  // A built instruction failed a safety check: a bug or an SDK change, never
+  // the caller's input. Nothing was signed.
+  | 'check_failed'
 
 export class PhoenixError extends Error {
   constructor(
