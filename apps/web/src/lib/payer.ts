@@ -22,3 +22,35 @@ function isEmbedded(wallet: SolanaWallet) {
 export function getEmbeddedPayer(user: Pick<User, 'linkedAccounts'>) {
   return user.linkedAccounts.filter(isSolanaWallet).find(isEmbedded) ?? null
 }
+
+/** The external Solana wallet the user signed in with, if any. */
+export function getSignInWallet(user: Pick<User, 'linkedAccounts'>) {
+  return (
+    user.linkedAccounts
+      .filter(isSolanaWallet)
+      .find((wallet) => !isEmbedded(wallet)) ?? null
+  )
+}
+
+/** Who is signed in: a short label, and the full name or address. */
+export type AccountName = { label: string; detail: string; wallet: boolean }
+
+/**
+ * Names who is signed in: the Google name or email, else the wallet they
+ * signed in with, shortened for tight spaces and in full where it is checked.
+ */
+export function getAccountName(
+  user: Pick<User, 'google' | 'email' | 'linkedAccounts'>,
+): AccountName | undefined {
+  const email = user.google?.email || user.email?.address
+  const name = user.google?.name || email
+  if (name) return { label: name, detail: email || name, wallet: false }
+  const wallet = getSignInWallet(user)
+  if (!wallet) return undefined
+  const { address } = wallet
+  return {
+    label: `${address.slice(0, 4)}…${address.slice(-4)}`,
+    detail: address,
+    wallet: true,
+  }
+}

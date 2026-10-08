@@ -4,7 +4,9 @@ import {
   parseClientLimit,
 } from '@lanatools/contracts'
 import type { ToolScope } from '@lanatools/contracts'
+import { WalletAddressText } from '../../web/src/components/dashboard/wallet-address'
 import { BrandMark } from '../../web/src/components/landing/brand'
+import type { AccountName } from '../../web/src/lib/payer'
 import { ToolAccess } from './permissions'
 
 const LIMIT_HINT = `Enter an amount up to ${formatUsd(MAX_CLIENT_LIMIT_MICRO_USD)}, such as 1.00.`
@@ -36,7 +38,7 @@ export function ConsentCard({
   /** False until it is known whether the user is signed in. */
   ready: boolean
   signedIn: boolean
-  account: string | undefined
+  account: AccountName | undefined
   scopes: readonly ToolScope[]
   limitUsd: string
   /** The answer being sent, while one is. */
@@ -83,22 +85,37 @@ export function ConsentCard({
               Open this page from your MCP client to connect.
             </p>
           )
-        ) : signedIn ? (
-          <p className="mt-2 text-fg-2">
-            Signed in as{' '}
-            <strong className="font-semibold break-all text-fg">
-              {account}
-            </strong>
-            .{' '}
-            <button
-              type="button"
-              className="cursor-pointer underline underline-offset-2 hover:text-fg disabled:cursor-wait"
-              disabled={sending}
-              onClick={onSwitchAccount}
+        ) : signedIn && account ? (
+          // The account the client is connected to, where it is hard to miss.
+          <div className="mt-4 flex items-start gap-3 rounded-[10px] border border-line-2 bg-surface px-3.5 py-3">
+            <span
+              aria-hidden="true"
+              className="grid size-9 shrink-0 place-items-center rounded-full bg-fg font-mono text-[14px] font-bold text-panel max-sm:hidden"
             >
-              Use another account
-            </button>
-          </p>
+              {account.label[0]?.toUpperCase()}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="d-label">Signed in as</p>
+              <p
+                title={account.detail}
+                className="mt-1 font-mono text-[15px] font-semibold break-all text-fg"
+              >
+                {account.wallet ? (
+                  <WalletAddressText walletAddress={account.detail} compact />
+                ) : (
+                  account.detail
+                )}
+              </p>
+              <button
+                type="button"
+                className="d-btn d-btn-sm mt-2.5 disabled:cursor-wait max-sm:h-10 max-sm:w-full"
+                disabled={sending}
+                onClick={onSwitchAccount}
+              >
+                Use another account
+              </button>
+            </div>
+          </div>
         ) : (
           ready && (
             <p className="mt-2 text-fg-2">
@@ -125,12 +142,12 @@ export function ConsentCard({
                 <>
                   <label className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[13px] text-fg-2">
                     Can spend up to
-                    <span className="flex h-9 items-center gap-1 rounded-[8px] border border-line-2 bg-surface px-2.5 font-mono text-[14px] font-semibold text-fg has-aria-invalid:border-bad has-focus-visible:border-accent">
+                    <span className="d-limit-field flex h-9 items-center gap-1 rounded-[8px] border border-line-2 bg-surface px-2.5 font-mono text-[14px] font-semibold text-fg">
                       <span aria-hidden="true" className="text-fg-3">
                         $
                       </span>
                       <input
-                        className="w-[5.25rem] bg-transparent outline-none"
+                        className="d-limit-input w-[5.25rem] bg-transparent"
                         inputMode="decimal"
                         autoComplete="off"
                         value={limitUsd}

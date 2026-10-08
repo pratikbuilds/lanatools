@@ -1,7 +1,9 @@
 import { Link } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import type { AccountName } from '#/lib/payer'
 import { Frame } from './frame'
+import { WalletAddressText } from './wallet-address'
 
 // Navigation holds destinations only. Wallet data lives on the pages.
 const DESTINATIONS = [
@@ -17,7 +19,7 @@ export function DashboardShell({
 }: {
   /** Who is signed in; left out while that is still being checked. */
   session?: {
-    account: string | undefined
+    account: AccountName | undefined
     onSignOut: () => void
     signOutFailed: boolean
   }
@@ -69,7 +71,7 @@ export function AccountMenu({
   onSignOut,
   signOutFailed,
 }: {
-  account: string | undefined
+  account: AccountName | undefined
   onSignOut: () => void
   signOutFailed: boolean
 }) {
@@ -101,7 +103,7 @@ export function AccountMenu({
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={account ? `Account, ${account}` : 'Account'}
+        aria-label={account ? `Account, ${account.detail}` : 'Account'}
         onClick={() => setOpen(!open)}
         className="d-hdr-pill pr-2 pl-1 focus-visible:outline-lime sm:pr-3"
       >
@@ -109,11 +111,11 @@ export function AccountMenu({
           aria-hidden="true"
           className="grid size-6 place-items-center rounded-full bg-paper text-[12px] font-bold text-ink"
         >
-          {account?.[0]?.toUpperCase() ?? '?'}
+          {account?.label[0]?.toUpperCase() ?? '?'}
         </span>
         {account && (
           <span className="hidden max-w-[12rem] truncate lg:block">
-            {account}
+            {account.label}
           </span>
         )}
         <span
@@ -129,7 +131,15 @@ export function AccountMenu({
           {account && (
             <>
               <p className="d-label">Signed in as</p>
-              <p className="mt-1 mb-3.5 font-semibold break-words">{account}</p>
+              <p
+                className={`mt-1 mb-3.5 font-semibold ${account.wallet ? 'font-mono text-[12.5px] break-all' : 'break-words'}`}
+              >
+                {account.wallet ? (
+                  <WalletAddressText walletAddress={account.detail} />
+                ) : (
+                  account.detail
+                )}
+              </p>
             </>
           )}
           <button

@@ -6,15 +6,17 @@ import { useMcpClients } from './use-mcp-clients'
 
 const LABELS = {
   on: 'Agent payments on',
-  off: 'Agent payments off',
+  off: 'Agent payments not set up',
+  removed: 'LanaTools access removed',
   'no-wallet': 'No payment wallet yet',
   loading: 'Agent payments…',
   unknown: 'Payment status unavailable',
 }
-// Only a wallet the user turned off is a warning; the rest is neutral.
+// A wallet agents cannot pay from is a warning; the rest is neutral.
 const STATES = {
   on: 'live',
   off: 'full',
+  removed: 'full',
   'no-wallet': 'idle',
   loading: 'idle',
   unknown: 'idle',

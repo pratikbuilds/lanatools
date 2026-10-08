@@ -13,6 +13,7 @@ import type {
 } from '@privy-io/react-auth'
 import { Frame } from '#/components/dashboard/frame'
 import { SolanaMark } from '#/components/dashboard/solana-mark'
+import { BrandMark } from '#/components/landing/brand'
 
 export const Route = createFileRoute('/sign-in')({ component: SignInRoute })
 
@@ -50,7 +51,13 @@ function GoogleMark() {
   )
 }
 
-function Page({ children }: { children: ReactNode }) {
+function Page({
+  children,
+  card = true,
+}: {
+  children: ReactNode
+  card?: boolean
+}) {
   return (
     <Frame
       actions={
@@ -78,12 +85,16 @@ function Page({ children }: { children: ReactNode }) {
       // The card is narrow, so the art can come in close around it.
       artColumn={560}
     >
-      <section
-        aria-label="Sign in"
-        className="d-card w-full max-w-[30rem] px-5 py-6 sm:px-9 sm:py-9"
-      >
-        {children}
-      </section>
+      {card ? (
+        <section
+          aria-label="Sign in"
+          className="d-card w-full max-w-[30rem] px-5 py-6 sm:px-9 sm:py-9"
+        >
+          {children}
+        </section>
+      ) : (
+        children
+      )}
     </Frame>
   )
 }
@@ -167,15 +178,22 @@ function SignIn() {
   }
 
   // Signed-in users belong on the dashboard, including right after sign-in.
-  if (authenticated) return <Navigate to="/dashboard" replace />
-
-  const disabled = !ready || googleBusy || walletBusy
+  // This page stays up while the dashboard loads, instead of a blank one.
+  if (authenticated)
+    return (
+      <>
+        <Navigate to="/dashboard" replace />
+        <Preparing label="Opening your dashboard" />
+      </>
+    )
+  // Until Privy knows whether the visitor is signed in, showing the form
+  // would flash it before the dashboard for one who already is.
+  if (!ready) return <Preparing label="Preparing sign-in" />
 
   return (
     <Page>
       <SignInForm
-        disabled={disabled}
-        loading={!ready}
+        disabled={googleBusy || walletBusy}
         message={message}
         onGoogle={() => void signInWithGoogle()}
         onWallet={chooseWallet}
@@ -184,15 +202,27 @@ function SignIn() {
   )
 }
 
+/** Carries on from the boot screen until Privy is ready. */
+function Preparing({ label }: { label: string }) {
+  return (
+    <Page card={false}>
+      <div role="status" className="grid justify-items-center gap-[22px]">
+        <span className="animate-pulse motion-reduce:animate-none">
+          <BrandMark size={64} />
+        </span>
+        <p className="d-label">{label}</p>
+      </div>
+    </Page>
+  )
+}
+
 function SignInForm({
   disabled,
-  loading = false,
   message,
   onGoogle,
   onWallet,
 }: {
   disabled: boolean
-  loading?: boolean
   message: string
   onGoogle?: () => void
   onWallet?: (id?: WalletListEntry) => void
@@ -261,11 +291,6 @@ function SignInForm({
       <p role="alert" className="mt-3 text-[12.5px] text-bad empty:hidden">
         {message}
       </p>
-      {loading && (
-        <p role="status" className="mt-3 font-mono text-[12px] text-fg-3">
-          Preparing sign-in…
-        </p>
-      )}
     </>
   )
 }

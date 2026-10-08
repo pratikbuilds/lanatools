@@ -316,7 +316,7 @@ export function ConnectFirstClient({
         <div className="d-pane">
           <p className="d-label">No clients yet</p>
           <h3 className="mt-3 font-mono text-[1.25rem] font-semibold tracking-[-0.03em]">
-            Connect your first client
+            Let’s bring in your first agent
           </h3>
           <p className="mt-2 max-w-[30rem] text-fg-2">
             Give Grok bot, Codex, Claude, Cursor or any MCP client one URL, or

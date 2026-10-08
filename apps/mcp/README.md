@@ -159,13 +159,15 @@ returned whole: as text when they are UTF-8, otherwise base64
 
 ### Server signer
 
-The dashboard's **Agent payments** switch adds the LanaTools key quorum to the
-user's embedded wallet through Privy's `addSigners`, with a user-owned override
+The dashboard adds the LanaTools key quorum to the user's embedded wallet on
+its own, through Privy's `addSigners`, with a user-owned override
 policy that allows only USDC `TransferChecked` plus Compute Budget and Memo
 instructions. The policy sets no amount; each client's limit in D1 bounds what
 it can spend. The API enables payments only after Privy
-reports that signer and policy on the wallet. Turning it off disables payments
-in D1 first, then removes the wallet's signers.
+reports that signer and policy on the wallet. If Privy already has the signer
+with another policy, the dashboard replaces it. There is no on/off switch.
+"Remove LanaTools access" in Settings disables payments in D1 first, then
+removes the wallet's signers; only the user sets it up again.
 
 The API signs through an in-repo Kit signer over `@privy-io/node`
 (`privy-signer.ts`). `@solana/keychain-privy` cannot run on Workers: its HTTP

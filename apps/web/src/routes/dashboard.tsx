@@ -7,7 +7,7 @@ import { DashboardSessionProvider } from '#/components/dashboard/session'
 import { DashboardShell } from '#/components/dashboard/shell'
 import { SplitPanel } from '#/components/dashboard/split-panel'
 import { NetworkStatus, PaymentStatus } from '#/components/dashboard/status-bar'
-import { getEmbeddedPayer } from '#/lib/payer'
+import { getAccountName, getEmbeddedPayer } from '#/lib/payer'
 
 export const Route = createFileRoute('/dashboard')({
   component: DashboardRoute,
@@ -32,8 +32,14 @@ function Dashboard() {
 
   if (!ready) return <Loading />
   // Signing out ends at home; any other signed-out visit goes to sign-in.
+  // The loading frame stays up while that page loads, instead of a blank one.
   if (!authenticated || !user) {
-    return <Navigate to={signingOut ? '/' : '/sign-in'} replace />
+    return (
+      <>
+        <Navigate to={signingOut ? '/' : '/sign-in'} replace />
+        <Loading />
+      </>
+    )
   }
 
   async function signOut() {
@@ -58,8 +64,7 @@ function Dashboard() {
       <PaymentSetup />
       <DashboardShell
         session={{
-          account:
-            user.google?.name || user.google?.email || user.email?.address,
+          account: getAccountName(user),
           onSignOut: () => void signOut(),
           signOutFailed,
         }}

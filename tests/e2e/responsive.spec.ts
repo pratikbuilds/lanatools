@@ -107,7 +107,7 @@ for (const width of [320, 390, 640, 768, 1024, 1440]) {
     await page.getByRole('button', { name: 'Close', exact: true }).click()
     await page.getByRole('link', { name: 'Settings', exact: true }).click()
     await expect(
-      page.getByRole('switch', { name: 'Agent payments' }),
+      page.getByRole('heading', { name: 'Agent payments' }),
     ).toBeVisible()
     await fitsPage(page)
     expect(errors).toEqual([])
@@ -121,7 +121,7 @@ test('empty client setup and short-screen dialogs fit a small phone', async ({
   await mockDashboard(page, true)
   await page.goto(`${dashboardURL}/dashboard`)
   await expect(
-    page.getByText('Connect your first client', { exact: true }),
+    page.getByText('Let’s bring in your first agent', { exact: true }),
   ).toBeVisible()
   await fitsPage(page)
   await page

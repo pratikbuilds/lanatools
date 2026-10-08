@@ -19,6 +19,10 @@ const app = (
   </QueryClientProvider>
 )
 
+// Route pages are split into their own chunks. Rendering before the page's
+// chunk arrives would swap the boot screen for a blank page.
+await router.load()
+
 const appId = import.meta.env.VITE_PRIVY_APP_ID
 ReactDOM.createRoot(rootElement).render(
   appId ? (

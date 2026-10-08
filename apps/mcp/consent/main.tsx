@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { z } from 'zod'
 import { DEFAULT_TOOL_SCOPES } from '@lanatools/contracts'
 import type { ToolScope } from '@lanatools/contracts'
+import { getAccountName } from '../../web/src/lib/payer'
 import { ConsentCard } from './consent-card'
 import { SideField } from '../../web/src/components/dashboard/side-field'
 import { useTheme } from '../../web/src/components/dashboard/theme'
@@ -90,11 +91,14 @@ function Connect() {
     }
   }
 
-  const account =
-    user?.google?.email ||
-    user?.email?.address ||
-    user?.wallet?.address ||
-    user?.id
+  // A user with no Google, email or sign-in wallet is named by their ID.
+  const account = user
+    ? (getAccountName(user) ?? {
+        label: user.id,
+        detail: user.id,
+        wallet: false,
+      })
+    : undefined
 
   return (
     <div

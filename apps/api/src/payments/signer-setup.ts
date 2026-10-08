@@ -16,6 +16,26 @@ export class SignerSetupError extends Error {
   override readonly name = 'SignerSetupError'
 }
 
+/** Privy does not show the signer on the wallet with the current policy. */
+export class SignerNotAttachedError extends SignerSetupError {}
+
+/** Whether a stored policy allows USDC transfers on the configured network. */
+async function policyAllowsMint(
+  privy: PrivyClient,
+  policyId: string,
+  usdcMint: string,
+) {
+  const policy = await privy.policies().get(policyId)
+  return policy.rules.some((rule) =>
+    rule.conditions.some(
+      (condition) =>
+        'field' in condition &&
+        condition.field === 'TransferChecked.mint' &&
+        condition.value === usdcMint,
+    ),
+  )
+}
+
 /**
  * The Privy wallet ID of `walletAddress` if it is one of the user's own
  * Solana wallets, else undefined. Privy's word, not the browser's.
@@ -62,11 +82,14 @@ export async function prepareSigner(
     walletAddress,
     signerId,
     network,
+    restore,
   }: {
     userId: string
     walletAddress: string
     signerId: string
     network: PaymentNetwork
+    /** The user asked to set up again after removing LanaTools access. */
+    restore: boolean
   },
   now = Date.now(),
 ): Promise<PaymentSignerGrant> {
@@ -80,11 +103,32 @@ export async function prepareSigner(
     .from(paymentSigner)
     .where(eq(paymentSigner.privyUserId, userId))
     .get()
-  // A setup that is unfinished or already on (say, from another tab) keeps
-  // its policy and status. Turning payments on again after they were turned
-  // off creates a fresh policy, so a wallet never keeps older rules.
-  if (existing?.walletId === walletId && existing.status !== 'disabled')
+  // Access the user removed comes back only when they ask, so the automatic
+  // setup in a stale tab cannot undo a removal.
+  if (existing?.status === 'disabled' && !restore)
+    throw new SignerSetupError(
+      'You removed LanaTools access. Set it up again in Settings.',
+    )
+  // Setup for the same wallet keeps its policy, whether it is unfinished,
+  // already on (say, from another tab), or set up again after a removal. A
+  // signer left on the wallet then still matches, so setup can always finish.
+  // A policy for another network's USDC is replaced instead.
+  if (
+    existing?.walletId === walletId &&
+    (await policyAllowsMint(privy, existing.policyId, network.usdcMint))
+  ) {
+    if (existing.status === 'disabled')
+      await db
+        .update(paymentSigner)
+        .set({ status: 'pending', updatedAt: now })
+        .where(
+          and(
+            eq(paymentSigner.privyUserId, userId),
+            eq(paymentSigner.status, 'disabled'),
+          ),
+        )
     return { signerId, policyIds: [existing.policyId] }
+  }
 
   const policy = await privy.policies().create({
     name: 'LanaTools agent payments',
@@ -127,10 +171,29 @@ export async function prepareSigner(
     status: 'pending' as const,
     updatedAt: now,
   }
-  await db
-    .insert(paymentSigner)
-    .values({ privyUserId: userId, ...row })
-    .onConflictDoUpdate({ target: paymentSigner.privyUserId, set: row })
+  // Only the row read above is replaced: a removal or another setup during
+  // the Privy calls wins, so a stale tab cannot undo it.
+  const saved = existing
+    ? await db
+        .update(paymentSigner)
+        .set(row)
+        .where(
+          and(
+            eq(paymentSigner.privyUserId, userId),
+            eq(paymentSigner.policyId, existing.policyId),
+            eq(paymentSigner.status, existing.status),
+          ),
+        )
+        .returning({ userId: paymentSigner.privyUserId })
+    : await db
+        .insert(paymentSigner)
+        .values({ privyUserId: userId, ...row })
+        .onConflictDoNothing()
+        .returning({ userId: paymentSigner.privyUserId })
+  if (saved.length === 0)
+    throw new SignerSetupError(
+      'LanaTools access was removed or set up again meanwhile. Try again.',
+    )
   return { signerId, policyIds: [policy.id] }
 }
 
@@ -152,6 +215,10 @@ export async function confirmSigner(
     .where(eq(paymentSigner.privyUserId, userId))
     .get()
   if (!row) throw new SignerSetupError('Set up payments first')
+  if (row.status === 'disabled')
+    throw new SignerSetupError(
+      'You removed LanaTools access. Set it up again in Settings.',
+    )
   const wallet = await privy.wallets().get(row.walletId)
   const attached = wallet.additional_signers.some(
     (signer) =>
@@ -160,10 +227,10 @@ export async function confirmSigner(
       signer.override_policy_ids[0] === row.policyId,
   )
   if (!attached)
-    throw new SignerSetupError(
+    throw new SignerNotAttachedError(
       'Privy does not show the LanaTools signer on this wallet yet',
     )
-  // Only the setup that was checked can be enabled: a turn-off or a new setup
+  // Only the setup that was checked can be enabled: a removal or a new setup
   // since the read above wins.
   const [enabled] = await db
     .update(paymentSigner)
@@ -178,14 +245,15 @@ export async function confirmSigner(
     .returning({ walletAddress: paymentSigner.walletAddress })
   if (!enabled)
     throw new SignerSetupError(
-      'Payments were turned off or set up again meanwhile. Try again.',
+      'LanaTools access was removed or set up again meanwhile. Try again.',
     )
   return { status: 'enabled', walletAddress: enabled.walletAddress }
 }
 
 /**
- * The wallet-wide emergency stop. Every payment checks this row inside its
- * reservation, so no client can start a payment after it returns.
+ * Removes LanaTools access, the user's wallet-wide stop. Every payment checks
+ * this row inside its reservation, so no client can start a payment after it
+ * returns. The dashboard then removes the signer from the wallet.
  */
 export async function disableSigner(
   database: D1Database,
