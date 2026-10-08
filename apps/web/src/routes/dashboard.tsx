@@ -32,8 +32,14 @@ function Dashboard() {
 
   if (!ready) return <Loading />
   // Signing out ends at home; any other signed-out visit goes to sign-in.
+  // The loading frame stays up while that page loads, instead of a blank one.
   if (!authenticated || !user) {
-    return <Navigate to={signingOut ? '/' : '/sign-in'} replace />
+    return (
+      <>
+        <Navigate to={signingOut ? '/' : '/sign-in'} replace />
+        <Loading />
+      </>
+    )
   }
 
   async function signOut() {

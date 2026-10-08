@@ -51,15 +51,6 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:ital,wght@0,400..800;1,400..700&display=swap"
     />
-  </head>
-  <body>
-    <!--
-      THESIS: one line. Every agent converges into a single URL, passes your toolkit's checks, and fans out to the tools. The page is a poster around that diagram; it refuses product screenshots and card grids.
-      OWN-WORLD: drenched Klein blue with paper counter-sections; boxes with 1.5px ink borders and hard offset shadows; JetBrains Mono for everything; lime for money in motion and the primary action, coral for a denied call.
-      STORY: a Solana power user sees what their agents can do through one connection and what stops a call, then pastes one URL.
-      FIRST VIEWPORT: headline at poster scale, one paragraph, one action; the animated flow diagram fills the width below.
-    -->
-    <div id="app"></div>
     <!--
       Boot screen for the app pages. Sign-in and the dashboard wait on a
       large bundle; until React renders, this paints the same frame they use
@@ -67,7 +58,13 @@
       onto the app instead of the landing page's blue. React replaces it.
     -->
     <style>
+      /* The HTML holds the prerendered landing page. On an app page it stays
+         hidden until the boot screen below replaces it. */
+      html[data-boot-pending] #app {
+        visibility: hidden;
+      }
       /* Keep the theme through React startup until a page main is mounted. */
+      html[data-boot-pending] body,
       html[data-boot] body:has(.boot),
       html[data-boot] body:not(:has(#app main)) {
         margin: 0;
@@ -259,12 +256,16 @@
       }
     </style>
     <script>
+      // Runs before the body paints, so an app page never shows the
+      // prerendered landing page first.
       ;(function () {
         var path = location.pathname
-        var signIn = path === '/sign-in' || path.indexOf('/sign-in/') === 0
-        var dashboard =
-          path === '/dashboard' || path.indexOf('/dashboard/') === 0
-        if (!signIn && !dashboard) return
+        var app =
+          path === '/sign-in' ||
+          path.indexOf('/sign-in/') === 0 ||
+          path === '/dashboard' ||
+          path.indexOf('/dashboard/') === 0
+        if (!app) return
 
         // The dashboard's theme: the visitor's pick, else the system's.
         var theme
@@ -277,6 +278,25 @@
             : 'light'
         }
         document.documentElement.setAttribute('data-boot', theme)
+        document.documentElement.setAttribute('data-boot-pending', '')
+      })()
+    </script>
+  </head>
+  <body>
+    <!--
+      THESIS: one line. Every agent converges into a single URL, passes your toolkit's checks, and fans out to the tools. The page is a poster around that diagram; it refuses product screenshots and card grids.
+      OWN-WORLD: drenched Klein blue with paper counter-sections; boxes with 1.5px ink borders and hard offset shadows; JetBrains Mono for everything; lime for money in motion and the primary action, coral for a denied call.
+      STORY: a Solana power user sees what their agents can do through one connection and what stops a call, then pastes one URL.
+      FIRST VIEWPORT: headline at poster scale, one paragraph, one action; the animated flow diagram fills the width below.
+    -->
+    <div id="app"></div>
+    <script>
+      ;(function () {
+        // The script in the head marked app pages.
+        if (!document.documentElement.hasAttribute('data-boot')) return
+        var signIn =
+          location.pathname === '/sign-in' ||
+          location.pathname.indexOf('/sign-in/') === 0
 
         function mark(size, className) {
           return (
@@ -307,6 +327,7 @@
           '<footer class="boot-bar"><span><i aria-hidden="true"></i>' +
           (signIn ? 'Securing access' : 'Checking your account') +
           '</span></footer></div>'
+        document.documentElement.removeAttribute('data-boot-pending')
       })()
     </script>
     <script type="module" src="/src/main.tsx"></script>
