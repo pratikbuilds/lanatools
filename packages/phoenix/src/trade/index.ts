@@ -5,10 +5,18 @@
  */
 import { activateAccount } from './tools/activate'
 import { deposit } from './tools/deposit'
+import { limitOrder } from './tools/limit-order'
+import { marketOrder } from './tools/market-order'
 import { withdraw } from './tools/withdraw'
 
 /** Phoenix trade tools, in the order an agent usually needs them. */
-export const phoenixTrade = [activateAccount, deposit, withdraw] as const
+export const phoenixTrade = [
+  activateAccount,
+  deposit,
+  marketOrder,
+  limitOrder,
+  withdraw,
+] as const
 
 export { LANATOOLS_REFERRAL_CODE } from './tools/activate'
 export { defineTradeTool, runTradeTool } from './tool'

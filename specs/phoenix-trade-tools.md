@@ -1,6 +1,6 @@
 # Phoenix trade tools: tech spec
 
-Status: Phase 2 (account and collateral tools) built 2026-10-08, waiting for review.
+Status: Phase 3 (order tools) built 2026-10-08, waiting for review.
 Background: [research-phoenix-transactions.md](research-phoenix-transactions.md).
 
 ## 1. Goal and scope
@@ -215,10 +215,14 @@ an error, never a warning.
   - Phase 2 changed this rule. It used to say "the wallet must sign some
     instruction", which wrongly refused a registered-but-not-activated wallet:
     its activation's only instruction lists the wallet nowhere.
-- Order instructions:
-  - The decoded side, size and price limit match what `prepare` computed.
-  - The reduce-only flag matches.
+- Order instructions (`checkOrder`, any of market, limit or post-only):
+  - Every decoded field matches what `prepare` computed: kind, side, price,
+    size, minimum fill, expiry, reduce-only, slide, and cancel-existing.
   - **The price limit is never null.**
+  - Post-only orders never slide, and no order cancels resting orders on a
+    failed margin check.
+- Market accounts: the spline account Phoenix's API names must equal Rise's
+  derivation from the market account; otherwise nothing is built.
 
 Decoding uses Rise's codecs through `rise.ts`.
 
@@ -305,20 +309,22 @@ the login: it moves no funds and works either way.
 
 | | |
 |---|---|
-| **Input** | `wallet`, `symbol`, `side` (`buy`/`sell`), `size`, exactly one of `maxSlippageBps` or `limitPrice`, with no default (**D1**), `reduceOnly?` |
-| **Reads** | Market (lot decimals, tick size, status), order book, trader state |
-| **Builds** | `orderPackets.buildMarketOrderPacket({ side, baseUnits, priceLimitUsd, lastValidSlot: observed slot + 16 (D2), orderFlags })`, then `ixs.buildPlaceMarketOrder({ authority, symbol, orderPacket, traderPdaIndex: 0, traderSubaccountIndex: 0 })` |
-| **Fill rule** | **D4**: partial fills allowed (`minBaseLotsToFill: 1`). The result never says "filled"; the caller reads the position afterwards to see what filled. |
-| **Details** | Limit price, estimated notional at the best price, estimated taker fee (3.5 bps from market data) |
+| **Input** | `wallet`, `symbol`, `side` (`buy`/`sell`), `size` (tokens), exactly one of `maxSlippageBps` (integer, 0–9999) or `limitPrice`, with no default (**D1**), `reduceOnly` (default false) |
+| **Reads** | The market config (`/v1/view/exchange/market/{symbol}`: market and spline accounts, tick size, lot decimals, taker fee, status, isolated-only), the book, exchange keys, the current slot, and activation on chain |
+| **Refuses** | Markets not `active`, isolated-only markets (9 today, e.g. GOLD; these tools trade cross margin only), an empty side of the book, and sizes off the lot grid |
+| **Builds** | Rise `buildPlaceMarketOrderIxResolved` with our own packet. The price limit is set from the best opposite price plus slippage, or from `limitPrice`, with buy rounding down and sell rounding up. It expires at the observed slot + 16 (**D2**), self-trades abort, and `cancelExisting` is false. |
+| **Fill rule** | **D4**: partial fills allowed (`minBaseLotsToFill: 1`). Rise's own packet builder defaults to all-or-nothing, so we set it. If nothing fills, Phoenix fails the transaction ("IOC order does not meet minimum requirements"), which the simulation shows. |
+| **Details** | Limit price, best price, estimated notional and taker fee at the best price, expiry slot, reduce-only |
+| **Warning** | A limit beyond the best opposite price: "this order will not fill now". |
 
 ### 5.4 `phoenix_limit_order`
 
 | | |
 |---|---|
-| **Input** | `wallet`, `symbol`, `side`, `size`, `price`, `postOnly?`, `reduceOnly?` |
-| **Builds** | `buildPlacePostOnlyOrder` when `postOnly`, otherwise `buildPlaceLimitOrder`. No expiry: limit orders rest until filled or cancelled (**D2** covers IOC orders only). |
-| **Warning** | Shown when the price crosses the book and the order isn't post-only: "This limit order will fill immediately as a taker." |
-| **Details** | The order ID cannot be known until the order lands. The script reads it afterwards from `phoenix_get_account`. |
+| **Input** | `wallet`, `symbol`, `side`, `size`, `price`, `postOnly` (default false), `reduceOnly` (default false) |
+| **Builds** | Rise `buildPlacePostOnlyOrderIxResolved` (never slides) when `postOnly`, otherwise `buildPlaceLimitOrderIxResolved` (self-trades cancel the resting order). No expiry: limit orders rest until filled or cancelled (**D2** covers IOC orders only). |
+| **Warnings** | A price that crosses the book: a limit order "will fill at once as a taker instead of resting"; a post-only order "Phoenix will reject this". |
+| **Details** | Tick-rounded price, notional, best opposite price. The order ID is not known until the order lands; the script reads it afterwards from `phoenix_get_account`. |
 
 ### 5.5 `phoenix_cancel_orders`
 
@@ -458,6 +464,34 @@ phase on this branch.
   - The decoded packet matches the input.
 - **Check (D7):** mainnet simulation, nothing signed.
 - **Exit:** both tools pass the checks; market orders can never be built without a price limit.
+- **Result (2026-10-08):**
+  - `phoenix_market_order` and `phoenix_limit_order`, Rise's resolved order
+    builders, a generic `checkOrder`, and shared inputs and reads
+    (`tools/shared.ts`). Deposit now uses the shared activation check.
+  - 8 new tests (84 in the package), all passing. The package typecheck and
+    lint are clean. Repo: `bun run typecheck` passes and `bun run test`
+    passes (456).
+  - **D7 mainnet simulations, nothing signed:**
+
+    | Order | Wallet | Result |
+    |---|---|---|
+    | Market buy 0.01 SOL, 50 bps | `DuyJ…` | fills, 479k CU |
+    | Market buy 300 kBONK, 100 bps (negative lot decimals) | `DuyJ…` | fills, 402k CU |
+    | Market sell 0.01 SOL, limit $500 | `DuyJ…` | warned "will not fill now"; Phoenix rejects the unfilled IOC |
+    | Post-only buy 0.01 SOL at $50 | `DuyJ…` / `4WWb…` | rests, 913k / 208k CU |
+    | Post-only buy crossing the book | `DuyJ…` | warned; Phoenix rejects ("would cross the book") |
+    | Limit buy just above the best ask | `4WWb…` | fills, 221k CU |
+    | Limit sell at $999.995 | `DuyJ…` | rests at $1000 (rounded up), 913k CU |
+    | Both slippage and limit, off-grid size, GOLD (isolated-only) | — | `invalid_input`, `invalid_input`, `market_unavailable` |
+
+  - **Finding: very heavy accounts.** `DuyJ…` holds 76 open positions in its
+    cross account. Its crossing limit orders run Phoenix out of program memory
+    ("memory allocation failed"), even for 0.01 SOL. The same order works for
+    `4WWb…`. This is Phoenix's limit, not our builder, and the simulation
+    shows it before anything is signed. No change made. A heap-frame request
+    could help such accounts later; neither Rise nor solOS uses one.
+  - Compute varies about fourfold with the account (208k–913k for the same
+    resting order), which again supports measuring it (D5).
 
 ### Phase 4: cancel and close
 

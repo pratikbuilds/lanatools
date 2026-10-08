@@ -5,11 +5,11 @@ import {
   EMBER_PROGRAM,
   MAX_POSITIONS,
   PHOENIX_PROGRAM,
-  decodeMarketOrder,
+  decodeOrder,
   decodeRegisterTrader,
   isOnboardTraderDelegated,
 } from './rise'
-import type { MarketOrderPacket } from './rise'
+import type { OrderPacket } from './rise'
 
 /**
  * Checks every instruction a trade tool built before it becomes a
@@ -73,28 +73,28 @@ export function checkInstructions(
 }
 
 /**
- * Decodes a market order instruction and compares it with what the tool
+ * Decodes an order instruction and compares every field with what the tool
  * meant to build. An order without a price limit never passes: Phoenix would
  * fill it at any price.
  */
-export function checkMarketOrder(
-  instruction: Instruction,
-  expected: MarketOrderPacket,
-) {
+export function checkOrder(instruction: Instruction, expected: OrderPacket) {
   if (instruction.programAddress !== PHOENIX_PROGRAM)
     fail('the order is not a Phoenix instruction')
   const packet = instruction.data
-    ? decodeMarketOrder(Uint8Array.from(instruction.data))
+    ? decodeOrder(Uint8Array.from(instruction.data))
     : null
-  if (!packet) fail('the order is not a market order')
+  if (!packet) fail('the instruction is not a Phoenix order')
   if (packet.priceInTicks === null) fail('the order has no price limit')
   for (const field of [
+    'kind',
     'side',
     'priceInTicks',
     'numBaseLots',
     'minBaseLotsToFill',
     'lastValidSlot',
     'reduceOnly',
+    'slide',
+    'cancelExisting',
   ] as const)
     if (packet[field] !== expected[field])
       fail(`the order's ${field} does not match the request`)

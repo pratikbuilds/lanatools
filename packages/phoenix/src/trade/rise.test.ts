@@ -22,7 +22,7 @@ import {
   PHOENIX_PROGRAM,
   activationOf,
   activationTransaction,
-  decodeMarketOrder,
+  decodeOrder,
   depositInstructions,
   toInstruction,
   traderAccountAddress,
@@ -69,19 +69,22 @@ test('an unknown role or address from Rise is refused', () => {
 })
 
 test('a real Rise market order decodes to its packet', () => {
-  expect(decodeMarketOrder(MARKET_ORDER_DATA)).toEqual({
+  expect(decodeOrder(MARKET_ORDER_DATA)).toEqual({
+    kind: 'market',
     side: 'sell',
     priceInTicks: 10050n,
     numBaseLots: 3n,
     minBaseLotsToFill: 3n,
     lastValidSlot: 123n,
     reduceOnly: true,
+    slide: false,
+    cancelExisting: false,
   })
 })
 
-test('data that is not a market order decodes to null', () => {
-  expect(decodeMarketOrder(new Uint8Array(8))).toBeNull()
-  expect(decodeMarketOrder(MARKET_ORDER_DATA.slice(0, 20))).toBeNull()
+test('data that is not an order decodes to null', () => {
+  expect(decodeOrder(new Uint8Array(8))).toBeNull()
+  expect(decodeOrder(MARKET_ORDER_DATA.slice(0, 20))).toBeNull()
 })
 
 const programsOf = (instructions: Instruction[]) =>

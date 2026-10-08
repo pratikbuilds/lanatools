@@ -227,3 +227,30 @@ export function registerTraderData({
 export const ONBOARD_DATA = Uint8Array.from(
   getOnboardTraderDelegatedEncoder().encode(undefined),
 )
+
+/** GET /v1/view/exchange/market/SOL on 2026-10-08, trimmed. */
+export const SOL_MARKET = {
+  symbol: 'SOL',
+  marketStatus: 'active',
+  marketPubkey: '71Si24E4uc3oCaPbPZTozC1ptSNNqygjjebxSmErSsC2',
+  splinePubkey: 'EVhkquLbfm5rDRXtZu9FoyDSXX5mYq2EYU6yD8zfKEqM',
+  tickSize: 100,
+  baseLotsDecimals: 2,
+  takerFee: 0.00035,
+  makerFee: 0.00005,
+  isolatedOnly: false,
+}
+
+/** A SOL book whose best bid is 115.15 and best ask 115.16. */
+export const SOL_BOOK = {
+  symbol: 'SOL',
+  mid: 115.155,
+  bids: [
+    [115.15, 87.59],
+    [115.1, 386.37],
+  ],
+  asks: [
+    [115.2, 284.43],
+    [115.16, 157.09],
+  ],
+}

@@ -5,15 +5,10 @@ import { Wallet } from '../../tool'
 import { usdc } from '../../units'
 import { fetchAccount, tokenBalance } from '../chain'
 import { toUSDCUnits } from '../price'
-import {
-  PHOENIX_PROGRAM,
-  activationOf,
-  depositInstructions,
-  traderAccountAddress,
-  usdcAccountAddress,
-} from '../rise'
+import { depositInstructions, usdcAccountAddress } from '../rise'
 import { ExchangeKeys } from '../schemas'
 import { defineTradeTool } from '../tool'
+import { requireActivated } from './shared'
 
 /** A USDC amount as the agent types it. */
 export const USDCAmount = z
@@ -32,23 +27,11 @@ export const deposit = defineTradeTool({
   async prepare({ phoenix, rpc }, input) {
     const wallet = address(input.wallet)
     const amount = toUSDCUnits(input.amount)
-    const [traderAccount, usdcAccount] = await Promise.all([
-      traderAccountAddress(wallet),
-      usdcAccountAddress(wallet),
-    ])
-    const [trader, held, keys] = await Promise.all([
-      fetchAccount(rpc, traderAccount),
-      fetchAccount(rpc, usdcAccount),
+    const [held, keys] = await Promise.all([
+      usdcAccountAddress(wallet).then((account) => fetchAccount(rpc, account)),
       phoenix.get('/v1/view/exchange/keys', ExchangeKeys),
+      requireActivated({ phoenix, rpc }, wallet),
     ])
-    if (
-      trader?.owner !== PHOENIX_PROGRAM ||
-      activationOf(trader.data) !== 'activated'
-    )
-      throw new PhoenixError(
-        'not_activated',
-        'This wallet has no activated Phoenix account; call phoenix_activate_account first',
-      )
     const balance = tokenBalance(held)
     if (amount > balance)
       throw new PhoenixError(

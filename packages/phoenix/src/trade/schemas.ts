@@ -47,3 +47,18 @@ export const ActivationResponse = z.object({
   signature: z.string().nullish(),
   trader_pda: z.string(),
 })
+
+/** GET /v1/view/exchange/market/{symbol}: what an order needs. */
+export const OrderMarket = z.object({
+  symbol: z.string(),
+  marketStatus: z.string(),
+  marketPubkey: Address,
+  splinePubkey: Address,
+  tickSize: z
+    .union([z.number().int().positive(), z.string().regex(/^[1-9]\d*$/)])
+    .transform(BigInt),
+  baseLotsDecimals: z.number().int(),
+  takerFee: z.number().nonnegative(),
+  isolatedOnly: z.boolean(),
+})
+export type OrderMarket = z.infer<typeof OrderMarket>

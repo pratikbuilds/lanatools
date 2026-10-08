@@ -110,6 +110,17 @@ function toTicks(price: Fraction, market: MarketUnits, rounding: Rounding) {
   return ticks
 }
 
+/**
+ * The exact USD price of a tick count:
+ * ticks × tickSize × 10^baseLotsDecimals / 10^6.
+ */
+export function ticksToPrice(ticks: bigint, market: MarketUnits) {
+  return fromLots(
+    (ticks * market.tickSize).toString(),
+    QUOTE_LOTS_DECIMALS - market.baseLotsDecimals,
+  )
+}
+
 /** Ticks for a USD price the caller gave. */
 export function priceToTicks(
   price: string,

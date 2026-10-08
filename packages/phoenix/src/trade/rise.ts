@@ -5,19 +5,29 @@ import {
   PHOENIX_GLOBAL_CONFIGURATION_ADDRESS,
   PHOENIX_LOG_AUTHORITY_ADDRESS,
   PHOENIX_PROGRAM_ADDRESS,
+  SelfTradeBehavior,
   Side,
   USDC_MINT_ADDRESS,
+  baseLots,
   buildDepositIxsResolved,
+  buildPlaceLimitOrderIxResolved,
+  buildPlaceMarketOrderIxResolved,
+  buildPlacePostOnlyOrderIxResolved,
   buildReferralActivationTransaction,
   buildWithdrawIxsResolved,
   decodeTrader,
   getEmberVaultAddress,
   getOnboardTraderDelegatedEncoder,
+  getPhoenixSplineCollectionAddress,
   getPhoenixTraderSubaccountAddress,
   getPhoenixTraderTokenAccountAddress,
+  getPlaceLimitOrderDecoder,
   getPlaceMarketOrderDecoder,
+  getPlacePostOnlyOrderDecoder,
   getRegisterTraderInstructionDecoder,
   hasReferralActivationCapabilities,
+  quoteLots,
+  ticks,
 } from '@ellipsis-labs/rise'
 import type {
   ActiveTraderBufferAddressArray,
@@ -28,6 +38,7 @@ import type {
   GlobalTraderIndexArenaAddress,
   GlobalTraderIndexHeaderAddress,
   GlobalVaultAddress,
+  MarketAddress,
   MintAddress,
   PerpAssetMapAddress,
   WithdrawQueueAddress,
@@ -93,36 +104,82 @@ export function toInstruction(instruction: RiseInstruction): Instruction {
   }
 }
 
-/** The fields of a market order packet that the safety checks compare. */
-export type MarketOrderPacket = {
+export type OrderKind = 'market' | 'limit' | 'post_only'
+
+/** The fields of an order packet that the safety checks compare. */
+export type OrderPacket = {
+  kind: OrderKind
   side: 'buy' | 'sell'
-  /** null means no price limit at all. */
+  /** null means no price limit at all; only market orders can say so. */
   priceInTicks: bigint | null
   numBaseLots: bigint
-  minBaseLotsToFill: bigint
+  /** Market orders only: the least that must fill; null otherwise. */
+  minBaseLotsToFill: bigint | null
   lastValidSlot: bigint | null
   reduceOnly: boolean
+  /** Post-only orders only: move to the top of the book instead of failing. */
+  slide: boolean
+  /** Cancel resting orders instead of failing a margin check. */
+  cancelExisting: boolean
 }
 
-/**
- * Reads a `PlaceMarketOrder` instruction's data, or returns null when the
- * data is not that instruction.
- */
-export function decodeMarketOrder(data: Uint8Array): MarketOrderPacket | null {
-  let packet
+const sideOf = (side: Side) => (side === Side.Bid ? 'buy' : 'sell')
+const isReduceOnly = (flags: number) => (flags & OrderFlags.ReduceOnly) !== 0
+
+function tryDecode<T>(decode: () => T) {
   try {
-    packet = getPlaceMarketOrderDecoder().decode(data)
+    return decode()
   } catch {
     return null
   }
-  return {
-    side: packet.side === Side.Bid ? 'buy' : 'sell',
-    priceInTicks: packet.priceInTicks,
-    numBaseLots: packet.numBaseLots,
-    minBaseLotsToFill: packet.minBaseLotsToFill,
-    lastValidSlot: packet.lastValidSlot,
-    reduceOnly: (packet.orderFlags & OrderFlags.ReduceOnly) !== 0,
-  }
+}
+
+/**
+ * Reads a `PlaceMarketOrder`, `PlaceLimitOrder` or `PlacePostOnlyOrder`
+ * instruction's data, or returns null when it is none of them. Each decoder
+ * checks its own discriminator.
+ */
+export function decodeOrder(data: Uint8Array): OrderPacket | null {
+  const market = tryDecode(() => getPlaceMarketOrderDecoder().decode(data))
+  if (market)
+    return {
+      kind: 'market',
+      side: sideOf(market.side),
+      priceInTicks: market.priceInTicks,
+      numBaseLots: market.numBaseLots,
+      minBaseLotsToFill: market.minBaseLotsToFill,
+      lastValidSlot: market.lastValidSlot,
+      reduceOnly: isReduceOnly(market.orderFlags),
+      slide: false,
+      cancelExisting: market.cancelExisting,
+    }
+  const limit = tryDecode(() => getPlaceLimitOrderDecoder().decode(data))
+  if (limit)
+    return {
+      kind: 'limit',
+      side: sideOf(limit.side),
+      priceInTicks: limit.priceInTicks,
+      numBaseLots: limit.numBaseLots,
+      minBaseLotsToFill: null,
+      lastValidSlot: limit.lastValidSlot,
+      reduceOnly: isReduceOnly(limit.orderFlags),
+      slide: false,
+      cancelExisting: limit.cancelExisting,
+    }
+  const postOnly = tryDecode(() => getPlacePostOnlyOrderDecoder().decode(data))
+  if (postOnly)
+    return {
+      kind: 'post_only',
+      side: sideOf(postOnly.side),
+      priceInTicks: postOnly.priceInTicks,
+      numBaseLots: postOnly.numBaseLots,
+      minBaseLotsToFill: null,
+      lastValidSlot: postOnly.lastValidSlot,
+      reduceOnly: isReduceOnly(postOnly.orderFlags),
+      slide: postOnly.slide,
+      cancelExisting: postOnly.cancelExisting,
+    }
+  return null
 }
 
 /** The wallet's default cross-margin trader account (PDA 0, subaccount 0). */
@@ -328,5 +385,129 @@ export function isOnboardTraderDelegated(data: Uint8Array) {
   return (
     data.length === expected.length &&
     data.every((byte, index) => byte === expected[index])
+  )
+}
+
+/** The market accounts an order names, from Phoenix's market config. */
+export type OrderMarket = { marketPubkey: string; splinePubkey: string }
+
+async function orderContext(
+  wallet: Address,
+  keys: ExchangeKeys,
+  market: OrderMarket,
+) {
+  const exchange = exchangeAccounts(keys)
+  const marketAddress = brand<MarketAddress>(market.marketPubkey)
+  const [splineCollection, traderAccount] = await Promise.all([
+    getPhoenixSplineCollectionAddress(marketAddress, PHOENIX_PROGRAM_ADDRESS),
+    getPhoenixTraderSubaccountAddress({
+      authority: brand<Authority>(wallet),
+      traderPdaIndex: 0,
+      subaccountIndex: 0,
+      phoenixProgramAddress: PHOENIX_PROGRAM_ADDRESS,
+    }),
+  ])
+  // The spline account derives from the market; Phoenix's API must agree.
+  if (splineCollection !== market.splinePubkey)
+    throw new PhoenixError(
+      'check_failed',
+      "Phoenix's market accounts do not match the pinned Rise SDK; nothing was built",
+    )
+  return {
+    exchange: {
+      phoenixProgramAddress: exchange.phoenixProgramAddress,
+      logAuthorityAddress: exchange.logAuthorityAddress,
+      globalConfigurationAddress: exchange.globalConfigurationAddress,
+      perpAssetMap: exchange.perpAssetMap,
+      globalTraderIndex: exchange.globalTraderIndex,
+      activeTraderBuffer: exchange.activeTraderBuffer,
+    },
+    market: { marketAddress, splineCollection },
+    trader: { authority: brand<Authority>(wallet), traderAccount },
+  }
+}
+
+export type OrderRequest = {
+  side: 'buy' | 'sell'
+  priceInTicks: bigint
+  numBaseLots: bigint
+  reduceOnly: boolean
+}
+
+const flagsFor = (order: OrderRequest) =>
+  order.reduceOnly ? OrderFlags.ReduceOnly : OrderFlags.None
+const riseSide = (order: OrderRequest) =>
+  order.side === 'buy' ? Side.Bid : Side.Ask
+
+/**
+ * An immediate-or-cancel order with a price limit. Partial fills are
+ * allowed (at least one lot); it expires at `lastValidSlot`. Self-trades
+ * abort, as Rise's market orders do.
+ */
+export async function marketOrderInstruction(
+  wallet: Address,
+  keys: ExchangeKeys,
+  market: OrderMarket,
+  order: OrderRequest & { lastValidSlot: bigint },
+) {
+  return toInstruction(
+    buildPlaceMarketOrderIxResolved({
+      ...(await orderContext(wallet, keys, market)),
+      orderPacket: {
+        side: riseSide(order),
+        priceInTicks: ticks(order.priceInTicks),
+        numBaseLots: baseLots(order.numBaseLots),
+        numQuoteLots: null,
+        minBaseLotsToFill: baseLots(MIN_FILL_LOTS),
+        minQuoteLotsToFill: quoteLots(1n),
+        selfTradeBehavior: SelfTradeBehavior.Abort,
+        matchLimit: null,
+        clientOrderId: 0n,
+        lastValidSlot: order.lastValidSlot,
+        orderFlags: flagsFor(order),
+        cancelExisting: false,
+      },
+    }),
+  )
+}
+
+/** Market orders may fill partly, down to one lot (D4). */
+export const MIN_FILL_LOTS = 1n
+
+/**
+ * A resting limit order with no expiry. Post-only orders never slide: one
+ * that would cross the book fails instead of moving to a worse price.
+ * Self-trades cancel the resting order, as Rise's limit orders do.
+ */
+export async function limitOrderInstruction(
+  wallet: Address,
+  keys: ExchangeKeys,
+  market: OrderMarket,
+  order: OrderRequest & { postOnly: boolean },
+) {
+  const context = await orderContext(wallet, keys, market)
+  const common = {
+    side: riseSide(order),
+    priceInTicks: ticks(order.priceInTicks),
+    numBaseLots: baseLots(order.numBaseLots),
+    clientOrderId: 0n,
+    lastValidSlot: null,
+    orderFlags: flagsFor(order),
+    cancelExisting: false,
+  }
+  return toInstruction(
+    order.postOnly
+      ? buildPlacePostOnlyOrderIxResolved({
+          ...context,
+          orderPacket: { ...common, slide: false },
+        })
+      : buildPlaceLimitOrderIxResolved({
+          ...context,
+          orderPacket: {
+            ...common,
+            selfTradeBehavior: SelfTradeBehavior.CancelProvide,
+            matchLimit: null,
+          },
+        }),
   )
 }

@@ -4,7 +4,7 @@ import {
   ASSOCIATED_TOKEN_PROGRAM,
   checkActivation,
   checkInstructions,
-  checkMarketOrder,
+  checkOrder,
 } from './checks'
 import {
   ONBOARD_DATA,
@@ -19,12 +19,15 @@ const SYSTEM_PROGRAM = address('11111111111111111111111111111111')
 const COMPUTE_BUDGET = address('ComputeBudget111111111111111111111111111111')
 
 const expected = {
+  kind: 'market',
   side: 'buy',
   priceInTicks: 11573n,
   numBaseLots: 10n,
   minBaseLotsToFill: 1n,
   lastValidSlot: 1_000n,
   reduceOnly: false,
+  slide: false,
+  cancelExisting: false,
 } as const
 
 test('instructions the wallet signs, on trade programs, pass', () => {
@@ -93,13 +96,13 @@ test('check failures are check_failed errors that say nothing was signed', () =>
 
 test('a market order that matches the request passes', () => {
   expect(() =>
-    checkMarketOrder(phoenixInstruction(marketOrderData()), expected),
+    checkOrder(phoenixInstruction(marketOrderData()), expected),
   ).not.toThrow()
 })
 
 test('a market order without a price limit never passes', () => {
   expect(() =>
-    checkMarketOrder(
+    checkOrder(
       phoenixInstruction(marketOrderData({ priceInTicks: null })),
       expected,
     ),
@@ -116,16 +119,16 @@ test('a market order that differs from the request fails', () => {
     [{ reduceOnly: true }, 'reduceOnly'],
   ] as const)
     expect(() =>
-      checkMarketOrder(phoenixInstruction(marketOrderData(fields)), expected),
+      checkOrder(phoenixInstruction(marketOrderData(fields)), expected),
     ).toThrow(`the order's ${field} does not match the request`)
 })
 
 test('an instruction that is not a Phoenix market order fails', () => {
-  expect(() => checkMarketOrder(phoenixInstruction(), expected)).toThrow(
-    'the order is not a market order',
+  expect(() => checkOrder(phoenixInstruction(), expected)).toThrow(
+    'the instruction is not a Phoenix order',
   )
   expect(() =>
-    checkMarketOrder(
+    checkOrder(
       phoenixInstruction(marketOrderData(), {
         program: ASSOCIATED_TOKEN_PROGRAM,
       }),
