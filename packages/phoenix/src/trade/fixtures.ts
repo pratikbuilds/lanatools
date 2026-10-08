@@ -5,6 +5,7 @@ import {
   baseLots,
   getOnboardTraderDelegatedEncoder,
   getPlaceMarketOrderEncoder,
+  getPlacePostOnlyOrderEncoder,
   getRegisterTraderInstructionEncoder,
   quoteLots,
   ticks,
@@ -47,6 +48,8 @@ type OrderFields = {
   minLots?: bigint
   lastValidSlot?: bigint | null
   reduceOnly?: boolean
+  selfTradeBehavior?: SelfTradeBehavior
+  cancelExisting?: boolean
 }
 
 /** Market order data encoded by Rise: by default buy 10 lots, partial fills. */
@@ -58,6 +61,8 @@ export function marketOrderData(fields: OrderFields = {}) {
     minLots = 1n,
     lastValidSlot = 1_000n,
     reduceOnly = false,
+    selfTradeBehavior = SelfTradeBehavior.Abort,
+    cancelExisting = false,
   } = fields
   return Uint8Array.from(
     getPlaceMarketOrderEncoder().encode({
@@ -67,11 +72,27 @@ export function marketOrderData(fields: OrderFields = {}) {
       numQuoteLots: null,
       minBaseLotsToFill: baseLots(minLots),
       minQuoteLotsToFill: quoteLots(1n),
-      selfTradeBehavior: SelfTradeBehavior.Abort,
+      selfTradeBehavior,
       matchLimit: null,
       clientOrderId: 0n,
       lastValidSlot,
       orderFlags: reduceOnly ? OrderFlags.ReduceOnly : OrderFlags.None,
+      cancelExisting,
+    }),
+  )
+}
+
+/** Post-only order data encoded by Rise: by default buy 10 lots at 11573. */
+export function postOnlyData({ slide = false } = {}) {
+  return Uint8Array.from(
+    getPlacePostOnlyOrderEncoder().encode({
+      side: Side.Bid,
+      priceInTicks: ticks(11573n),
+      numBaseLots: baseLots(10n),
+      clientOrderId: 0n,
+      slide,
+      lastValidSlot: null,
+      orderFlags: OrderFlags.None,
       cancelExisting: false,
     }),
   )
@@ -125,6 +146,16 @@ export const ONBOARDER = address(PERMISSION.trader_onboarder)
 export const TRADER_ACCOUNT_DATA = Uint8Array.from(
   getBase64Encoder().encode(traderAccount.data),
 )
+
+/**
+ * The same account registered but not activated: its capability flags
+ * (u32 at byte 96) without the can-deposit bit (16).
+ */
+export const REGISTERED_TRADER_ACCOUNT_DATA = (() => {
+  const data = TRADER_ACCOUNT_DATA.slice()
+  data[96] = (data[96] ?? 0) & ~16
+  return data
+})()
 
 /** An RPC `getAccountInfo` value in base64. */
 export function accountInfo(

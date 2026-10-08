@@ -4,8 +4,8 @@ import { PhoenixError } from '../../client'
 import { Orderbook } from '../../schemas'
 import { MarketSymbol, forMarket } from '../../tool'
 import { fetchAccount } from '../chain'
-import { decimalString } from '../price'
-import type { Side } from '../price'
+import { bookTicks } from '../price'
+import type { MarketUnits, Side } from '../price'
 import { PHOENIX_PROGRAM, activationOf, traderAccountAddress } from '../rise'
 import { OrderMarket } from '../schemas'
 import type { TradeContext } from '../tool'
@@ -74,22 +74,59 @@ export async function tradableMarket(
   return market
 }
 
-/** The best price on the side an order of `side` would take from. */
-export async function bestPrice(
+/** A market's tick grid. */
+export const unitsOf = (market: OrderMarket): MarketUnits => ({
+  tickSize: market.tickSize,
+  baseLotsDecimals: market.baseLotsDecimals,
+})
+
+/**
+ * The best price, in ticks, on the side an order of `side` would take from:
+ * the lowest ask for a buy, the highest bid for a sell. Null when that side
+ * of the book is empty.
+ */
+export async function bestTicks(
   { phoenix }: TradeContext,
-  symbol: string,
+  market: OrderMarket,
   side: Side,
 ) {
-  const book = await forMarket(symbol, () =>
-    phoenix.get(`/v1/view/orderbook/${encodeURIComponent(symbol)}`, Orderbook),
+  const book = await forMarket(market.symbol, () =>
+    phoenix.get(
+      `/v1/view/orderbook/${encodeURIComponent(market.symbol)}`,
+      Orderbook,
+    ),
   )
-  const prices = (side === 'buy' ? book.asks : book.bids).map(
-    ([price]) => price,
+  const levels = (side === 'buy' ? book.asks : book.bids).map(([price]) =>
+    bookTicks(price, unitsOf(market)),
   )
-  if (prices.length === 0) return null
-  return decimalString(
-    side === 'buy' ? Math.min(...prices) : Math.max(...prices),
+  if (levels.length === 0) return null
+  return levels.reduce((best, level) =>
+    side === 'buy'
+      ? level < best
+        ? level
+        : best
+      : level > best
+        ? level
+        : best,
   )
 }
+
+/**
+ * How a summary names an order on a perps market: a sell that is not
+ * reduce-only opens or adds to a short, which "sell" alone does not say.
+ */
+export function orderVerb(side: Side, reduceOnly: boolean) {
+  if (reduceOnly)
+    return side === 'buy'
+      ? 'buy to reduce a short position'
+      : 'sell to reduce a long position'
+  return side === 'buy' ? 'buy (long)' : 'sell (short)'
+}
+
+/** USD to the cent, for notional. */
+export const usd = (value: number) => value.toFixed(2)
+
+/** USD to six places, for fees too small to show in cents. */
+export const fineUsd = (value: number) => Number(value.toFixed(6)).toString()
 
 export { MarketSymbol }

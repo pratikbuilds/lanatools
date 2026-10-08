@@ -1,6 +1,7 @@
 import {
   AccountRole,
   appendTransactionMessageInstructions,
+  compileTransaction,
   createNoopSigner,
   createTransactionMessage,
   generateKeyPairSigner,
@@ -28,35 +29,56 @@ const REFERRAL: Submit = {
 async function walletSigned() {
   const wallet = await generateKeyPairSigner()
   const onboarder = createNoopSigner(ONBOARDER)
-  const signed = await partiallySignTransactionMessageWithSigners(
-    pipe(
-      createTransactionMessage({ version: 0 }),
-      (message) => setTransactionMessageFeePayerSigner(wallet, message),
-      (message) =>
-        setTransactionMessageLifetimeUsingBlockhash(
-          { blockhash: BLOCKHASH, lastValidBlockHeight: 500n },
-          message,
-        ),
-      (message) =>
-        appendTransactionMessageInstructions(
-          [
-            {
-              programAddress: PHOENIX_PROGRAM,
-              accounts: [
-                {
-                  address: ONBOARDER,
-                  role: AccountRole.READONLY_SIGNER,
-                  signer: onboarder,
-                },
-              ],
-            },
-          ],
-          message,
-        ),
-    ),
+  const message = pipe(
+    createTransactionMessage({ version: 0 }),
+    (draft) => setTransactionMessageFeePayerSigner(wallet, draft),
+    (draft) =>
+      setTransactionMessageLifetimeUsingBlockhash(
+        { blockhash: BLOCKHASH, lastValidBlockHeight: 500n },
+        draft,
+      ),
+    (draft) =>
+      appendTransactionMessageInstructions(
+        [
+          {
+            programAddress: PHOENIX_PROGRAM,
+            accounts: [
+              {
+                address: ONBOARDER,
+                role: AccountRole.READONLY_SIGNER,
+                signer: onboarder,
+              },
+            ],
+          },
+        ],
+        draft,
+      ),
   )
+  const signed = await partiallySignTransactionMessageWithSigners(message)
   return {
     wallet: wallet.address,
+    prepared: getBase64EncodedWireTransaction(compileTransaction(message)),
+    transaction: getBase64EncodedWireTransaction(signed),
+    signature: getSignatureFromTransaction(signed),
+  }
+}
+
+/** A wallet-only transaction for the RPC route, fully signed. */
+async function rpcSigned() {
+  const wallet = await generateKeyPairSigner()
+  const message = pipe(
+    createTransactionMessage({ version: 0 }),
+    (draft) => setTransactionMessageFeePayerSigner(wallet, draft),
+    (draft) =>
+      setTransactionMessageLifetimeUsingBlockhash(
+        { blockhash: BLOCKHASH, lastValidBlockHeight: 500n },
+        draft,
+      ),
+  )
+  const signed = await partiallySignTransactionMessageWithSigners(message)
+  return {
+    wallet: wallet.address,
+    prepared: getBase64EncodedWireTransaction(compileTransaction(message)),
     transaction: getBase64EncodedWireTransaction(signed),
     signature: getSignatureFromTransaction(signed),
   }
@@ -71,7 +93,7 @@ const confirmed = () =>
   })
 
 test('a referral activation logs in, then Phoenix submits it', async () => {
-  const { wallet, transaction, signature } = await walletSigned()
+  const { wallet, prepared, transaction, signature } = await walletSigned()
   const phoenix = fakePhoenix({
     '/v1/auth/login/wallet': SESSION,
     '/v1/referral/activate-tx': {
@@ -84,7 +106,12 @@ test('a referral activation logs in, then Phoenix submits it', async () => {
   const { rpc, calls } = confirmed()
   expect(
     await submitSignedTransaction(
-      { wallet, lastValidBlockHeight: '500', submit: REFERRAL },
+      {
+        wallet,
+        transaction: prepared,
+        lastValidBlockHeight: '500',
+        submit: REFERRAL,
+      },
       { transaction, loginSignature: 'login-signature' },
       { rpc, fetch: phoenix.fetch, intervalMs: 0 },
     ),
@@ -120,11 +147,16 @@ test('a referral activation logs in, then Phoenix submits it', async () => {
 })
 
 test('without the login signature nothing is sent', async () => {
-  const { wallet, transaction } = await walletSigned()
+  const { wallet, prepared, transaction } = await walletSigned()
   const phoenix = fakePhoenix({})
   await expect(
     submitSignedTransaction(
-      { wallet, lastValidBlockHeight: '500', submit: REFERRAL },
+      {
+        wallet,
+        transaction: prepared,
+        lastValidBlockHeight: '500',
+        submit: REFERRAL,
+      },
       { transaction },
       { rpc: fakeRpc({}).rpc, fetch: phoenix.fetch },
     ),
@@ -133,11 +165,16 @@ test('without the login signature nothing is sent', async () => {
 })
 
 test('a failed login sends nothing', async () => {
-  const { wallet, transaction, signature } = await walletSigned()
+  const { wallet, prepared, transaction, signature } = await walletSigned()
   const phoenix = fakePhoenix({ '/v1/auth/login/wallet': 401 })
   expect(
     await submitSignedTransaction(
-      { wallet, lastValidBlockHeight: '500', submit: REFERRAL },
+      {
+        wallet,
+        transaction: prepared,
+        lastValidBlockHeight: '500',
+        submit: REFERRAL,
+      },
       { transaction, loginSignature: 'bad' },
       { rpc: fakeRpc({}).rpc, fetch: phoenix.fetch },
     ),
@@ -152,14 +189,19 @@ test('a failed login sends nothing', async () => {
 })
 
 test('a lost answer from Phoenix is unknown: it may have submitted', async () => {
-  const { wallet, transaction, signature } = await walletSigned()
+  const { wallet, prepared, transaction, signature } = await walletSigned()
   const phoenix = fakePhoenix({
     '/v1/auth/login/wallet': SESSION,
     '/v1/referral/activate-tx': 502,
   })
   expect(
     await submitSignedTransaction(
-      { wallet, lastValidBlockHeight: '500', submit: REFERRAL },
+      {
+        wallet,
+        transaction: prepared,
+        lastValidBlockHeight: '500',
+        submit: REFERRAL,
+      },
       { transaction, loginSignature: 'login-signature' },
       { rpc: fakeRpc({}).rpc, fetch: phoenix.fetch },
     ),
@@ -172,10 +214,15 @@ test('a lost answer from Phoenix is unknown: it may have submitted', async () =>
 })
 
 test('Phoenix reporting another state or transaction is never success', async () => {
-  const { wallet, transaction, signature } = await walletSigned()
+  const { wallet, prepared, transaction, signature } = await walletSigned()
   const answer = (body: Record<string, unknown>) =>
     submitSignedTransaction(
-      { wallet, lastValidBlockHeight: '500', submit: REFERRAL },
+      {
+        wallet,
+        transaction: prepared,
+        lastValidBlockHeight: '500',
+        submit: REFERRAL,
+      },
       { transaction, loginSignature: 'login-signature' },
       {
         rpc: fakeRpc({}).rpc,
@@ -199,19 +246,69 @@ test('Phoenix reporting another state or transaction is never success', async ()
   ).toMatchObject({ status: 'unknown', signature })
 })
 
-test('a transaction for the RPC is sent there, and must be fully signed', async () => {
-  const { wallet, transaction } = await walletSigned()
+test('a transaction for the RPC route is sent there once and watched', async () => {
+  const { wallet, prepared, transaction, signature } = await rpcSigned()
   const phoenix = fakePhoenix({})
+  const { rpc, calls } = fakeRpc({
+    sendTransaction: () => signature,
+    getSignatureStatuses: () => ({
+      value: [{ confirmationStatus: 'confirmed', err: null }],
+    }),
+  })
+  expect(
+    await submitSignedTransaction(
+      {
+        wallet,
+        transaction: prepared,
+        lastValidBlockHeight: '500',
+        submit: { via: 'rpc' },
+      },
+      { transaction },
+      { rpc, fetch: phoenix.fetch, intervalMs: 0 },
+    ),
+  ).toEqual({ status: 'confirmed', signature })
+  expect(calls.map(([method]) => method)).toEqual([
+    'sendTransaction',
+    'getSignatureStatuses',
+  ])
+  expect(phoenix.requests).toEqual([])
+})
+
+test('the RPC route needs every signature', async () => {
+  const { wallet, prepared, transaction } = await walletSigned()
   // The onboarder has not signed, so the RPC route refuses it.
   await expect(
     submitSignedTransaction(
-      { wallet, lastValidBlockHeight: '500', submit: { via: 'rpc' } },
+      {
+        wallet,
+        transaction: prepared,
+        lastValidBlockHeight: '500',
+        submit: { via: 'rpc' },
+      },
       { transaction },
-      { rpc: fakeRpc({}).rpc, fetch: phoenix.fetch },
+      { rpc: fakeRpc({}).rpc, fetch: fakePhoenix({}).fetch },
     ),
   ).rejects.toMatchObject({
     code: 'invalid_input',
-    message: 'The transaction is not a fully signed Solana transaction',
+    message: 'The transaction is not fully signed; nothing was sent',
   })
+})
+
+test('Phoenix is never asked to submit anything but the prepared transaction', async () => {
+  const { wallet, prepared } = await walletSigned()
+  const other = await walletSigned()
+  const phoenix = fakePhoenix({})
+  await expect(
+    submitSignedTransaction(
+      {
+        wallet,
+        transaction: prepared,
+        lastValidBlockHeight: '500',
+        submit: REFERRAL,
+      },
+      { transaction: other.transaction, loginSignature: 'login-signature' },
+      { rpc: fakeRpc({}).rpc, fetch: phoenix.fetch },
+    ),
+  ).rejects.toMatchObject({ code: 'invalid_input' })
   expect(phoenix.requests).toEqual([])
 })

@@ -4,6 +4,7 @@ import { PhoenixError } from '../../client'
 import { Wallet } from '../../tool'
 import { usdc } from '../../units'
 import { fetchAccount, tokenBalance } from '../chain'
+import { checkCollateral } from '../checks'
 import { toUSDCUnits } from '../price'
 import { depositInstructions, usdcAccountAddress } from '../rise'
 import { ExchangeKeys } from '../schemas'
@@ -39,10 +40,12 @@ export const deposit = defineTradeTool({
         `The wallet holds ${usdc(balance.toString())} USDC, less than ${usdc(amount.toString())}`,
       )
 
+    const instructions = await depositInstructions(wallet, keys, amount)
+    checkCollateral(instructions, { kind: 'deposit', amount })
     return {
       kind: 'instructions',
       wallet,
-      instructions: await depositInstructions(wallet, keys, amount),
+      instructions,
       summary: `Deposit ${usdc(amount.toString())} USDC into the Phoenix cross-margin account`,
       details: {
         amountUsdc: usdc(amount.toString()),

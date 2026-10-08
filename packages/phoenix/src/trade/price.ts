@@ -16,7 +16,7 @@ export type MarketUnits = {
 }
 
 export type Side = 'buy' | 'sell'
-export type Rounding = 'down' | 'up'
+export type Rounding = 'down' | 'up' | 'nearest'
 
 type Fraction = { numerator: bigint; denominator: bigint }
 
@@ -46,6 +46,8 @@ function parseDecimal(value: string, field: string): Fraction {
 }
 
 function divide(numerator: bigint, denominator: bigint, rounding: Rounding) {
+  if (rounding === 'nearest')
+    return (2n * numerator + denominator) / (2n * denominator)
   const quotient = numerator / denominator
   return rounding === 'up' && numerator % denominator !== 0n
     ? quotient + 1n
@@ -131,15 +133,27 @@ export function priceToTicks(
 }
 
 /**
- * The limit for a market order `slippageBps` away from the best price on the
- * other side of the book: above the best ask for a buy, below the best bid
- * for a sell.
+ * The tick of a price level Phoenix's book sent as a float. Levels sit on
+ * the tick grid; the float adds noise (115.17999999999999 for 115.18), so
+ * the nearest tick is the level's own.
  */
-export function slippageToTicks(
+export function bookTicks(price: number, market: MarketUnits) {
+  return toTicks(
+    parseDecimal(decimalString(price), 'book price'),
+    market,
+    'nearest',
+  )
+}
+
+/**
+ * The limit for a market order `slippageBps` away from the best price on the
+ * other side of the book, in ticks: above the best ask for a buy (rounded
+ * down), below the best bid for a sell (rounded up).
+ */
+export function slippageLimit(
   side: Side,
-  bestPrice: string,
+  bestTicks: bigint,
   slippageBps: number,
-  market: MarketUnits,
 ) {
   if (
     !Number.isInteger(slippageBps) ||
@@ -150,14 +164,11 @@ export function slippageToTicks(
       'invalid_input',
       'maxSlippageBps must be a whole number from 0 to 9999',
     )
-  const best = parseDecimal(bestPrice, 'best price')
   const bps = BigInt(slippageBps)
-  return toTicks(
-    {
-      numerator: best.numerator * (side === 'buy' ? BPS + bps : BPS - bps),
-      denominator: best.denominator * BPS,
-    },
-    market,
+  // A sell rounds up, so its limit stays at least one tick.
+  return divide(
+    bestTicks * (side === 'buy' ? BPS + bps : BPS - bps),
+    BPS,
     limitRounding(side),
   )
 }

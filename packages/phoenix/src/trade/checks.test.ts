@@ -1,34 +1,52 @@
 import { address } from '@solana/kit'
 import { expect, test } from 'bun:test'
+import { SelfTradeBehavior } from '@ellipsis-labs/rise'
+import type { Instruction } from '@solana/kit'
 import {
   ASSOCIATED_TOKEN_PROGRAM,
+  TOKEN_PROGRAM,
   checkActivation,
+  checkCollateral,
   checkInstructions,
   checkOrder,
 } from './checks'
 import {
+  KEYS,
   ONBOARD_DATA,
   OTHER,
   WALLET,
   marketOrderData,
   phoenixInstruction,
+  postOnlyData,
   registerTraderData,
 } from './fixtures'
+import { depositInstructions, withdrawInstructions } from './rise'
+import type { OrderSpec } from './rise'
+
+const depositInstructionsFixture = await depositInstructions(
+  WALLET,
+  KEYS,
+  2_500_000n,
+)
+const withdrawInstructionsFixture = await withdrawInstructions(
+  WALLET,
+  KEYS,
+  1_000_000n,
+)
+const isDefined = (instruction: Instruction | undefined) =>
+  instruction !== undefined
 
 const SYSTEM_PROGRAM = address('11111111111111111111111111111111')
 const COMPUTE_BUDGET = address('ComputeBudget111111111111111111111111111111')
 
-const expected = {
+const expected: OrderSpec = {
   kind: 'market',
   side: 'buy',
   priceInTicks: 11573n,
   numBaseLots: 10n,
-  minBaseLotsToFill: 1n,
-  lastValidSlot: 1_000n,
   reduceOnly: false,
-  slide: false,
-  cancelExisting: false,
-} as const
+  lastValidSlot: 1_000n,
+}
 
 test('instructions the wallet signs, on trade programs, pass', () => {
   expect(() =>
@@ -117,10 +135,99 @@ test('a market order that differs from the request fails', () => {
     [{ minLots: 10n }, 'minBaseLotsToFill'],
     [{ lastValidSlot: null }, 'lastValidSlot'],
     [{ reduceOnly: true }, 'reduceOnly'],
+    [{ cancelExisting: true }, 'cancelExisting'],
   ] as const)
     expect(() =>
       checkOrder(phoenixInstruction(marketOrderData(fields)), expected),
     ).toThrow(`the order's ${field} does not match the request`)
+})
+
+test('anything else in the packet must match byte for byte', () => {
+  expect(() =>
+    checkOrder(
+      phoenixInstruction(
+        marketOrderData({ selfTradeBehavior: SelfTradeBehavior.CancelProvide }),
+      ),
+      expected,
+    ),
+  ).toThrow("the order's encoding differs from the request")
+  expect(() =>
+    checkOrder(
+      phoenixInstruction(Uint8Array.of(...marketOrderData(), 0)),
+      expected,
+    ),
+  ).toThrow("the order's encoding differs from the request")
+})
+
+test('a post-only order must not slide, and must be the kind asked for', () => {
+  const postOnly: OrderSpec = {
+    ...expected,
+    kind: 'post_only',
+    lastValidSlot: null,
+  }
+  expect(() =>
+    checkOrder(phoenixInstruction(postOnlyData()), postOnly),
+  ).not.toThrow()
+  expect(() =>
+    checkOrder(phoenixInstruction(postOnlyData({ slide: true })), postOnly),
+  ).toThrow("the order's slide does not match the request")
+  expect(() =>
+    checkOrder(phoenixInstruction(postOnlyData()), {
+      ...postOnly,
+      kind: 'limit',
+    }),
+  ).toThrow("the order's kind does not match the request")
+})
+
+test("Rise's deposit and withdrawal pass the collateral check", async () => {
+  expect(() =>
+    checkCollateral(depositInstructionsFixture, {
+      kind: 'deposit',
+      amount: 2_500_000n,
+    }),
+  ).not.toThrow()
+  expect(() =>
+    checkCollateral(withdrawInstructionsFixture, {
+      kind: 'withdraw',
+      amount: 1_000_000n,
+    }),
+  ).not.toThrow()
+})
+
+test('a collateral amount or approval that differs from the request fails', () => {
+  expect(() =>
+    checkCollateral(depositInstructionsFixture, {
+      kind: 'deposit',
+      amount: 2_500_001n,
+    }),
+  ).toThrow('the Ember deposit amount does not match the request')
+  expect(() =>
+    checkCollateral(withdrawInstructionsFixture, {
+      kind: 'withdraw',
+      amount: 2_000_000n,
+    }),
+  ).toThrow('the token approval is not limited to the amount for Ember')
+
+  const [create, approve, ...rest] = withdrawInstructionsFixture
+  const otherDelegate = {
+    ...approve,
+    programAddress: TOKEN_PROGRAM,
+    accounts: (approve?.accounts ?? []).map((account, index) =>
+      index === 1 ? { ...account, address: OTHER } : account,
+    ),
+  }
+  expect(() =>
+    checkCollateral([create, otherDelegate, ...rest].filter(isDefined), {
+      kind: 'withdraw',
+      amount: 1_000_000n,
+    }),
+  ).toThrow('the token approval is not limited to the amount for Ember')
+  expect(() =>
+    checkCollateral(depositInstructionsFixture.slice(1), {
+      kind: 'deposit',
+      amount: 2_500_000n,
+    }),
+  ).toThrow('the deposit has unexpected steps')
 })
 
 test('an instruction that is not a Phoenix market order fails', () => {

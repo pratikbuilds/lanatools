@@ -7,12 +7,15 @@ import {
 } from '@solana-program/compute-budget'
 import {
   SOLANA_ERROR__JSON_RPC__SERVER_ERROR_SEND_TRANSACTION_PREFLIGHT_FAILURE,
+  SOLANA_ERROR__TRANSACTION_ERROR__ALREADY_PROCESSED,
   SOLANA_ERROR__TRANSACTION_ERROR__INSUFFICIENT_FUNDS_FOR_FEE,
   SolanaError,
   appendTransactionMessageInstructions,
+  compileTransaction,
   createTransactionMessage,
   decompileTransactionMessage,
   generateKeyPairSigner,
+  getBase64Decoder,
   getBase64EncodedWireTransaction,
   getBase64Encoder,
   getCompiledTransactionMessageDecoder,
@@ -188,22 +191,23 @@ test('negative fee settings are refused before any RPC call', async () => {
   expect(calls).toEqual([])
 })
 
+/** A transaction as a tool returns it (unsigned), and as the wallet signs it. */
 async function signedTransaction() {
   const signer = await generateKeyPairSigner()
-  const signed = await signTransactionMessageWithSigners(
-    pipe(
-      createTransactionMessage({ version: 0 }),
-      (message) => setTransactionMessageFeePayerSigner(signer, message),
-      (message) =>
-        setTransactionMessageLifetimeUsingBlockhash(
-          { blockhash: BLOCKHASH, lastValidBlockHeight: 500n },
-          message,
-        ),
-      (message) => appendTransactionMessageInstructions([], message),
-    ),
+  const message = pipe(
+    createTransactionMessage({ version: 0 }),
+    (draft) => setTransactionMessageFeePayerSigner(signer, draft),
+    (draft) =>
+      setTransactionMessageLifetimeUsingBlockhash(
+        { blockhash: BLOCKHASH, lastValidBlockHeight: 500n },
+        draft,
+      ),
+    (draft) => appendTransactionMessageInstructions([], draft),
   )
+  const signed = await signTransactionMessageWithSigners(message)
   return {
     sent: {
+      prepared: getBase64EncodedWireTransaction(compileTransaction(message)),
       transaction: getBase64EncodedWireTransaction(signed),
       lastValidBlockHeight: '500',
     },
@@ -234,19 +238,52 @@ test('a sent transaction is polled until it confirms', async () => {
   )
 })
 
-test('a transaction that lands with an error is failed', async () => {
+test('a failure counts only once it is confirmed', async () => {
   const { sent, signature } = await signedTransaction()
+  const error = { InstructionError: [0, { Custom: 6001 }] }
+  // Seen failing at processed (perhaps on a fork), then landing fine.
+  const answers = [status('processed', error), status('confirmed')]
   const { rpc } = fakeRpc({
     sendTransaction: () => signature,
-    getSignatureStatuses: () =>
-      status('processed', { InstructionError: [0, { Custom: 6001 }] }),
+    getSignatureStatuses: () => answers.shift(),
+    getBlockHeight: () => 400n,
   })
   expect(await sendSignedTransaction(rpc, sent, quick)).toEqual({
+    status: 'confirmed',
+    signature,
+  })
+
+  const { rpc: failed } = fakeRpc({
+    sendTransaction: () => signature,
+    getSignatureStatuses: () => status('confirmed', error),
+  })
+  expect(await sendSignedTransaction(failed, sent, quick)).toEqual({
     status: 'failed',
     signature,
     error: '{"InstructionError":[0,{"Custom":6001}]}',
   })
 })
+
+const preflight = (cause: SolanaError) =>
+  new SolanaError(
+    SOLANA_ERROR__JSON_RPC__SERVER_ERROR_SEND_TRANSACTION_PREFLIGHT_FAILURE,
+    {
+      cause,
+      accounts: null,
+      fee: null,
+      innerInstructions: null,
+      loadedAccountsDataSize: null,
+      loadedAddresses: null,
+      logs: null,
+      postBalances: null,
+      postTokenBalances: null,
+      preBalances: null,
+      preTokenBalances: null,
+      replacementBlockhash: null,
+      returnData: null,
+      unitsConsumed: 0n,
+    },
+  )
 
 test('a preflight refusal is failed, since nothing was broadcast', async () => {
   const { sent, signature } = await signedTransaction()
@@ -255,25 +292,7 @@ test('a preflight refusal is failed, since nothing was broadcast', async () => {
   )
   const { rpc } = fakeRpc({
     sendTransaction: () => {
-      throw new SolanaError(
-        SOLANA_ERROR__JSON_RPC__SERVER_ERROR_SEND_TRANSACTION_PREFLIGHT_FAILURE,
-        {
-          cause,
-          accounts: null,
-          fee: null,
-          innerInstructions: null,
-          loadedAccountsDataSize: null,
-          loadedAddresses: null,
-          logs: null,
-          postBalances: null,
-          postTokenBalances: null,
-          preBalances: null,
-          preTokenBalances: null,
-          replacementBlockhash: null,
-          returnData: null,
-          unitsConsumed: 0n,
-        },
-      )
+      throw preflight(cause)
     },
   })
   expect(await sendSignedTransaction(rpc, sent, quick)).toEqual({
@@ -283,18 +302,37 @@ test('a preflight refusal is failed, since nothing was broadcast', async () => {
   })
 })
 
-test('a send that may have reached the cluster is unknown, never resent', async () => {
+test('resending bytes that already landed is watched, not failed', async () => {
+  const { sent, signature } = await signedTransaction()
+  const { rpc } = fakeRpc({
+    sendTransaction: () => {
+      throw preflight(
+        new SolanaError(SOLANA_ERROR__TRANSACTION_ERROR__ALREADY_PROCESSED),
+      )
+    },
+    getSignatureStatuses: () => status('finalized'),
+  })
+  expect(await sendSignedTransaction(rpc, sent, quick)).toEqual({
+    status: 'confirmed',
+    signature,
+  })
+})
+
+test('a send that may have reached the cluster is watched, never resent', async () => {
   const { sent, signature } = await signedTransaction()
   const { rpc, calls } = fakeRpc({
     sendTransaction: () => {
       throw new Error('socket hang up')
     },
+    getSignatureStatuses: () => status('confirmed'),
   })
   expect(await sendSignedTransaction(rpc, sent, quick)).toEqual({
-    status: 'unknown',
+    status: 'confirmed',
     signature,
   })
-  expect(calls).toHaveLength(1)
+  expect(calls.filter(([method]) => method === 'sendTransaction')).toHaveLength(
+    1,
+  )
 
   const { rpc: unreadable } = fakeRpc({
     sendTransaction: () => signature,
@@ -314,15 +352,16 @@ test('past its last valid block height, a missing transaction has expired', asyn
     sendTransaction: () => signature,
     getSignatureStatuses: noStatus,
     getBlockHeight: () => 501n,
+    isBlockhashValid: () => ({ value: false }),
   })
   expect(await sendSignedTransaction(rpc, sent, quick)).toEqual({
     status: 'expired',
     signature,
   })
-  // The last look searches history: it may have landed in the final blocks.
-  expect(calls.at(-1)).toEqual([
-    'getSignatureStatuses',
-    [[signature], { searchTransactionHistory: true }],
+  // It looks through history, then asks whether the blockhash still lives.
+  expect(calls.slice(-2)).toEqual([
+    ['getSignatureStatuses', [[signature], { searchTransactionHistory: true }]],
+    ['isBlockhashValid', [BLOCKHASH, { commitment: 'confirmed' }]],
   ])
 
   const late = [noStatus(), status('confirmed')]
@@ -348,22 +387,56 @@ test('past its last valid block height, a missing transaction has expired', asyn
   })
 })
 
-test('an unsigned transaction is refused before anything is sent', async () => {
-  const { rpc, calls } = fakeRpc({
-    getLatestBlockhash: latest,
-    simulateTransaction: () => ({
-      value: { err: null, unitsConsumed: 1_000n, logs: [] },
-    }),
+test('a lagging RPC node does not turn a live transaction into expired', async () => {
+  const { sent, signature } = await signedTransaction()
+  // Height is past, the node has no status yet, but the blockhash still
+  // lives: keep watching; the next read finds it confirmed.
+  const answers = [noStatus(), noStatus(), status('confirmed')]
+  const { rpc } = fakeRpc({
+    sendTransaction: () => signature,
+    getSignatureStatuses: () => answers.shift(),
+    getBlockHeight: () => 501n,
+    isBlockhashValid: () => ({ value: true }),
   })
-  const built = await buildTransaction(rpc, {
-    feePayer: WALLET,
-    instructions: [phoenixInstruction()],
-    fees: FEES,
+  expect(await sendSignedTransaction(rpc, sent, quick)).toEqual({
+    status: 'confirmed',
+    signature,
   })
-  calls.length = 0
-  await expect(sendSignedTransaction(rpc, built, quick)).rejects.toMatchObject({
+})
+
+test('only the prepared transaction, validly signed, is sent', async () => {
+  const { sent } = await signedTransaction()
+  const other = await signedTransaction()
+  const { rpc, calls } = fakeRpc({})
+  await expect(
+    sendSignedTransaction(
+      rpc,
+      { ...sent, transaction: other.sent.transaction },
+      quick,
+    ),
+  ).rejects.toMatchObject({
     code: 'invalid_input',
-    message: 'The transaction is not a fully signed Solana transaction',
+    message:
+      'The signed transaction is not the one that was prepared; nothing was sent',
+  })
+  // The prepared bytes themselves carry no signature.
+  await expect(
+    sendSignedTransaction(rpc, { ...sent, transaction: sent.prepared }, quick),
+  ).rejects.toMatchObject({
+    code: 'invalid_input',
+    message: 'The transaction is not signed by its fee payer; nothing was sent',
+  })
+  // A signature over other bytes does not verify.
+  const forged = getBase64Encoder().encode(sent.transaction).slice()
+  forged[1] = (forged[1] ?? 0) ^ 1
+  await expect(
+    sendSignedTransaction(
+      rpc,
+      { ...sent, transaction: getBase64Decoder().decode(forged) },
+      quick,
+    ),
+  ).rejects.toMatchObject({
+    message: 'The transaction is not signed by its fee payer; nothing was sent',
   })
   expect(calls).toEqual([])
 })

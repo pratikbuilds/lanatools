@@ -5,6 +5,7 @@ import {
   BLOCKHASH,
   KEYS,
   PERMISSION,
+  REGISTERED_TRADER_ACCOUNT_DATA,
   TRADER_ACCOUNT_DATA,
   WALLET,
   accountInfo,
@@ -247,4 +248,35 @@ test('a withdrawal is checked against collateral and warns about the queue', asy
       ],
     },
   })
+})
+
+test('a registered account only needs onboarding, and pays no new rent', async () => {
+  const { rpc } = chain({
+    [TRADER]: accountInfo(PHOENIX_PROGRAM, REGISTERED_TRADER_ACCOUNT_DATA),
+  })
+  const outcome = await runTradeTool(
+    activateAccount,
+    { wallet: WALLET },
+    {
+      rpc,
+      fees: FEES,
+      fetch: fakePhoenix({
+        '/v1/view/exchange/keys': KEYS,
+        '/v1/referral/activation-permission': PERMISSION,
+        '/v1/auth/nonce': NONCE,
+      }).fetch,
+    },
+  )
+  if (!outcome.ok || outcome.result.status !== 'ready')
+    throw new Error(`unexpected ${JSON.stringify(outcome)}`)
+  expect(outcome.result).toMatchObject({
+    summary:
+      "Finish activating this wallet's Phoenix account with referral code 4L2RQ06K: the account already exists, so the wallet pays only the fee",
+    details: { registers: 'no, already registered', walletSol: '0' },
+    warnings: [
+      'Phoenix co-signs and submits this transaction; the wallet also signs a login message for Phoenix, which moves no funds.',
+      'The wallet has no SOL to pay the rent and fee.',
+    ],
+  })
+  expect(messageOf(outcome.result.transaction).instructions).toHaveLength(1)
 })

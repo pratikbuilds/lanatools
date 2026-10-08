@@ -94,10 +94,20 @@ export type NothingToDo = {
   summary: string
 }
 
+/**
+ * The transaction would fail as built, so there is nothing to sign; the
+ * simulation says why. Preparing it again may succeed once the cause (the
+ * book, the balance, a stale blockhash) changes.
+ */
+export type SimulationFailed = Described & {
+  status: 'simulation_failed'
+  simulation: Simulation
+}
+
 export type TradeOpts = PhoenixOpts & { rpc: TradeRpc; fees: FeeSettings }
 
 export type TradeOutcome =
-  | { ok: true; result: PreparedTransaction | NothingToDo }
+  | { ok: true; result: PreparedTransaction | SimulationFailed | NothingToDo }
   | {
       ok: false
       error: { code: PhoenixErrorCode; message: string; retryable: boolean }
@@ -185,7 +195,18 @@ export async function runTradeTool<TSchema extends z.ZodObject>(
           summary: prepared.summary,
         },
       }
-    return { ok: true, result: await finish(tool, prepared, opts) }
+    const result = await finish(tool, prepared, opts)
+    if (!result.simulation.ok) {
+      const {
+        status: _status,
+        transaction: _transaction,
+        lastValidBlockHeight: _lastValidBlockHeight,
+        submit: _submit,
+        ...failed
+      } = result
+      return { ok: true, result: { ...failed, status: 'simulation_failed' } }
+    }
+    return { ok: true, result }
   } catch (error) {
     if (error instanceof PhoenixError)
       return {

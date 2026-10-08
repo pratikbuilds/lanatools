@@ -1,10 +1,12 @@
 import { priceUsdToTicksWithMarketParams } from '@ellipsis-labs/rise'
 import { expect, test } from 'bun:test'
 import {
+  bookTicks,
   decimalString,
   limitRounding,
   priceToTicks,
-  slippageToTicks,
+  slippageLimit,
+  ticksToPrice,
   toBaseLots,
   toUSDCUnits,
 } from './price'
@@ -53,16 +55,38 @@ test('a limit never loosens when rounded', () => {
   expect(limitRounding('sell')).toBe('up')
 })
 
-test('slippage sets the limit away from the best price on the other side', () => {
-  // 115.16 × 1.005 = 115.7358, rounded down for a buy.
-  expect(slippageToTicks('buy', '115.16', 50, SOL)).toBe(11573n)
-  // 115.16 × 0.995 = 114.5842, rounded up for a sell.
-  expect(slippageToTicks('sell', '115.16', 50, SOL)).toBe(11459n)
-  expect(slippageToTicks('buy', '115.16', 0, SOL)).toBe(11516n)
+test("book prices snap to their tick despite Phoenix's float noise", () => {
+  expect(bookTicks(115.17999999999999, SOL)).toBe(11518n)
+  expect(bookTicks(120.94000000000001, SOL)).toBe(12094n)
+  expect(bookTicks(115.16, SOL)).toBe(11516n)
+  // A negative-decimal market, as noisy as Phoenix sends it.
+  // 0.0011 × 3.18 is 0.0034980000000000002 in floating point.
+  expect(bookTicks(0.0011 * 3.18, KBONK)).toBe(3498n)
+})
+
+test('slippage sets the limit away from the best price, in ticks', () => {
+  // 11516 × 1.005 = 11573.58, rounded down for a buy.
+  expect(slippageLimit('buy', 11516n, 50)).toBe(11573n)
+  // 11516 × 0.995 = 11458.42, rounded up for a sell.
+  expect(slippageLimit('sell', 11516n, 50)).toBe(11459n)
+  // 0 bps is the best level itself, even when the book sent a noisy float.
+  expect(slippageLimit('buy', bookTicks(115.17999999999999, SOL), 0)).toBe(
+    11518n,
+  )
+  expect(slippageLimit('sell', bookTicks(120.94000000000001, SOL), 0)).toBe(
+    12094n,
+  )
   for (const bps of [-1, 1.5, 10_000])
-    expect(() => slippageToTicks('buy', '115.16', bps, SOL)).toThrow(
+    expect(() => slippageLimit('buy', 11516n, bps)).toThrow(
       'maxSlippageBps must be a whole number from 0 to 9999',
     )
+  expect(slippageLimit('sell', 1n, 9_999)).toBe(1n)
+})
+
+test('ticks become exact USD prices', () => {
+  expect(ticksToPrice(11573n, SOL)).toBe('115.73')
+  expect(ticksToPrice(13000n, SOL)).toBe('130')
+  expect(ticksToPrice(3498n, KBONK)).toBe('0.003498')
 })
 
 test('USDC amounts become 6-decimal base units', () => {

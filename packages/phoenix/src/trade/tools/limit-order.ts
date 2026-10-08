@@ -3,8 +3,8 @@ import { z } from 'zod'
 import { Wallet } from '../../tool'
 import { checkOrder } from '../checks'
 import { limitRounding, priceToTicks, ticksToPrice, toBaseLots } from '../price'
-import type { MarketUnits } from '../price'
-import { limitOrderInstruction } from '../rise'
+import { orderInstruction } from '../rise'
+import type { OrderSpec } from '../rise'
 import { ExchangeKeys } from '../schemas'
 import { defineTradeTool } from '../tool'
 import {
@@ -12,9 +12,12 @@ import {
   OrderSide,
   Price,
   Size,
-  bestPrice,
+  bestTicks,
+  orderVerb,
   requireActivated,
   tradableMarket,
+  unitsOf,
+  usd,
 } from './shared'
 
 export const limitOrder = defineTradeTool({
@@ -51,67 +54,51 @@ export const limitOrder = defineTradeTool({
       tradableMarket(context, input.symbol),
       requireActivated(context, wallet),
     ])
-    const units: MarketUnits = {
-      tickSize: market.tickSize,
-      baseLotsDecimals: market.baseLotsDecimals,
+    const units = unitsOf(market)
+    const spec: OrderSpec = {
+      kind: input.postOnly ? 'post_only' : 'limit',
+      side: input.side,
+      priceInTicks: priceToTicks(input.price, units, limitRounding(input.side)),
+      numBaseLots: toBaseLots(input.size, market.baseLotsDecimals),
+      reduceOnly: input.reduceOnly,
+      lastValidSlot: null,
     }
-    const numBaseLots = toBaseLots(input.size, market.baseLotsDecimals)
-    const priceInTicks = priceToTicks(
-      input.price,
-      units,
-      limitRounding(input.side),
-    )
     const [keys, opposite] = await Promise.all([
       context.phoenix.get('/v1/view/exchange/keys', ExchangeKeys),
-      bestPrice(context, market.symbol, input.side),
+      bestTicks(context, market, input.side),
     ])
-    const order = {
-      side: input.side,
-      priceInTicks,
-      numBaseLots,
-      reduceOnly: input.reduceOnly,
-    }
-    const instruction = await limitOrderInstruction(wallet, keys, market, {
-      ...order,
-      postOnly: input.postOnly,
-    })
-    checkOrder(instruction, {
-      ...order,
-      kind: input.postOnly ? 'post_only' : 'limit',
-      minBaseLotsToFill: null,
-      lastValidSlot: null,
-      slide: false,
-      cancelExisting: false,
-    })
+    const instruction = await orderInstruction(wallet, keys, market, spec)
+    checkOrder(instruction, spec)
 
-    const price = ticksToPrice(priceInTicks, units)
+    const price = ticksToPrice(spec.priceInTicks, units)
+    const oppositePrice =
+      opposite === null ? 'none' : ticksToPrice(opposite, units)
     // A buy at or above the best ask (a sell at or below the best bid) fills
     // at once instead of resting.
     const crosses =
       opposite !== null &&
       (input.side === 'buy'
-        ? Number(price) >= Number(opposite)
-        : Number(price) <= Number(opposite))
-    const verb = input.side === 'buy' ? 'buy' : 'sell'
+        ? spec.priceInTicks >= opposite
+        : spec.priceInTicks <= opposite)
     return {
       kind: 'instructions',
       wallet,
       instructions: [instruction],
-      summary: `Place a ${input.postOnly ? 'post-only ' : ''}limit ${verb} of ${input.size} ${market.symbol} at $${price}; it rests on the book until filled or cancelled`,
+      summary: `${input.postOnly ? 'Post-only limit' : 'Limit'} ${orderVerb(input.side, input.reduceOnly)}: ${input.size} ${market.symbol} perp at $${price}; it rests on the book until filled or cancelled`,
       details: {
         side: input.side,
         size: input.size,
         price,
-        notionalUsd: (Number(input.size) * Number(price)).toFixed(2),
-        [input.side === 'buy' ? 'bestAsk' : 'bestBid']: opposite ?? 'none',
+        notionalUsd: usd(Number(input.size) * Number(price)),
+        [input.side === 'buy' ? 'bestAsk' : 'bestBid']: oppositePrice,
         postOnly: String(input.postOnly),
         reduceOnly: String(input.reduceOnly),
       },
       warnings: crosses
         ? [
             input.postOnly
-              ? `The price crosses the book (${opposite}), so Phoenix will reject this post-only order.`
-              : `The price crosses the book (${opposite}), so this order will fill at once as a taker instead of resting.`,
+              ? `The price crosses the book (${oppositePrice}), so Phoenix will reject this post-only order.`
+              : `The price crosses the book (${oppositePrice}), so this order will fill at once as a taker instead of resting.`,
           ]
         : [],
     }

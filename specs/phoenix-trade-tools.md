@@ -1,6 +1,6 @@
 # Phoenix trade tools: tech spec
 
-Status: Phase 3 (order tools) built 2026-10-08, waiting for review.
+Status: Phases 1–3 built and code-reviewed 2026-10-08; review fixes in. Phase 4 next.
 Background: [research-phoenix-transactions.md](research-phoenix-transactions.md).
 
 ## 1. Goal and scope
@@ -144,7 +144,9 @@ type Described = {
   decoded instructions. Then it simulates the bytes as they are.
 
 Its result is `{ status: 'ready', ... }` (below), `{ status: 'nothing_to_do' }`,
-or `{ ok: false, error }`, the same way `runPhoenixTool` does. **It never
+`{ status: 'simulation_failed', summary, details, warnings, simulation }` (no
+transaction: it would fail as built, and the simulation says why), or
+`{ ok: false, error }`, the same way `runPhoenixTool` does. **It never
 throws.** `phoenixTrade` lists the tools; the MCP layer can look them up by
 name later.
 
@@ -153,7 +155,7 @@ type PreparedTransaction = Described & {
   status: 'ready'
   transaction: Base64EncodedWireTransaction // v0 wire, unsigned
   lastValidBlockHeight: string
-  simulation: { ok: boolean; computeUnits: number; error?: string; logs: string[] }
+  simulation: { ok: true; computeUnits: number; logs: string[] }
   submit: Submit // where the signed transaction goes
 }
 
@@ -163,7 +165,10 @@ type Submit =
 ```
 
 `submitSignedTransaction(prepared, { transaction, loginSignature? }, opts)`
-sends a signed transaction where `submit` says:
+first checks the signed transaction against `prepared.transaction`. The
+message bytes must be identical, and the fee payer's signature must verify.
+Otherwise nothing is sent: the safety checks only ever saw the prepared bytes.
+Then it sends the signed transaction where `submit` says:
 
 - `rpc` sends it to the RPC. It must be fully signed.
 - `phoenix-referral`:
@@ -187,17 +192,27 @@ The caller never picks the route.
 
 No lookup tables, and one transaction per tool call.
 
-**`sendSignedTransaction(rpc, wire, lastValidBlockHeight)`**
+**`sendSignedTransaction(rpc, { prepared, transaction, lastValidBlockHeight })`**
 
-1. Send once, with `skipPreflight: false`.
-2. Poll `getSignatureStatuses` until the transaction is `confirmed`, it fails,
-   or the block height passes `lastValidBlockHeight`.
+1. Check the signed transaction against the prepared one (same message, valid
+   fee payer signature, fully signed).
+2. Send once, with preflight.
+   - Preflight refused it: `failed` (it was never broadcast).
+   - Preflight says these exact bytes were already processed: watch for them.
+   - Any other send error: watch for them anyway. Watching never sends.
+3. Poll `getSignatureStatuses`:
+   - A status at `confirmed` or `finalized` decides: `confirmed`, or `failed`
+     with the error. **An error seen only at `processed` is not final**: that
+     fork may be dropped and the transaction land elsewhere.
+   - Past `lastValidBlockHeight`, search history once. If the transaction is
+     still missing, ask `isBlockhashValid`. Only a dead blockhash means
+     `expired`; a lagging RPC node keeps the watch going.
+   - A status that cannot be read is `unknown`, never `failed`.
 
 It returns `{ status: 'confirmed' | 'failed' | 'expired' | 'unknown', signature, error? }`.
 
 - **It never resends or re-signs.**
 - `unknown` means "may have landed": check the signature before trying again.
-- It follows the same pattern as `apps/api/src/solana/usdc-transfer.ts`.
 
 ### 4.3 Instruction checks (`checks.ts`)
 
@@ -216,11 +231,21 @@ an error, never a warning.
     instruction", which wrongly refused a registered-but-not-activated wallet:
     its activation's only instruction lists the wallet nowhere.
 - Order instructions (`checkOrder`, any of market, limit or post-only):
-  - Every decoded field matches what `prepare` computed: kind, side, price,
-    size, minimum fill, expiry, reduce-only, slide, and cancel-existing.
+  - Every decoded field matches the order spec the tool built from: kind,
+    side, price, size, minimum fill, expiry, reduce-only, slide, and
+    cancel-existing.
   - **The price limit is never null.**
+  - Then the whole instruction data must equal, byte for byte, Rise's
+    encoding of the packet we meant. This catches everything else (other flag
+    bits, the self-trade rule, match limit, quote lots, trailing bytes).
   - Post-only orders never slide, and no order cancels resting orders on a
     failed margin check.
+- Collateral instructions (`checkCollateral`):
+  - A deposit is exactly: idempotent token-account create, Ember deposit of
+    the amount, Phoenix deposit of the amount.
+  - A withdrawal is exactly: create, a token Approve of exactly the amount to
+    Ember's state account, create, Phoenix withdrawal of the amount, Ember
+    withdrawal of the amount.
 - Market accounts: the spline account Phoenix's API names must equal Rise's
   derivation from the market account; otherwise nothing is built.
 
@@ -236,11 +261,17 @@ All conversions use BigInt; floats are never used for amounts.
 - **Price to ticks:** use Rise's `priceUsdToTicksWithMarketParams`.
   - Buy limits round **down**, so the buyer never pays more than stated.
   - Sell limits round **up**, so the seller never receives less than stated.
-- **Slippage to limit price:**
-  - Buy: `bestAsk × (1 + bps/10 000)`.
-  - Sell: `bestBid × (1 − bps/10 000)`.
-  - Read from `/v1/view/orderbook/{symbol}`.
+- **Book prices:** Phoenix's book sends floats with noise (`115.17999999999999`
+  for the 115.18 level). Each level snaps to its **nearest** tick before
+  anything else uses it, so `0` bps is exactly the best level.
+- **Slippage to limit price**, in ticks:
+  - Buy: `bestAskTicks × (10 000 + bps) / 10 000`, rounded down.
+  - Sell: `bestBidTicks × (10 000 − bps) / 10 000`, rounded up, so it is never
+    below one tick.
+  - Read from `/v1/view/orderbook/{symbol}`; the best level is the lowest ask
+    or the highest bid.
   - If that side of the book is empty, return an error.
+- Crossing and out-of-reach warnings compare ticks, never floats.
 - **USDC amounts:** convert a decimal string to 6-decimal micro-units, and
   reject anything with more than 6 decimals.
 
@@ -276,7 +307,7 @@ existing `MarketSymbol` schema. Sizes are token amounts as decimal strings (**D3
 | **Checks** | `checkActivation`: the instruction count, Phoenix only, every instruction names the wallet's trader account, `RegisterTrader` decodes to 0/0/128, and the last instruction is `OnboardTraderDelegated`. Signers are the wallet and the onboarder only. |
 | **Submit** | `phoenix-referral`: the wallet signs the login message and the transaction. Phoenix co-signs and submits. |
 | **After submit** | A failed login means nothing was sent: `failed`. A lost answer from `activate-tx` is `unknown` ("check the account before trying again"). `already_activated` is `failed` (nothing was sent). A different signature from Phoenix is `unknown`. Otherwise we wait for confirmation on the RPC. |
-| **Summary** | "Activate this wallet's Phoenix account with referral code 4L2RQ06K: a one-time account rent of about 0.028 SOL plus the fee, paid by the wallet" |
+| **Summary** | When registering: "…a one-time account rent of about 0.028 SOL plus the fee, paid by the wallet". When the account is already registered: "Finish activating…: the account already exists, so the wallet pays only the fee". |
 
 The login signature only proves wallet ownership to Phoenix's API. It moves no
 funds, and a warning says so.
@@ -291,7 +322,7 @@ the login: it moves no funds and works either way.
 |---|---|
 | **Input** | `wallet`, `amount` (USDC) |
 | **Reads** | The trader account on chain (must be activated), the wallet's USDC token account, and the exchange keys |
-| **Builds** | Rise `buildDepositIxsResolved`: Phoenix USD ATA (idempotent), `EmberDeposit`, `DepositFunds` |
+| **Builds** | Rise `buildDepositIxsResolved`: Phoenix USD ATA (idempotent), `EmberDeposit`, `DepositFunds`. `checkCollateral` checks each step's amount. |
 | **Checks** | `amount > 0`, and `amount ≤` the USDC balance |
 | **Summary** | "Deposit 100 USDC into your Phoenix cross-margin account" |
 
@@ -301,7 +332,7 @@ the login: it moves no funds and works either way.
 |---|---|
 | **Input** | `wallet`, `amount` (USDC) |
 | **Reads** | Trader state from Phoenix's API (collateral; 404 means not activated), exchange status (`active`, `withdrawalsAvailable`), exchange keys |
-| **Builds** | Rise `buildWithdrawIxsResolved`: 5 instructions (ATA, approve, ATA, `WithdrawFunds`, `EmberWithdraw`) |
+| **Builds** | Rise `buildWithdrawIxsResolved`: 5 instructions (ATA, approve, ATA, `WithdrawFunds`, `EmberWithdraw`). `checkCollateral` checks the amounts and that the approval is exactly the amount, to Ember. |
 | **Checks** | `amount ≤` collateral. Margin is enforced on-chain and appears in the simulation. |
 | **Warning (always)** | "Withdrawals go through Phoenix's queue and may be delayed or dropped." |
 
@@ -315,7 +346,9 @@ the login: it moves no funds and works either way.
 | **Builds** | Rise `buildPlaceMarketOrderIxResolved` with our own packet. The price limit is set from the best opposite price plus slippage, or from `limitPrice`, with buy rounding down and sell rounding up. It expires at the observed slot + 16 (**D2**), self-trades abort, and `cancelExisting` is false. |
 | **Fill rule** | **D4**: partial fills allowed (`minBaseLotsToFill: 1`). Rise's own packet builder defaults to all-or-nothing, so we set it. If nothing fills, Phoenix fails the transaction ("IOC order does not meet minimum requirements"), which the simulation shows. |
 | **Details** | Limit price, best price, estimated notional and taker fee at the best price, expiry slot, reduce-only |
-| **Warning** | A limit beyond the best opposite price: "this order will not fill now". |
+| **Summary** | Says long or short: "Market buy (long): 0.1 SOL perp now, paying at most $115.73 each; …". A reduce-only order says "sell to reduce a long position" (or the buy equivalent). |
+| **Warnings** | Always: "This order expires about 6 seconds after it was prepared (slot …); sign and send it right away, or prepare it again." A limit beyond the best opposite price: "this order will not fill now". |
+| **Fee** | The estimated taker fee is shown to six decimals (a $11.52 order's fee is $0.004031, not "0.00"). |
 
 ### 5.4 `phoenix_limit_order`
 
@@ -492,6 +525,24 @@ phase on this branch.
     could help such accounts later; neither Rise nor solOS uses one.
   - Compute varies about fourfold with the account (208k–913k for the same
     resting order), which again supports measuring it (D5).
+
+### Code review (2026-10-08)
+
+A `/code-review` of phases 1–3 (three reviewers, each finding checked) led
+to these fixes. They are described in place above.
+
+| Finding | Fix |
+|---|---|
+| Book floats could put a 0 bps limit one tick off and hide crossing warnings (seen live on PUMP) | Snap book levels to the nearest tick; slippage, crossing and out-of-reach all work in ticks (4.4) |
+| An error seen at `processed` was final `failed` | Only a `confirmed`/`finalized` status decides (4.2) |
+| A send could carry a different transaction than the one checked | The signed message must equal the prepared one, with a valid fee payer signature (4.1, 4.2) |
+| Resending landed bytes came back `failed` | "Already processed" and other send errors are watched (4.2) |
+| A lagging RPC node could make a live transaction look `expired` | `expired` also needs a dead blockhash (4.2) |
+| `checkOrder` compared only 9 fields | Plus byte-for-byte equality with the intended packet (4.3) |
+| Deposit and withdraw amounts and the approval were not checked | `checkCollateral` (4.3) |
+| A failed simulation was still "ready" at the maximum compute limit | New `simulation_failed` result with no transaction (4.1) |
+| Fee shown as "0.00"; "at at most"; a sell did not say short; activation always quoted rent; no expiry warning | Wording and warnings fixed (5.0, 5.3, 5.4) |
+| Test gaps | Prebuilt transactions, the RPC route, boundary crossings, a registered account, and more: 101 tests |
 
 ### Phase 4: cancel and close
 

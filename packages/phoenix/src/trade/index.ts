@@ -24,6 +24,7 @@ export type {
   NothingToDo,
   Prepared,
   PreparedTransaction,
+  SimulationFailed,
   Submit,
   TradeContext,
   TradeOpts,

@@ -4,6 +4,7 @@ import { PhoenixError } from '../../client'
 import { TraderState } from '../../schemas'
 import { Wallet } from '../../tool'
 import { usdc } from '../../units'
+import { checkCollateral } from '../checks'
 import { toUSDCUnits } from '../price'
 import { withdrawInstructions } from '../rise'
 import { ExchangeKeys, ExchangeStatus } from '../schemas'
@@ -50,10 +51,12 @@ export const withdraw = defineTradeTool({
         `The cross-margin account holds ${usdc(collateral.toString())} USDC of collateral, less than ${usdc(amount.toString())}`,
       )
 
+    const instructions = await withdrawInstructions(wallet, keys, amount)
+    checkCollateral(instructions, { kind: 'withdraw', amount })
     return {
       kind: 'instructions',
       wallet,
-      instructions: await withdrawInstructions(wallet, keys, amount),
+      instructions,
       summary: `Withdraw ${usdc(amount.toString())} USDC from the Phoenix cross-margin account to the wallet`,
       details: {
         amountUsdc: usdc(amount.toString()),

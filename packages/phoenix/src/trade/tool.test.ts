@@ -1,8 +1,26 @@
-import { address } from '@solana/kit'
+import {
+  address,
+  appendTransactionMessageInstructions,
+  compileTransaction,
+  createTransactionMessage,
+  getBase64EncodedWireTransaction,
+  getBase64Encoder,
+  getTransactionDecoder,
+  pipe,
+  setTransactionMessageFeePayer,
+  setTransactionMessageLifetimeUsingBlockhash,
+} from '@solana/kit'
+import type { Address } from '@solana/kit'
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
 import { PhoenixError } from '../client'
-import { BLOCKHASH, WALLET, fakeRpc, phoenixInstruction } from './fixtures'
+import {
+  BLOCKHASH,
+  OTHER,
+  WALLET,
+  fakeRpc,
+  phoenixInstruction,
+} from './fixtures'
 import { defineTradeTool, runTradeTool } from './tool'
 import type { Prepared } from './tool'
 
@@ -137,5 +155,113 @@ test('Phoenix errors pass through; anything else becomes a safe error', async ()
     })
   } finally {
     console.error = logged
+  }
+})
+
+test('a failed simulation leaves nothing to sign and says why', async () => {
+  const { rpc } = fakeRpc({
+    getLatestBlockhash: () => ({
+      value: { blockhash: BLOCKHASH, lastValidBlockHeight: 500n },
+    }),
+    simulateTransaction: () => ({
+      value: {
+        err: { InstructionError: [1, 'InvalidInstructionData'] },
+        unitsConsumed: 1_000n,
+        logs: ['Program log: IOC order does not meet minimum requirements.'],
+      },
+    }),
+  })
+  const outcome = await runTradeTool(
+    tool(async () => prepared()),
+    { size: '0.1' },
+    { rpc, fees: FEES },
+  )
+  expect(outcome).toEqual({
+    ok: true,
+    result: {
+      status: 'simulation_failed',
+      wallet: WALLET,
+      summary: 'Buy 0.1 SOL',
+      details: { size: '0.1' },
+      warnings: [],
+      simulation: {
+        ok: false,
+        computeUnits: 1_000,
+        error:
+          '{"InstructionError":[1,"InvalidInstructionData"]}: IOC order does not meet minimum requirements.',
+        logs: ['Program log: IOC order does not meet minimum requirements.'],
+      },
+    },
+  })
+})
+
+/** An unsigned transaction paid by `feePayer`, as Rise builds activation. */
+function prebuilt(
+  feePayer: Address = WALLET,
+  instruction = phoenixInstruction(),
+) {
+  return getBase64EncodedWireTransaction(
+    compileTransaction(
+      pipe(
+        createTransactionMessage({ version: 0 }),
+        (message) => setTransactionMessageFeePayer(feePayer, message),
+        (message) =>
+          setTransactionMessageLifetimeUsingBlockhash(
+            { blockhash: BLOCKHASH, lastValidBlockHeight: 500n },
+            message,
+          ),
+        (message) =>
+          appendTransactionMessageInstructions([instruction], message),
+      ),
+    ),
+  )
+}
+
+const whole = (transaction: string): Prepared => ({
+  kind: 'transaction',
+  wallet: WALLET,
+  transaction: getBase64EncodedWireTransaction(
+    getTransactionDecoder().decode(getBase64Encoder().encode(transaction)),
+  ),
+  lastValidBlockHeight: '500',
+  coSigners: [],
+  submit: { via: 'rpc' },
+  summary: 'Activate',
+  details: {},
+  warnings: [],
+})
+
+test('a whole transaction is checked, then simulated exactly as built', async () => {
+  const { rpc, calls } = rpcFor()
+  const transaction = prebuilt()
+  const outcome = await runTradeTool(
+    tool(async () => whole(transaction)),
+    { size: '0.1' },
+    { rpc, fees: FEES },
+  )
+  expect(outcome).toMatchObject({
+    ok: true,
+    result: { status: 'ready', transaction, lastValidBlockHeight: '500' },
+  })
+  // No compute budget is added and no new blockhash is fetched.
+  expect(calls.map(([method, [wire]]) => [method, wire])).toEqual([
+    ['simulateTransaction', transaction],
+  ])
+})
+
+test('a whole transaction someone else pays for, or with another signer, is never simulated', async () => {
+  for (const transaction of [
+    prebuilt(OTHER),
+    prebuilt(WALLET, phoenixInstruction(undefined, { signers: [OTHER] })),
+  ]) {
+    const { rpc, calls } = rpcFor()
+    expect(
+      await runTradeTool(
+        tool(async () => whole(transaction)),
+        { size: '0.1' },
+        { rpc, fees: FEES },
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'check_failed' } })
+    expect(calls).toEqual([])
   }
 })

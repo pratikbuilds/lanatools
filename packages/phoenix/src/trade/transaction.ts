@@ -4,12 +4,15 @@ import {
 } from '@solana-program/compute-budget'
 import {
   SOLANA_ERROR__JSON_RPC__SERVER_ERROR_SEND_TRANSACTION_PREFLIGHT_FAILURE,
+  SOLANA_ERROR__TRANSACTION_ERROR__ALREADY_PROCESSED,
   appendTransactionMessageInstructions,
   assertIsFullySignedTransaction,
+  blockhash as toBlockhash,
   compileTransaction,
   createTransactionMessage,
   decompileTransactionMessage,
   getCompiledTransactionMessageDecoder,
+  getPublicKeyFromAddress,
   getBase64EncodedWireTransaction,
   getBase64Encoder,
   getSignatureFromTransaction,
@@ -18,10 +21,12 @@ import {
   pipe,
   setTransactionMessageFeePayer,
   setTransactionMessageLifetimeUsingBlockhash,
+  verifySignature,
 } from '@solana/kit'
 import type {
   Address,
   Base64EncodedWireTransaction,
+  Blockhash,
   Instruction,
   Rpc,
   Signature,
@@ -204,44 +209,100 @@ export type SendResult =
   | { status: 'unknown'; signature: Signature; error?: string }
 
 /**
- * The wire bytes and fee payer signature of a signed transaction. Phoenix
- * co-signs activation itself, so that route needs only the fee payer's.
+ * A signed transaction, checked: it carries exactly the message that was
+ * prepared, and the fee payer's signature is present and valid. Phoenix
+ * co-signs activation itself, so that route needs only the fee payer's;
+ * every other route needs every signature.
  */
-export function readSigned(transaction: string, { complete = true } = {}) {
+export async function readSigned(
+  transaction: string,
+  { prepared, complete = true }: { prepared: string; complete?: boolean },
+) {
+  let decoded
+  let unsigned
   try {
-    const decoded = getTransactionDecoder().decode(
+    decoded = getTransactionDecoder().decode(
       getBase64Encoder().encode(transaction),
     )
-    if (complete) assertIsFullySignedTransaction(decoded)
-    return {
-      wire: getBase64EncodedWireTransaction(decoded),
-      signature: getSignatureFromTransaction(decoded),
-    }
+    unsigned = getTransactionDecoder().decode(
+      getBase64Encoder().encode(prepared),
+    )
   } catch {
+    throw new PhoenixError('invalid_input', 'The transaction does not decode')
+  }
+  const sameMessage =
+    decoded.messageBytes.length === unsigned.messageBytes.length &&
+    decoded.messageBytes.every(
+      (byte, index) => byte === unsigned.messageBytes[index],
+    )
+  if (!sameMessage)
     throw new PhoenixError(
       'invalid_input',
-      complete
-        ? 'The transaction is not a fully signed Solana transaction'
-        : 'The transaction is not signed by its fee payer',
+      'The signed transaction is not the one that was prepared; nothing was sent',
     )
+  const message = getCompiledTransactionMessageDecoder().decode(
+    decoded.messageBytes,
+  )
+  const feePayer = message.staticAccounts[0]
+  const signatureBytes = feePayer ? decoded.signatures[feePayer] : null
+  const valid =
+    feePayer &&
+    signatureBytes &&
+    (await verifySignature(
+      await getPublicKeyFromAddress(feePayer),
+      signatureBytes,
+      decoded.messageBytes,
+    ))
+  if (!valid)
+    throw new PhoenixError(
+      'invalid_input',
+      'The transaction is not signed by its fee payer; nothing was sent',
+    )
+  if (complete) {
+    try {
+      assertIsFullySignedTransaction(decoded)
+    } catch {
+      throw new PhoenixError(
+        'invalid_input',
+        'The transaction is not fully signed; nothing was sent',
+      )
+    }
+  }
+  return {
+    wire: getBase64EncodedWireTransaction(decoded),
+    signature: getSignatureFromTransaction(decoded),
+    blockhash: toBlockhash(message.lifetimeToken),
   }
 }
 
+const ALREADY_PROCESSED = SOLANA_ERROR__TRANSACTION_ERROR__ALREADY_PROCESSED
+
 /**
  * Sends a signed transaction once and waits until it confirms, fails, or its
- * blockhash expires. It never resends or re-signs: a send whose outcome is
- * unclear comes back `unknown` with its signature, because a second send
- * could trade twice.
+ * blockhash expires. It never resends or re-signs. A send whose outcome is
+ * unclear is still watched, since watching never sends: it ends `unknown`
+ * only when the cluster cannot say. The caller must not send it again before
+ * checking the signature, because a second trade could fill.
  */
 export async function sendSignedTransaction(
   rpc: TradeRpc,
   {
+    prepared,
     transaction,
     lastValidBlockHeight,
-  }: { transaction: string; lastValidBlockHeight: string },
+  }: { prepared: string; transaction: string; lastValidBlockHeight: string },
   { intervalMs = 2_000 } = {},
 ): Promise<SendResult> {
-  const { wire, signature } = readSigned(transaction)
+  const { wire, signature, blockhash } = await readSigned(transaction, {
+    prepared,
+  })
+  const watch = () =>
+    waitForConfirmation(rpc, {
+      signature,
+      blockhash,
+      lastValidBlockHeight,
+      intervalMs,
+    })
 
   try {
     await rpc
@@ -251,33 +312,49 @@ export async function sendSignedTransaction(
       })
       .send(rpcTimeout())
   } catch (error) {
-    // Preflight refused it, so it was never broadcast.
     if (
       isSolanaError(
         error,
         SOLANA_ERROR__JSON_RPC__SERVER_ERROR_SEND_TRANSACTION_PREFLIGHT_FAILURE,
       )
-    )
+    ) {
+      // These exact bytes already landed (a resend after `unknown`).
+      if (isSolanaError(error.cause, ALREADY_PROCESSED)) return watch()
+      // Preflight refused it, so it was never broadcast.
       return {
         status: 'failed',
         signature,
         error: `The RPC refused the transaction in simulation: ${error.cause instanceof Error ? error.cause.message : error.message}`,
       }
-    return { status: 'unknown', signature }
+    }
+    // The send may or may not have reached the cluster; watch for it.
+    return watch()
   }
-
-  return waitForConfirmation(rpc, signature, lastValidBlockHeight, intervalMs)
+  return watch()
 }
+
+const isFinal = (status: string | null | undefined) =>
+  status === 'confirmed' || status === 'finalized'
 
 /**
  * Polls a sent transaction until it confirms, fails, or its blockhash
- * expires. A status that cannot be read is `unknown`, never `failed`.
+ * expires. A failure counts only once confirmed: one seen at `processed` may
+ * be on a fork the cluster drops. A status that cannot be read is `unknown`,
+ * never `failed`.
  */
 export async function waitForConfirmation(
   rpc: TradeRpc,
-  signature: Signature,
-  lastValidBlockHeight: string,
-  intervalMs: number,
+  {
+    signature,
+    blockhash,
+    lastValidBlockHeight,
+    intervalMs,
+  }: {
+    signature: Signature
+    blockhash: Blockhash
+    lastValidBlockHeight: string
+    intervalMs: number
+  },
 ): Promise<SendResult> {
   const lastValid = BigInt(lastValidBlockHeight)
   try {
@@ -285,13 +362,10 @@ export async function waitForConfirmation(
       const {
         value: [status],
       } = await rpc.getSignatureStatuses([signature]).send(rpcTimeout())
-      if (status?.err)
-        return { status: 'failed', signature, error: json(status.err) }
-      if (
-        status?.confirmationStatus === 'confirmed' ||
-        status?.confirmationStatus === 'finalized'
-      )
-        return { status: 'confirmed', signature }
+      if (status && isFinal(status.confirmationStatus))
+        return status.err
+          ? { status: 'failed', signature, error: json(status.err) }
+          : { status: 'confirmed', signature }
       const height = await rpc
         .getBlockHeight({ commitment: 'confirmed' })
         .send(rpcTimeout())
@@ -302,15 +376,17 @@ export async function waitForConfirmation(
         } = await rpc
           .getSignatureStatuses([signature], { searchTransactionHistory: true })
           .send(rpcTimeout())
-        if (!last) return { status: 'expired', signature }
-        if (last.err)
-          return { status: 'failed', signature, error: json(last.err) }
-        if (
-          last.confirmationStatus === 'confirmed' ||
-          last.confirmationStatus === 'finalized'
-        )
-          return { status: 'confirmed', signature }
-        return { status: 'unknown', signature }
+        if (last && isFinal(last.confirmationStatus))
+          return last.err
+            ? { status: 'failed', signature, error: json(last.err) }
+            : { status: 'confirmed', signature }
+        if (last) return { status: 'unknown', signature }
+        // A lagging RPC node can miss a landed transaction; only call it
+        // expired once its blockhash is no longer valid either.
+        const { value: valid } = await rpc
+          .isBlockhashValid(blockhash, { commitment: 'confirmed' })
+          .send(rpcTimeout())
+        if (!valid) return { status: 'expired', signature }
       }
       await new Promise((resolve) => setTimeout(resolve, intervalMs))
     }

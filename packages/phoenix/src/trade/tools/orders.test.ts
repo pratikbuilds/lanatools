@@ -83,15 +83,18 @@ test('a market buy is limited above the best ask, expires, and may fill partly',
     ok: true,
     result: {
       summary:
-        'Buy 0.1 SOL now at at most $115.73 each (market order); any part that cannot fill at that price is cancelled',
+        'Market buy (long): 0.1 SOL perp now, paying at most $115.73 each; any part that cannot fill at that price is cancelled',
       details: {
         limitPrice: '115.73',
         bestPrice: '115.16',
         estimatedNotionalUsd: '11.52',
-        estimatedTakerFeeUsd: '0.00',
+        // 11.516 × 0.00035
+        estimatedTakerFeeUsd: '0.004031',
         expiresAfterSlot: '1016',
       },
-      warnings: [],
+      warnings: [
+        'This order expires about 6 seconds after it was prepared (slot 1016); sign and send it right away, or prepare it again.',
+      ],
     },
   })
 })
@@ -114,9 +117,55 @@ test('a market sell with a limit rounds up and warns when out of reach', async (
   })
   expect(outcome).toMatchObject({
     result: {
+      summary:
+        'Market sell to reduce a long position: 0.1 SOL perp now, receiving at least $116.01 each; any part that cannot fill at that price is cancelled',
       warnings: [
+        'This order expires about 6 seconds after it was prepared (slot 1016); sign and send it right away, or prepare it again.',
         'The limit is above the best bid (115.15), so this order will not fill now.',
       ],
+    },
+  })
+})
+
+test("a noisy float in Phoenix's book still prices at its own tick", async () => {
+  // 115.17999999999999 is the 115.18 level; 0 bps must be exactly it.
+  const noisy = { ...SOL_BOOK, asks: [[115.17999999999999, 10]] }
+  const outcome = await runTradeTool(
+    marketOrder,
+    { ...buy, maxSlippageBps: 0 },
+    opts({ '/v1/view/orderbook/SOL': noisy }),
+  )
+  expect(packetOf(outcome)).toMatchObject({ priceInTicks: 11518n })
+  expect(outcome).toMatchObject({
+    result: { details: { bestPrice: '115.18', limitPrice: '115.18' } },
+  })
+  // A limit at exactly the best price is in reach: no warning.
+  expect(
+    await runTradeTool(
+      marketOrder,
+      { ...buy, limitPrice: '115.18' },
+      opts({ '/v1/view/orderbook/SOL': noisy }),
+    ),
+  ).toMatchObject({
+    result: {
+      warnings: [
+        'This order expires about 6 seconds after it was prepared (slot 1016); sign and send it right away, or prepare it again.',
+      ],
+    },
+  })
+})
+
+test('a market sell that is not reduce-only says it opens a short', async () => {
+  expect(
+    await runTradeTool(
+      marketOrder,
+      { ...buy, side: 'sell', maxSlippageBps: 50 },
+      opts(),
+    ),
+  ).toMatchObject({
+    result: {
+      summary:
+        'Market sell (short): 0.1 SOL perp now, receiving at least $114.58 each; any part that cannot fill at that price is cancelled',
     },
   })
 })
@@ -218,7 +267,7 @@ test('a limit order rests with no expiry; a sell rounds up', async () => {
   expect(outcome).toMatchObject({
     result: {
       summary:
-        'Place a limit sell of 0.1 SOL at $120.01; it rests on the book until filled or cancelled',
+        'Limit sell (short): 0.1 SOL perp at $120.01; it rests on the book until filled or cancelled',
       details: { price: '120.01', bestBid: '115.15', notionalUsd: '12.00' },
       warnings: [],
     },
@@ -248,4 +297,22 @@ test('a post-only order never slides, and both kinds warn when crossing', async 
       ],
     },
   })
+})
+
+test('crossing is judged in ticks, at the boundary, on both sides', async () => {
+  const warningsFor = async (side: string, price: string) => {
+    const outcome = await runTradeTool(
+      limitOrder,
+      { ...buy, side, price },
+      opts(),
+    )
+    if (!outcome.ok || outcome.result.status !== 'ready')
+      throw new Error(`unexpected ${JSON.stringify(outcome)}`)
+    return outcome.result.warnings.length
+  }
+  // Best ask 115.16, best bid 115.15.
+  expect(await warningsFor('buy', '115.16')).toBe(1)
+  expect(await warningsFor('buy', '115.15')).toBe(0)
+  expect(await warningsFor('sell', '115.15')).toBe(1)
+  expect(await warningsFor('sell', '115.16')).toBe(0)
 })

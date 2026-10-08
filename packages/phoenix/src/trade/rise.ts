@@ -17,14 +17,21 @@ import {
   buildWithdrawIxsResolved,
   decodeTrader,
   getEmberVaultAddress,
+  getDepositFundsDecoder,
+  getEmberDepositDecoder,
+  getEmberWithdrawDecoder,
   getOnboardTraderDelegatedEncoder,
   getPhoenixSplineCollectionAddress,
   getPhoenixTraderSubaccountAddress,
   getPhoenixTraderTokenAccountAddress,
   getPlaceLimitOrderDecoder,
+  getPlaceLimitOrderEncoder,
   getPlaceMarketOrderDecoder,
+  getPlaceMarketOrderEncoder,
   getPlacePostOnlyOrderDecoder,
+  getPlacePostOnlyOrderEncoder,
   getRegisterTraderInstructionDecoder,
+  getWithdrawFundsDecoder,
   hasReferralActivationCapabilities,
   quoteLots,
   ticks,
@@ -427,87 +434,158 @@ async function orderContext(
   }
 }
 
-export type OrderRequest = {
-  side: 'buy' | 'sell'
-  priceInTicks: bigint
-  numBaseLots: bigint
-  reduceOnly: boolean
-}
-
-const flagsFor = (order: OrderRequest) =>
-  order.reduceOnly ? OrderFlags.ReduceOnly : OrderFlags.None
-const riseSide = (order: OrderRequest) =>
-  order.side === 'buy' ? Side.Bid : Side.Ask
-
-/**
- * An immediate-or-cancel order with a price limit. Partial fills are
- * allowed (at least one lot); it expires at `lastValidSlot`. Self-trades
- * abort, as Rise's market orders do.
- */
-export async function marketOrderInstruction(
-  wallet: Address,
-  keys: ExchangeKeys,
-  market: OrderMarket,
-  order: OrderRequest & { lastValidSlot: bigint },
-) {
-  return toInstruction(
-    buildPlaceMarketOrderIxResolved({
-      ...(await orderContext(wallet, keys, market)),
-      orderPacket: {
-        side: riseSide(order),
-        priceInTicks: ticks(order.priceInTicks),
-        numBaseLots: baseLots(order.numBaseLots),
-        numQuoteLots: null,
-        minBaseLotsToFill: baseLots(MIN_FILL_LOTS),
-        minQuoteLotsToFill: quoteLots(1n),
-        selfTradeBehavior: SelfTradeBehavior.Abort,
-        matchLimit: null,
-        clientOrderId: 0n,
-        lastValidSlot: order.lastValidSlot,
-        orderFlags: flagsFor(order),
-        cancelExisting: false,
-      },
-    }),
-  )
-}
-
 /** Market orders may fill partly, down to one lot (D4). */
 export const MIN_FILL_LOTS = 1n
 
 /**
- * A resting limit order with no expiry. Post-only orders never slide: one
- * that would cross the book fails instead of moving to a worse price.
- * Self-trades cancel the resting order, as Rise's limit orders do.
+ * Everything an order states. The builders and the safety check both work
+ * from it, so the check compares the instruction with exactly this.
  */
-export async function limitOrderInstruction(
+export type OrderSpec = {
+  kind: OrderKind
+  side: 'buy' | 'sell'
+  priceInTicks: bigint
+  numBaseLots: bigint
+  reduceOnly: boolean
+  /** Market orders expire here (D2); resting orders have no expiry. */
+  lastValidSlot: bigint | null
+}
+
+const flagsFor = (spec: OrderSpec) =>
+  spec.reduceOnly ? OrderFlags.ReduceOnly : OrderFlags.None
+const riseSide = (spec: OrderSpec) =>
+  spec.side === 'buy' ? Side.Bid : Side.Ask
+
+/**
+ * Immediate-or-cancel with a price limit: partial fills down to one lot,
+ * self-trades abort, as in Rise's market orders.
+ */
+function marketPacket(spec: OrderSpec) {
+  return {
+    side: riseSide(spec),
+    priceInTicks: ticks(spec.priceInTicks),
+    numBaseLots: baseLots(spec.numBaseLots),
+    numQuoteLots: null,
+    minBaseLotsToFill: baseLots(MIN_FILL_LOTS),
+    minQuoteLotsToFill: quoteLots(1n),
+    selfTradeBehavior: SelfTradeBehavior.Abort,
+    matchLimit: null,
+    clientOrderId: 0n,
+    lastValidSlot: spec.lastValidSlot,
+    orderFlags: flagsFor(spec),
+    cancelExisting: false,
+  }
+}
+
+/** A resting limit order: self-trades cancel the resting order, as in Rise. */
+function limitPacket(spec: OrderSpec) {
+  return {
+    side: riseSide(spec),
+    priceInTicks: ticks(spec.priceInTicks),
+    numBaseLots: baseLots(spec.numBaseLots),
+    selfTradeBehavior: SelfTradeBehavior.CancelProvide,
+    matchLimit: null,
+    clientOrderId: 0n,
+    lastValidSlot: spec.lastValidSlot,
+    orderFlags: flagsFor(spec),
+    cancelExisting: false,
+  }
+}
+
+/** Post-only never slides: one that would cross the book fails instead. */
+function postOnlyPacket(spec: OrderSpec) {
+  return {
+    side: riseSide(spec),
+    priceInTicks: ticks(spec.priceInTicks),
+    numBaseLots: baseLots(spec.numBaseLots),
+    clientOrderId: 0n,
+    slide: false,
+    lastValidSlot: spec.lastValidSlot,
+    orderFlags: flagsFor(spec),
+    cancelExisting: false,
+  }
+}
+
+/** The exact instruction data an order spec encodes to. */
+export function orderData(spec: OrderSpec) {
+  switch (spec.kind) {
+    case 'market':
+      return Uint8Array.from(
+        getPlaceMarketOrderEncoder().encode(marketPacket(spec)),
+      )
+    case 'limit':
+      return Uint8Array.from(
+        getPlaceLimitOrderEncoder().encode(limitPacket(spec)),
+      )
+    case 'post_only':
+      return Uint8Array.from(
+        getPlacePostOnlyOrderEncoder().encode(postOnlyPacket(spec)),
+      )
+  }
+}
+
+/** What `decodeOrder` should read back from an order built from `spec`. */
+export function expectedPacket(spec: OrderSpec): OrderPacket {
+  return {
+    ...spec,
+    minBaseLotsToFill: spec.kind === 'market' ? MIN_FILL_LOTS : null,
+    slide: false,
+    cancelExisting: false,
+  }
+}
+
+/** The order instruction for `spec`, from Rise's resolved builders. */
+export async function orderInstruction(
   wallet: Address,
   keys: ExchangeKeys,
   market: OrderMarket,
-  order: OrderRequest & { postOnly: boolean },
+  spec: OrderSpec,
 ) {
   const context = await orderContext(wallet, keys, market)
-  const common = {
-    side: riseSide(order),
-    priceInTicks: ticks(order.priceInTicks),
-    numBaseLots: baseLots(order.numBaseLots),
-    clientOrderId: 0n,
-    lastValidSlot: null,
-    orderFlags: flagsFor(order),
-    cancelExisting: false,
-  }
-  return toInstruction(
-    order.postOnly
-      ? buildPlacePostOnlyOrderIxResolved({
+  switch (spec.kind) {
+    case 'market':
+      return toInstruction(
+        buildPlaceMarketOrderIxResolved({
           ...context,
-          orderPacket: { ...common, slide: false },
-        })
-      : buildPlaceLimitOrderIxResolved({
-          ...context,
-          orderPacket: {
-            ...common,
-            selfTradeBehavior: SelfTradeBehavior.CancelProvide,
-            matchLimit: null,
-          },
+          orderPacket: marketPacket(spec),
         }),
-  )
+      )
+    case 'limit':
+      return toInstruction(
+        buildPlaceLimitOrderIxResolved({
+          ...context,
+          orderPacket: limitPacket(spec),
+        }),
+      )
+    case 'post_only':
+      return toInstruction(
+        buildPlacePostOnlyOrderIxResolved({
+          ...context,
+          orderPacket: postOnlyPacket(spec),
+        }),
+      )
+  }
 }
+
+function amountOf(decode: () => bigint | null) {
+  try {
+    return decode()
+  } catch {
+    return null
+  }
+}
+
+/** The amounts in collateral instructions, or null when data is not one. */
+export const collateralAmounts = {
+  depositFunds: (data: Uint8Array) =>
+    amountOf(() => getDepositFundsDecoder().decode(data)),
+  withdrawFunds: (data: Uint8Array) =>
+    amountOf(() => getWithdrawFundsDecoder().decode(data)),
+  emberDeposit: (data: Uint8Array) =>
+    amountOf(() => getEmberDepositDecoder().decode(data)),
+  emberWithdraw: (data: Uint8Array) =>
+    amountOf(() => getEmberWithdrawDecoder().decode(data)),
+}
+
+/** Ember's state account, the delegate a withdrawal approves. */
+export const EMBER_STATE = address(EMBER_STATE_ADDRESS)

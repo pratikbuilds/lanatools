@@ -26,7 +26,13 @@ export type SignedTrade = {
 }
 
 export async function submitSignedTransaction(
-  prepared: { wallet: Address; lastValidBlockHeight: string; submit: Submit },
+  prepared: {
+    wallet: Address
+    /** The unsigned transaction the tool returned. */
+    transaction: string
+    lastValidBlockHeight: string
+    submit: Submit
+  },
   signed: SignedTrade,
   opts: SubmitOpts,
 ): Promise<SendResult> {
@@ -36,6 +42,7 @@ export async function submitSignedTransaction(
     return sendSignedTransaction(
       opts.rpc,
       {
+        prepared: prepared.transaction,
         transaction: signed.transaction,
         lastValidBlockHeight: prepared.lastValidBlockHeight,
       },
@@ -43,7 +50,8 @@ export async function submitSignedTransaction(
     )
 
   // Phoenix adds its onboarder's signature, so only the wallet's is needed.
-  const { wire, signature } = readSigned(signed.transaction, {
+  const { wire, signature, blockhash } = await readSigned(signed.transaction, {
+    prepared: prepared.transaction,
     complete: false,
   })
   if (!signed.loginSignature)
@@ -106,10 +114,10 @@ export async function submitSignedTransaction(
       error:
         'Phoenix reported a different transaction; check the account before trying again',
     }
-  return waitForConfirmation(
-    opts.rpc,
+  return waitForConfirmation(opts.rpc, {
     signature,
-    prepared.lastValidBlockHeight,
+    blockhash,
+    lastValidBlockHeight: prepared.lastValidBlockHeight,
     intervalMs,
-  )
+  })
 }

@@ -86,7 +86,10 @@ export function createPhoenixClient(opts: PhoenixOpts = {}) {
     if (response.status === 400)
       throw new PhoenixError('invalid_input', 'Phoenix rejected the request')
     if (response.status === 429)
-      throw new PhoenixError('rate_limited', 'Phoenix is rate limiting reads')
+      throw new PhoenixError(
+        'rate_limited',
+        'Phoenix is rate limiting requests',
+      )
     if (!response.ok)
       throw new PhoenixError(
         'upstream_error',

@@ -3,13 +3,17 @@ import type { Address, Instruction } from '@solana/kit'
 import { PhoenixError } from '../client'
 import {
   EMBER_PROGRAM,
+  EMBER_STATE,
   MAX_POSITIONS,
   PHOENIX_PROGRAM,
+  collateralAmounts,
   decodeOrder,
   decodeRegisterTrader,
+  expectedPacket,
   isOnboardTraderDelegated,
+  orderData,
 } from './rise'
-import type { OrderPacket } from './rise'
+import type { OrderSpec } from './rise'
 
 /**
  * Checks every instruction a trade tool built before it becomes a
@@ -72,19 +76,28 @@ export function checkInstructions(
   }
 }
 
+const bytesOf = (instruction: Instruction | undefined) =>
+  Uint8Array.from(instruction?.data ?? [])
+
+const sameBytes = (left: Uint8Array, right: Uint8Array) =>
+  left.length === right.length &&
+  left.every((byte, index) => byte === right[index])
+
 /**
- * Decodes an order instruction and compares every field with what the tool
- * meant to build. An order without a price limit never passes: Phoenix would
- * fill it at any price.
+ * Decodes an order instruction and compares it with the order the tool
+ * meant to build: field by field, for a clear reason, then byte for byte, so
+ * nothing else in the packet (flags, self-trade rule, trailing bytes) can
+ * differ. An order without a price limit never passes: Phoenix would fill it
+ * at any price.
  */
-export function checkOrder(instruction: Instruction, expected: OrderPacket) {
+export function checkOrder(instruction: Instruction, spec: OrderSpec) {
   if (instruction.programAddress !== PHOENIX_PROGRAM)
     fail('the order is not a Phoenix instruction')
-  const packet = instruction.data
-    ? decodeOrder(Uint8Array.from(instruction.data))
-    : null
+  const data = bytesOf(instruction)
+  const packet = decodeOrder(data)
   if (!packet) fail('the instruction is not a Phoenix order')
   if (packet.priceInTicks === null) fail('the order has no price limit')
+  const expected = expectedPacket(spec)
   for (const field of [
     'kind',
     'side',
@@ -98,6 +111,93 @@ export function checkOrder(instruction: Instruction, expected: OrderPacket) {
   ] as const)
     if (packet[field] !== expected[field])
       fail(`the order's ${field} does not match the request`)
+  if (!sameBytes(data, orderData(spec)))
+    fail("the order's encoding differs from the request")
+}
+
+// SPL token instruction tags: Approve is 4; the associated token program's
+// CreateIdempotent is 1.
+const APPROVE = 4
+const CREATE_IDEMPOTENT = 1
+
+function checkCreateAccount(instruction: Instruction | undefined) {
+  const data = bytesOf(instruction)
+  if (
+    instruction?.programAddress !== ASSOCIATED_TOKEN_PROGRAM ||
+    !sameBytes(data, Uint8Array.of(CREATE_IDEMPOTENT))
+  )
+    fail('a token account step is not an idempotent create')
+}
+
+function checkAmount(
+  instruction: Instruction | undefined,
+  program: Address,
+  read: (data: Uint8Array) => bigint | null,
+  amount: bigint,
+  step: string,
+) {
+  if (instruction?.programAddress !== program)
+    fail(`the ${step} step calls the wrong program`)
+  if (read(bytesOf(instruction)) !== amount)
+    fail(`the ${step} amount does not match the request`)
+}
+
+/**
+ * Checks a deposit or withdrawal step by step: the programs in order, every
+ * amount equal to the request, and a withdrawal's token approval limited to
+ * that amount and delegated to Ember only.
+ */
+export function checkCollateral(
+  instructions: readonly Instruction[],
+  { kind, amount }: { kind: 'deposit' | 'withdraw'; amount: bigint },
+) {
+  if (kind === 'deposit') {
+    if (instructions.length !== 3) fail('the deposit has unexpected steps')
+    const [create, wrap, deposit] = instructions
+    checkCreateAccount(create)
+    checkAmount(
+      wrap,
+      EMBER_PROGRAM,
+      collateralAmounts.emberDeposit,
+      amount,
+      'Ember deposit',
+    )
+    checkAmount(
+      deposit,
+      PHOENIX_PROGRAM,
+      collateralAmounts.depositFunds,
+      amount,
+      'Phoenix deposit',
+    )
+    return
+  }
+  if (instructions.length !== 5) fail('the withdrawal has unexpected steps')
+  const [createPhoenixUsd, approve, createUsdc, withdraw, unwrap] = instructions
+  checkCreateAccount(createPhoenixUsd)
+  checkCreateAccount(createUsdc)
+  const approval = bytesOf(approve)
+  if (
+    approve?.programAddress !== TOKEN_PROGRAM ||
+    approval.length !== 9 ||
+    approval[0] !== APPROVE ||
+    new DataView(approval.buffer).getBigUint64(1, true) !== amount ||
+    approve.accounts?.[1]?.address !== EMBER_STATE
+  )
+    fail('the token approval is not limited to the amount for Ember')
+  checkAmount(
+    withdraw,
+    PHOENIX_PROGRAM,
+    collateralAmounts.withdrawFunds,
+    amount,
+    'Phoenix withdrawal',
+  )
+  checkAmount(
+    unwrap,
+    EMBER_PROGRAM,
+    collateralAmounts.emberWithdraw,
+    amount,
+    'Ember withdrawal',
+  )
 }
 
 /**
@@ -122,10 +222,8 @@ export function checkActivation(
     if (!touchesTrader(instruction))
       fail("activation is not for the wallet's trader account")
   }
-  const data = (instruction: Instruction | undefined) =>
-    Uint8Array.from(instruction?.data ?? [])
   if (register) {
-    const params = decodeRegisterTrader(data(instructions[0]))
+    const params = decodeRegisterTrader(bytesOf(instructions[0]))
     if (!params) fail('activation does not register the trader')
     if (
       params.traderPdaIndex !== 0 ||
@@ -134,6 +232,6 @@ export function checkActivation(
     )
       fail('activation registers the wrong trader account')
   }
-  if (!isOnboardTraderDelegated(data(instructions.at(-1))))
+  if (!isOnboardTraderDelegated(bytesOf(instructions.at(-1))))
     fail('activation does not onboard the trader')
 }

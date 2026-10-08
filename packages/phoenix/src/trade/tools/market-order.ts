@@ -7,12 +7,13 @@ import { checkOrder } from '../checks'
 import {
   limitRounding,
   priceToTicks,
-  slippageToTicks,
+  slippageLimit,
   ticksToPrice,
   toBaseLots,
 } from '../price'
-import type { MarketUnits, Side } from '../price'
-import { MIN_FILL_LOTS, marketOrderInstruction } from '../rise'
+import type { Side } from '../price'
+import { orderInstruction } from '../rise'
+import type { OrderSpec } from '../rise'
 import { ExchangeKeys } from '../schemas'
 import type { OrderMarket } from '../schemas'
 import { defineTradeTool } from '../tool'
@@ -24,15 +25,17 @@ import {
   Price,
   Size,
   SlippageBps,
-  bestPrice,
+  bestTicks,
+  fineUsd,
+  orderVerb,
   requireActivated,
   tradableMarket,
+  unitsOf,
+  usd,
 } from './shared'
 
 /** An immediate-or-cancel order expires this many slots after it is built (D2). */
 export const ORDER_EXPIRY_SLOTS = 16n
-
-const usd = (value: number) => value.toFixed(2)
 
 /**
  * The building blocks of an immediate-or-cancel order, shared with
@@ -59,12 +62,9 @@ export async function immediateOrder(
     reduceOnly: boolean
   },
 ) {
-  const units: MarketUnits = {
-    tickSize: market.tickSize,
-    baseLotsDecimals: market.baseLotsDecimals,
-  }
+  const units = unitsOf(market)
   const [best, keys, slot] = await Promise.all([
-    bestPrice(context, market.symbol, side),
+    bestTicks(context, market, side),
     context.phoenix.get('/v1/view/exchange/keys', ExchangeKeys),
     context.rpc.getSlot({ commitment: 'confirmed' }).send(rpcTimeout()),
   ])
@@ -73,31 +73,25 @@ export async function immediateOrder(
       'market_unavailable',
       `Phoenix's ${market.symbol} book has no ${side === 'buy' ? 'asks' : 'bids'} to fill against`,
     )
-  const priceInTicks =
-    'limitPrice' in limit
-      ? priceToTicks(limit.limitPrice, units, limitRounding(side))
-      : slippageToTicks(side, best, limit.maxSlippageBps, units)
-  const lastValidSlot = slot + ORDER_EXPIRY_SLOTS
-  const order = { side, priceInTicks, numBaseLots, reduceOnly }
-  const instruction = await marketOrderInstruction(wallet, keys, market, {
-    ...order,
-    lastValidSlot,
-  })
-  checkOrder(instruction, {
-    ...order,
+  const spec: OrderSpec = {
     kind: 'market',
-    minBaseLotsToFill: MIN_FILL_LOTS,
-    lastValidSlot,
-    slide: false,
-    cancelExisting: false,
-  })
+    side,
+    priceInTicks:
+      'limitPrice' in limit
+        ? priceToTicks(limit.limitPrice, units, limitRounding(side))
+        : slippageLimit(side, best, limit.maxSlippageBps),
+    numBaseLots,
+    reduceOnly,
+    lastValidSlot: slot + ORDER_EXPIRY_SLOTS,
+  }
+  const instruction = await orderInstruction(wallet, keys, market, spec)
+  checkOrder(instruction, spec)
 
-  const limitPrice = ticksToPrice(priceInTicks, units)
-  const notional = Number(size) * Number(best)
+  const limitPrice = ticksToPrice(spec.priceInTicks, units)
+  const bestPrice = ticksToPrice(best, units)
+  const notional = Number(size) * Number(bestPrice)
   const outOfReach =
-    side === 'buy'
-      ? Number(limitPrice) < Number(best)
-      : Number(limitPrice) > Number(best)
+    side === 'buy' ? spec.priceInTicks < best : spec.priceInTicks > best
   return {
     instruction,
     limitPrice,
@@ -105,17 +99,21 @@ export async function immediateOrder(
       side,
       size,
       limitPrice,
-      bestPrice: best,
+      bestPrice,
       estimatedNotionalUsd: usd(notional),
-      estimatedTakerFeeUsd: usd(notional * market.takerFee),
-      expiresAfterSlot: lastValidSlot.toString(),
+      estimatedTakerFeeUsd: fineUsd(notional * market.takerFee),
+      expiresAfterSlot: String(spec.lastValidSlot),
       reduceOnly: String(reduceOnly),
     },
-    warnings: outOfReach
-      ? [
-          `The ${side === 'buy' ? 'limit is below the best ask' : 'limit is above the best bid'} (${best}), so this order will not fill now.`,
-        ]
-      : [],
+    warnings: [
+      // D2: about 16 slots of 400 ms.
+      `This order expires about 6 seconds after it was prepared (slot ${spec.lastValidSlot}); sign and send it right away, or prepare it again.`,
+      ...(outOfReach
+        ? [
+            `The ${side === 'buy' ? 'limit is below the best ask' : 'limit is above the best bid'} (${bestPrice}), so this order will not fill now.`,
+          ]
+        : []),
+    ],
   }
 }
 
@@ -180,13 +178,13 @@ export const marketOrder = defineTradeTool({
       limit: worstPrice(input),
       reduceOnly: input.reduceOnly,
     })
-    const verb = input.side === 'buy' ? 'Buy' : 'Sell'
-    const bound = input.side === 'buy' ? 'at most' : 'at least'
+    const verb = orderVerb(input.side, input.reduceOnly)
+    const bound = input.side === 'buy' ? 'paying at most' : 'receiving at least'
     return {
       kind: 'instructions',
       wallet,
       instructions: [order.instruction],
-      summary: `${verb} ${input.size} ${market.symbol} now at ${bound} $${order.limitPrice} each (market order); any part that cannot fill at that price is cancelled`,
+      summary: `Market ${verb}: ${input.size} ${market.symbol} perp now, ${bound} $${order.limitPrice} each; any part that cannot fill at that price is cancelled`,
       details: order.details,
       warnings: order.warnings,
     }
