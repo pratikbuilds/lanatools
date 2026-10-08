@@ -1,6 +1,7 @@
 # Devnet merchant for testing deployed LanaTools: the testbed's merchant.yaml
-# behind `pay gate api`. Build context: packages/testbed.
+# behind `pay gate api` and a loopback fixture server. Build context: packages/testbed.
 # pay's x86_64 build needs glibc 2.39+, newer than bookworm's.
+FROM oven/bun:1.4.2 AS bun
 FROM debian:trixie-slim
 
 # pay 0.29's gateway rejects Pay Kit 0.12 MPP credentials ("Challenge ID
@@ -24,5 +25,7 @@ RUN set -eu; \
   pay --version
 
 COPY merchant.yaml /app/merchant.yaml
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+COPY src/merchant-server.ts /app/src/merchant-server.ts
 COPY gateway/entrypoint.sh /app/entrypoint.sh
 ENTRYPOINT ["/app/entrypoint.sh"]

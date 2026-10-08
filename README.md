@@ -91,9 +91,9 @@ Individual commands: `bun run format`, `bun run lint`, `bun run typecheck`,
 
 ## Payment testbed
 
-Runs a private pay.sh merchant, `packages/testbed/merchant.yaml`, that charges
-a fixed 0.01 USDC over MPP and x402. Needs the [pay CLI](https://pay.sh) on
-`PATH` and port 1402 free. Choose a network with `--network`:
+Runs a private pay.sh merchant, `packages/testbed/merchant.yaml`, with MPP and
+x402 fixtures. Needs the [pay CLI](https://pay.sh) on `PATH` and ports 1402,
+1403, and 1404 free. Choose a network with `--network`:
 
 - **sandbox** (default): the hosted Surfpool that `pay --sandbox` uses. Wallets
   are funded with cheatcodes and no real funds move.
@@ -114,10 +114,16 @@ bun run testbed:devnet start    # keep the devnet merchant running
 
 `start` writes the spec with the chosen network into
 `packages/testbed/.state/<network>/` and serves it with `pay gate api`.
+A Bun router serves port 1402 and the fixture responses on loopback port 1403.
+The payment gateway listens on loopback port 1404. It stays behind the router
+so input validation and price selection happen before payment.
 `check` expects a USDC challenge for 10000 base units on that network, pays it
 over each protocol with Pay Kit from a new funded keypair, and confirms that
 the merchant's USDC balance rose by that amount. `pay` is sandbox-only because
 pay 0.28 refuses devnet challenges with a false insufficient-balance error.
+Rapid equal-price Surfpool calls from one payer can produce an "already been
+processed" transaction error. Use separate sandbox payer wallets to isolate
+scenario checks. This was observed in sandbox; it has not been verified on devnet.
 
 The sandbox state is reset on every start, so pay creates new auto-funded
 wallets; `pay` reuses them. The devnet state persists so the funded fee payer
@@ -131,8 +137,67 @@ Deployed LanaTools cannot reach a merchant on your machine, so
 container for Railway. It runs as the `devnet-merchant` service in the
 `lanatools-testbed` Railway project at
 `https://devnet-merchant-production.up.railway.app/api/v1/fixed`, unregistered
-with pay.sh. The container refuses a non-devnet RPC and also serves
-`/api/v1/policy-denied`.
+with pay.sh. The container refuses a non-devnet RPC.
+
+The free [`/api/v1/scenarios`](https://devnet-merchant-production.up.railway.app/api/v1/scenarios)
+catalog lists every route, its price, accepted protocols, and example inputs.
+`/openapi.json` lists fixed payment offers and the dynamic pricing formula. Prices are devnet USDC per request:
+
+| Method    | Path under `/api/v1`      | Price   | Output / input                                               |
+| --------- | ------------------------- | ------- | ------------------------------------------------------------ |
+| GET       | `/fixed`                  | 0.01    | Original `{"status":"ok"}` response                          |
+| GET       | `/policy-denied`          | 0.02    | Original MPP-only payer-policy test                          |
+| GET, POST | `/echo`                   | 0.01    | Query parameters and any JSON POST body, max 64 KiB          |
+| GET       | `/quote`                  | 0.01    | Simulated quote; `symbol=SOL\|BTC\|ETH\|USDC`, `seed=string` |
+| POST      | `/summarize`              | 0.01    | Simulated summary and word counts; JSON `{ "text": "..." }`  |
+| GET       | `/dataset`                | 0.01    | `count=1..1000`, `seed=string`, `format=json\|csv`           |
+| GET       | `/text`                   | 0.01    | Plain text; `message=string`                                 |
+| GET       | `/large`                  | 0.01    | Plain text of `bytes=1..1048576`, default 262144             |
+| GET       | `/delay`                  | 0.01    | Response after `ms=0..30000`, default 1000                   |
+| GET       | `/status`                 | 0.01    | Deliberate HTTP `code=400\|404\|422\|429\|500\|503`          |
+| GET       | `/mpp-only`, `/x402-only` | 0.01    | JSON response using only the named protocol                  |
+| GET       | `/price/minimum`          | 0.01    | Minimum charge for payment tests                             |
+| GET       | `/price/one`              | 1       | Fixed charge for spending-limit tests                        |
+| GET       | `/price/expensive`        | 2       | Fixed charge for spending-limit tests                        |
+| GET       | `/priced`                 | 0.01..2 | `units=1..200`, `seed=string`; price = units x 0.01 USDC     |
+
+`GET /api/v1/priced?units=1` costs 0.01 USDC, `units=100` costs 1 USDC,
+and `units=200` costs 2 USDC. Every whole quantity between 1 and 200 works;
+for example `units=57` costs 0.57 USDC. Omitting `units` defaults to 1.
+The JSON response includes the selected price, exact USDC base-unit amount,
+and that many deterministic rows. A free preview accepts the same query.
+Duplicate, fractional, empty, or out-of-range quantities return HTTP 400
+before any payment challenge. All other paid fixtures cost at least 0.01 USDC.
+
+The pinned gateway does not calculate exact prices from query parameters.
+The router selects a generated private gateway route for the validated
+quantity, and the gateway issues and verifies its matching exact charge.
+The private routes bind on loopback and return 404 through the public router.
+The router keeps payment challenges and receipts intact; request-specific
+402 responses carry the actual price. Nothing in Pay Kit is patched.
+
+New paid routes accept both MPP and x402 unless their name specifies one.
+Set `Content-Type: application/json` for POST calls, including payment retries.
+Quotes and summaries are simulated. Seeded outputs repeat across protocols.
+Every fixture response includes `X-Request-Id` and `Cache-Control: no-store`.
+The two original routes keep their existing response behavior.
+
+Use the free `POST /api/v1/preview` to inspect a paid route's output without
+making a payment. Its JSON body selects `path`, `method` (defaults to GET),
+`query` (string values or arrays of strings), and `body` for POST routes:
+
+```sh
+curl https://devnet-merchant-production.up.railway.app/api/v1/preview \
+  -H 'content-type: application/json' \
+  -d '{"path":"/api/v1/echo","method":"POST","body":{"message":"hello","items":[1,2,3]}}'
+```
+
+Preview returns `{preview:true,payment_performed:false,status,content_type,body}`.
+It verifies fixture outputs; it does not verify payment settlement or receipts.
+Exact payments settle before the fixture runs, so error responses, invalid
+inputs, and timeouts can still be charged. Do not blindly retry these calls.
+`/policy-denied` only tests the payer's configured policy; refusal is not
+guaranteed by the merchant.
 
 To recreate it, give a Railway service a volume at `/data` and set
 `RAILWAY_DOCKERFILE_PATH=Dockerfile`, `RECIPIENT` (the wallet that receives
