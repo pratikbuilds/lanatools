@@ -125,12 +125,12 @@ export function ConsentCard({
                 <>
                   <label className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[13px] text-fg-2">
                     Can spend up to
-                    <span className="flex h-9 items-center gap-1 rounded-[8px] border border-line-2 bg-surface px-2.5 font-mono text-[14px] font-semibold text-fg has-aria-invalid:border-bad has-focus-visible:border-accent">
+                    <span className="d-limit-field flex h-9 items-center gap-1 rounded-[8px] border border-line-2 bg-surface px-2.5 font-mono text-[14px] font-semibold text-fg">
                       <span aria-hidden="true" className="text-fg-3">
                         $
                       </span>
                       <input
-                        className="w-[5.25rem] bg-transparent outline-none"
+                        className="d-limit-input w-[5.25rem] bg-transparent"
                         inputMode="decimal"
                         autoComplete="off"
                         value={limitUsd}
