@@ -693,9 +693,11 @@ function Diagram({ layout, still }: { layout: Layout; still: boolean }) {
   )
 }
 
+// Null until measured. The prerendered page renders both layouts and lets a
+// container query pick one, so the figure keeps its height when this resolves.
 function useWideLayout() {
   const ref = useRef<HTMLDivElement>(null)
-  const [wide, setWide] = useState(true)
+  const [wide, setWide] = useState<boolean | null>(null)
   useEffect(() => {
     const el = ref.current
     if (!el) return
@@ -707,6 +709,9 @@ function useWideLayout() {
   }, [])
   return { ref, wide }
 }
+
+// A wide figure is at least 640px, so the viewport is always past sm.
+const pad = 'px-3 py-5 @min-[640px]:px-6 @min-[640px]:py-6'
 
 const STEPS = [
   {
@@ -727,7 +732,7 @@ export function Flow() {
   const reduced = useReducedMotion()
   const { ref, wide } = useWideLayout()
   return (
-    <figure className="box box-lg m-0 overflow-hidden">
+    <figure className="box box-lg @container m-0 overflow-hidden">
       <figcaption className="flex flex-wrap items-center justify-between gap-3 border-b-[1.5px] border-ink bg-paper px-4 py-2.5 text-[12px] text-mute">
         <span className="font-semibold text-ink">how a call moves</span>
         <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -747,8 +752,17 @@ export function Flow() {
           </span>
         </span>
       </figcaption>
-      <div ref={ref} className={wide ? 'px-4 py-6 sm:px-6' : 'px-3 py-5'}>
-        <Diagram layout={wide ? WIDE : TALL} still={reduced} />
+      <div ref={ref} className={pad}>
+        {wide !== false && (
+          <div className={wide === null ? 'hidden @min-[640px]:block' : ''}>
+            <Diagram layout={WIDE} still={reduced} />
+          </div>
+        )}
+        {wide !== true && (
+          <div className={wide === null ? '@min-[640px]:hidden' : ''}>
+            <Diagram layout={TALL} still={reduced} />
+          </div>
+        )}
       </div>
       <ol className="grid border-t-[1.5px] border-ink bg-paper sm:grid-cols-3">
         {STEPS.map((step, i) => (
