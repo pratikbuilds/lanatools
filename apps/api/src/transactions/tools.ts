@@ -14,6 +14,8 @@ export type TransactionTool = {
   title: string
   description: string
   scope: ToolScope
+  /** Programs its transactions call directly; embedded signing allows these. */
+  programs: readonly string[]
   operation: TransactionOperation<BuilderContext>
 }
 
@@ -23,12 +25,17 @@ export const transactionTools: Readonly<Record<string, TransactionTool>> = {
     description:
       'Send native SOL from the user wallet to a recipient. amountLamports is in lamports (1 SOL = 1000000000).',
     scope: 'solana:transfer',
+    programs: [
+      '11111111111111111111111111111111',
+      'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr',
+    ],
     operation: solTransfer,
   },
   [jupiterSwapTool.name]: {
     title: jupiterSwapTool.title,
     description: jupiterSwapTool.description,
     scope: 'jupiter:read',
+    programs: jupiterSwapTool.programs,
     operation: bindTransaction(jupiterSwapTool.transaction, (context) => {
       if (!context.jupiterApiKey?.trim())
         throw new Error('Jupiter requires a configured API key')
@@ -56,6 +63,15 @@ export function transactionOperation(
   return Object.hasOwn(registry, name) ? (registry[name] ?? null) : null
 }
 
+/** Every program a transaction tool may call, in a stable order. */
+export function transactionPrograms() {
+  return [
+    ...new Set(
+      Object.values(transactionTools).flatMap((tool) => tool.programs),
+    ),
+  ].sort()
+}
+
 /** The scope a transaction tool needs; null only for test registries. */
 export function transactionScope(name: string): ToolScope | null {
   return Object.hasOwn(transactionTools, name)
@@ -70,9 +86,9 @@ export const idempotencyKey = z
   .regex(/^[A-Za-z0-9._:-]+$/)
 
 const delivery = z
-  .enum(['link', 'local'])
+  .enum(['link', 'local', 'embedded'])
   .describe(
-    'How the transaction is signed. link: returns reviewUrl; the user opens it and signs with their browser wallet. local: returns the unsigned transaction for wallet; sign it with that wallet and pass it to send_transaction.',
+    "How the transaction is signed. link: returns reviewUrl; the user opens it and signs with their browser wallet. local: returns the unsigned transaction for wallet; sign it with that wallet and pass it to send_transaction. embedded: LanaTools signs with the user's LanaTools wallet and sends it now, without asking the user.",
   )
 
 const wallet = z
@@ -96,7 +112,7 @@ export function transactionToolInput(operation: { arguments: z.ZodObject }) {
     .refine(
       (input) => (input.delivery === 'local') === (input.wallet !== undefined),
       {
-        message: 'Local delivery needs wallet; a link takes no wallet.',
+        message: 'Local delivery needs wallet; link and embedded take none.',
         path: ['wallet'],
       },
     )

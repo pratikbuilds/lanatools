@@ -237,10 +237,12 @@ export const PaymentSignerRefusal = type({
 })
 export type PaymentSignerRefusal = typeof PaymentSignerRefusal.infer
 
-/** What the browser passes to Privy's addSigners for the payment signer. */
+/**
+ * What the browser passes to Privy's addSigners: the payment signer, and the
+ * transaction signer when the deployment has one.
+ */
 export const PaymentSignerGrant = type({
-  signerId: 'string',
-  policyIds: 'string[]',
+  signers: type({ signerId: 'string', policyIds: 'string[]' }).array(),
 })
 export type PaymentSignerGrant = typeof PaymentSignerGrant.infer
 

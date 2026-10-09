@@ -1,0 +1,1 @@
+ALTER TABLE `payment_signer` ADD `transaction_policy_id` text;

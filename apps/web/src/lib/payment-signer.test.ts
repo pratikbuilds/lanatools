@@ -2,7 +2,12 @@ import { afterAll, afterEach, expect, spyOn, test } from 'bun:test'
 import { attachPaymentSigner, removePaymentSigner } from './payment-signer'
 
 const wallet = 'F8ypHfv7gs9JiHVnb51g7aVA2tmmC9ZpF5FdpChYjpV3'
-const grant = { signerId: 'signer-1', policyIds: ['policy-1'] }
+const grant = {
+  signers: [
+    { signerId: 'signer-1', policyIds: ['policy-1'] },
+    { signerId: 'signer-2', policyIds: ['policy-2'] },
+  ],
+}
 const duplicate = new Error(
   'Duplicate signer(s) provided when updating wallet.',
 )
@@ -64,7 +69,7 @@ test('setup adds the prepared signer, then asks the server to check', async () =
     signers,
   )
   expect(signers.calls).toEqual([
-    ['add', { address: wallet, signers: [grant] }],
+    ['add', { address: wallet, signers: grant.signers }],
   ])
   expect(status).toEqual({ status: 'enabled', walletAddress: wallet })
 })
@@ -92,9 +97,9 @@ test('a signer left on the wallet with another policy is replaced', async () => 
     signers,
   )
   expect(signers.calls).toEqual([
-    ['add', { address: wallet, signers: [grant] }],
+    ['add', { address: wallet, signers: grant.signers }],
     ['remove', { address: wallet }],
-    ['add', { address: wallet, signers: [grant] }],
+    ['add', { address: wallet, signers: grant.signers }],
   ])
   expect(status).toEqual({ status: 'enabled', walletAddress: wallet })
 })
@@ -106,7 +111,7 @@ test('access removed during setup leaves the wallet alone', async () => {
     attachPaymentSigner(getAccessToken, wallet, false, signers),
   ).rejects.toThrow('You removed LanaTools access')
   expect(signers.calls).toEqual([
-    ['add', { address: wallet, signers: [grant] }],
+    ['add', { address: wallet, signers: grant.signers }],
   ])
 })
 

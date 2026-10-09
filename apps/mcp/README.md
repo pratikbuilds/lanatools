@@ -41,11 +41,23 @@ scope `jupiter:read`). No call signs or sends.
 - `delivery: "local"` takes `wallet` and returns `transaction`, the unsigned
   bytes for that wallet. The agent signs them and calls `send_transaction`
   with the id and the signed base64. LanaTools checks the exact bytes and the
-  wallet's signature, sends, and returns the result. Local requests are not
-  visible on the public link routes.
-  Network comes from API deployment configuration. A retry with
-  the same client, key and input returns the same transaction; changed input
-  conflicts.
+  wallet's signature, sends, and returns the result.
+- `delivery: "embedded"` signs with the user's LanaTools wallet and sends at
+  once, with no approval. It needs the transaction signer (below); otherwise
+  it fails with `embedded_unavailable`. A policy refusal is `signing_refused`.
+
+Local and embedded requests are not visible on the public link routes.
+
+Embedded signing uses a second Privy key quorum, the transaction signer,
+separate from the payment signer. The dashboard adds both to the wallet. The
+transaction signer's user-owned policy allows only the programs the transaction
+tools call (each tool lists them in `apps/api/src/transactions/tools.ts`), with
+no amount or address rules: Privy cannot read accounts that swaps load from
+lookup tables. Removing LanaTools access stops embedded transactions as it
+stops payments.
+Network comes from API deployment configuration. A retry with
+the same client, key and input returns the same transaction; changed input
+conflicts.
 
 Every transaction tool and `get_transaction_status` return the same result:
 `id`, `tool`, `network`, `delivery`, `status`, `review`, `signature`,

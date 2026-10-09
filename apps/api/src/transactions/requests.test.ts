@@ -105,7 +105,7 @@ test('a grant with the tool scope creates an unsigned link intent', async () => 
   ])
 })
 
-test('each transaction tool needs its own scope and a link delivery', async () => {
+test('each transaction tool needs its own scope and a known delivery', async () => {
   const identity = await connect()
   await drizzle(db)
     .update(mcpGrant)
@@ -115,7 +115,7 @@ test('each transaction tool needs its own scope and a link delivery', async () =
     await createTransactionRequest(env(), identity, 'solana_transfer', input),
   ).toMatchObject({ ok: false, error: { code: 'insufficient_scope' } })
   const allowed = await connect()
-  for (const delivery of ['local', 'embedded', undefined])
+  for (const delivery of ['local', 'remote', undefined])
     expect(
       await createTransactionRequest(env(), allowed, 'solana_transfer', {
         ...input,

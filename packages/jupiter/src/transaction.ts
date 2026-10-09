@@ -121,6 +121,21 @@ const swapOperation = defineTransactionOperation({
   },
 })
 
+/**
+ * Programs a wallet-funded Jupiter swap calls directly, read from live
+ * `/swap/v2/order` transactions: Compute Budget, System and Token (wrapping
+ * SOL), Associated Token and Token-2022 for new or 2022 token accounts, and
+ * the Jupiter aggregator. Routed AMMs are called through Jupiter, not here.
+ */
+export const JUPITER_SWAP_PROGRAMS = [
+  'ComputeBudget111111111111111111111111111111',
+  '11111111111111111111111111111111',
+  'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+  'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb',
+  'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
+  'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4',
+] as const
+
 /** A wallet-funded Jupiter swap; network fees are paid in SOL by the signer. */
 export const jupiterSwapTool = {
   name: 'jupiter_swap',
@@ -128,4 +143,5 @@ export const jupiterSwapTool = {
   description:
     'Swap an exact input amount through Jupiter, in decimal token units (1 means one USDC, not one base unit). The quote is fetched when the transaction is prepared for signing. The signing wallet pays network fees in SOL.',
   transaction: swapOperation,
+  programs: JUPITER_SWAP_PROGRAMS,
 } as const

@@ -1,6 +1,7 @@
 # Transaction delivery: tech spec
 
-Status: Phases 0 and 1 built 2026-10-09. Phase 2 in progress.
+Status: Phases 0 to 2 built 2026-10-09; live mainnet test pending. Phase 3
+(Phoenix) not started.
 
 ## 1. Goal
 

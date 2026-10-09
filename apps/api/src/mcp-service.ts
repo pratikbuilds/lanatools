@@ -43,6 +43,12 @@ export type McpEnv = ProviderEnv &
     PRIVY_PAYMENT_SIGNER_ID: string
     /** That quorum's P-256 authorization key. Never leaves this Worker. */
     PRIVY_PAYMENT_SIGNER_KEY: string
+    /**
+     * Key quorum and key of the LanaTools transaction signer, which signs
+     * embedded transactions. Optional: without them, embedded delivery is off.
+     */
+    PRIVY_TRANSACTION_SIGNER_ID?: string
+    PRIVY_TRANSACTION_SIGNER_KEY?: string
   }
 
 export type McpDashboardEnv = McpEnv & { MCP: McpTokenRevoker }

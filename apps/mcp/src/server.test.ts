@@ -381,12 +381,12 @@ test('each transaction tool is its own MCP tool with a flat input and the shared
     for (const tool of [transfer, swap]) {
       expect(tool?.annotations).toMatchObject({
         readOnlyHint: false,
-        destructiveHint: false,
+        destructiveHint: true,
         idempotentHint: true,
       })
       expect(tool?.inputSchema).not.toHaveProperty('anyOf')
       expect(tool?.inputSchema.properties).toMatchObject({
-        delivery: { enum: ['link', 'local'] },
+        delivery: { enum: ['link', 'local', 'embedded'] },
         wallet: { type: 'string' },
         idempotencyKey: { type: 'string' },
       })
@@ -454,7 +454,10 @@ test('transaction tools reject invalid intents and authority overrides before AP
         'solana_transfer',
         { ...transferInput, delivery: 'local', wallet: 'invalid' },
       ],
-      ['solana_transfer', { ...transferInput, delivery: 'embedded' }],
+      [
+        'solana_transfer',
+        { ...transferInput, delivery: 'embedded', wallet: address },
+      ],
       ['solana_transfer', withoutDelivery],
       ['jupiter_swap', withoutSlippage],
       ['jupiter_swap', { ...swapInput, network: 'mainnet' }],

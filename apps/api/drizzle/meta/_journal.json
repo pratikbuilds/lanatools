@@ -99,6 +99,13 @@
       "when": 1791550856229,
       "tag": "0013_transaction_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1791555322345,
+      "tag": "0014_transaction_signer",
+      "breakpoints": true
     }
   ]
 }

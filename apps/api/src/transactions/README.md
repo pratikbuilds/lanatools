@@ -21,7 +21,9 @@ the arguments: the deployment fixes the network, and for `link` the visitor
 selects a wallet on the page. With `local` delivery the agent passes `wallet`,
 gets the unsigned transaction at once, and returns the signed bytes through
 `send_transaction`, which uses the same checks and relay as the link page.
-Embedded signing is planned in `specs/transaction-delivery.md`.
+With `embedded` delivery the server builds, signs with the user's LanaTools
+wallet through the transaction signer (`embedded.ts`), and sends at once,
+again through the link send path.
 
 Every transaction tool and `get_transaction_status` return the same
 `TransactionResult` (`packages/contracts`).
@@ -46,7 +48,10 @@ signing wallet. JupiterZ RFQ and sponsored routes are excluded.
 
 1. Define the operation with `defineTransactionOperation`: argument schema,
    review, builder and submission, once, in its package.
-2. Add it to `transactionTools` with its title, description and scope.
+2. Add it to `transactionTools` with its title, description, scope and the
+   programs its transactions call. Embedded signing allows only those
+   programs; existing wallets get the new policy the next time the dashboard
+   sets up LanaTools access.
 
 The MCP tool and its input schema follow the registry. No HTTP route, database
 table, or transaction page is needed. The native SOL operation lives in

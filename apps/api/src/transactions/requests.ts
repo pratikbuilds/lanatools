@@ -26,6 +26,9 @@ import {
   idempotencyKey as RequestKey,
 } from './tools'
 import { publicTransaction } from './adapter'
+import { embeddedWallet, privyEmbeddedSigner } from './embedded'
+import type { EmbeddedSigner, EmbeddedSignerEnv } from './embedded'
+import { PolicyDeniedError } from '../payments/privy-signer'
 import type { TransactionRegistry } from './tools'
 
 export const PREPARATION_LEASE_MS = 30_000
@@ -48,6 +51,10 @@ const ERRORS = {
   transaction_expired:
     'This signing session timed out. Sign again to continue.',
   closed: 'This link can no longer accept a new transaction.',
+  embedded_unavailable:
+    'Signing with the LanaTools wallet is not set up. The user can set it up by opening LanaTools.',
+  signing_refused:
+    "The LanaTools wallet's signing policy refused this transaction.",
 } as const
 
 export type TransactionLinkOutcome<T> =
@@ -113,14 +120,15 @@ function toResult(
 }
 
 const RequestEnvelope = z.looseObject({
-  delivery: z.enum(['link', 'local']),
+  delivery: z.enum(['link', 'local', 'embedded']),
   wallet: z.string().refine(isAddress).optional(),
   idempotencyKey: RequestKey,
 })
 
 /**
  * Stores a transaction intent. A link waits for its review page; a local
- * request is built at once for the agent's wallet and returned unsigned.
+ * request is built at once for the agent's wallet and returned unsigned; an
+ * embedded request is built, signed with the user's LanaTools wallet and sent.
  */
 export async function createTransactionRequest(
   env: TransactionExecutionEnv,
@@ -148,7 +156,7 @@ export async function createTransactionRequest(
     if ((delivery === 'local') !== (wallet !== undefined))
       return failed(
         'invalid_input',
-        'Local delivery needs the signing wallet; a link takes no wallet.',
+        'Local delivery needs the signing wallet; link and embedded take no wallet.',
       )
     const parsed = tool.arguments.safeParse(rawArguments)
     if (!parsed.success) return failed('invalid_input')
@@ -160,6 +168,18 @@ export async function createTransactionRequest(
         'invalid_input',
         'This transaction is not supported on this deployment network.',
       )
+    const embedded =
+      delivery === 'embedded'
+        ? {
+            wallet: await embeddedWallet(env.DB, identity.userId),
+            sign:
+              options.embeddedSigner === undefined
+                ? privyEmbeddedSigner(env)
+                : options.embeddedSigner,
+          }
+        : null
+    if (embedded && (!embedded.wallet || !embedded.sign))
+      return failed('embedded_unavailable')
     const db = drizzle(env.DB)
     // The insert checks the grant again atomically so concurrent revocation
     // cannot create a usable new intent after authorization was read.
@@ -212,6 +232,43 @@ export async function createTransactionRequest(
       )
       if (prepared.ok) transaction = prepared.result
       else if (prepared.error.code !== 'closed') return prepared
+    }
+    if (row.delivery === 'embedded' && embedded?.wallet && embedded.sign) {
+      const prepared = await prepareTransactionLink(
+        env,
+        row.id,
+        { account: embedded.wallet.walletAddress },
+        { ...options, now },
+      )
+      if (prepared.ok) {
+        let signed: string
+        try {
+          signed = await embedded.sign(
+            embedded.wallet,
+            prepared.result.transaction,
+          )
+        } catch (error) {
+          return failed(
+            error instanceof PolicyDeniedError
+              ? 'signing_refused'
+              : 'unavailable',
+          )
+        }
+        // The same checks and relay as a signed link: exact bytes, the
+        // wallet's signature saved before the transaction is sent.
+        const sent = await sendTransactionLink(
+          env,
+          row.id,
+          { transaction: signed },
+          options,
+        )
+        if (!sent.ok) return sent
+        return {
+          ok: true,
+          result: toResult(sent.result, 'embedded', config.webOrigin),
+        }
+      }
+      if (prepared.error.code !== 'closed') return prepared
     }
     const link = await readTransactionLink(env.DB, row.id, now, tools)
     if (!link) return failed('unavailable')
@@ -334,15 +391,18 @@ export async function transactionStatus(
   }
 }
 
-export type TransactionExecutionEnv = TransactionLinkEnv & {
-  SOLANA_RPC_URL: string
-  JUPITER_API_KEY?: string
-}
+export type TransactionExecutionEnv = TransactionLinkEnv &
+  EmbeddedSignerEnv & {
+    SOLANA_RPC_URL: string
+    JUPITER_API_KEY?: string
+  }
 export type ExecutionOptions = {
   tools?: TransactionRegistry
   rpc?: TransactionRpc
   now?: number
   observation?: { attempts?: number; intervalMs?: number }
+  /** Replaces the Privy signer, or null for a deployment without one. */
+  embeddedSigner?: EmbeddedSigner | null
 }
 export const PrepareTransactionInput = z.strictObject({
   account: z.string().refine(isAddress),

@@ -131,9 +131,9 @@ export function createServer(
 
   const server = new McpServer({ name: 'LanaTools', version: '0.1.0' })
   // Each transaction tool prepares one intent; the agent picks how it is
-  // signed with `delivery`. Nothing is signed or sent when it is created.
+  // signed with `delivery`. Only embedded delivery signs and sends at once.
   const signing =
-    'This call never signs or sends. delivery "link": share the returned reviewUrl; the user signs there and LanaTools sends; arguments are visible on that page. delivery "local": pass wallet; sign result.transaction.transaction (base64) with that wallet before lastValidBlockHeight and pass it to send_transaction; do not broadcast it yourself. Reuse idempotencyKey to retry the same intent. Read the outcome with get_transaction_status.'
+    'delivery "link": share the returned reviewUrl; the user signs there and LanaTools sends; arguments are visible on that page. delivery "local": pass wallet; sign result.transaction.transaction (base64) with that wallet before lastValidBlockHeight and pass it to send_transaction; do not broadcast it yourself. delivery "embedded": LanaTools signs with the user\'s LanaTools wallet and sends it immediately, with no user approval; use it only when the user asked for that. Reuse idempotencyKey to retry the same intent. Read the outcome with get_transaction_status.'
   for (const [name, tool] of Object.entries(transactionTools).filter(
     ([, each]) => allows(each.scope),
   ))
@@ -145,7 +145,7 @@ export function createServer(
         inputSchema: transactionToolInput(tool.operation),
         annotations: {
           readOnlyHint: false,
-          destructiveHint: false,
+          destructiveHint: true,
           idempotentHint: true,
           openWorldHint: false,
         },

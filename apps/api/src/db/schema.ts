@@ -64,6 +64,9 @@ export const paymentSigner = sqliteTable('payment_signer', {
   walletAddress: text('wallet_address').notNull(),
   // User-owned Privy policy that bounds what the server signer may sign.
   policyId: text('policy_id').notNull(),
+  // User-owned Privy policy for the transaction signer, which signs embedded
+  // transactions. Null when this deployment has no transaction signer.
+  transactionPolicyId: text('transaction_policy_id'),
   status: text('status', { enum: ['pending', 'enabled', 'disabled'] })
     .notNull()
     .default('pending'),
