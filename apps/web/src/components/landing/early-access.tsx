@@ -70,7 +70,7 @@ function JoinForm({ tone, note }: { tone: Tone; note?: ReactNode }) {
       setError(
         field.value.trim()
           ? 'That email doesn’t look right. Check it and try again.'
-          : 'Enter your email to join the list.',
+          : 'Enter your email to get updates.',
       )
       field.focus()
       void shake.start({
@@ -88,7 +88,7 @@ function JoinForm({ tone, note }: { tone: Tone; note?: ReactNode }) {
     <motion.form
       noValidate
       onSubmit={(event) => void submit(event)}
-      aria-label="Join the early access list"
+      aria-label="Get updates by email"
       aria-busy={busy}
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
@@ -143,7 +143,7 @@ function JoinForm({ tone, note }: { tone: Tone; note?: ReactNode }) {
             </>
           ) : (
             <>
-              Get early access
+              Get updates
               <span
                 aria-hidden="true"
                 className="transition-transform duration-200 ease-(--ease-out) group-hover:translate-x-0.5"
@@ -175,8 +175,7 @@ function JoinForm({ tone, note }: { tone: Tone; note?: ReactNode }) {
             tone === 'blue' ? 'text-paper-2' : 'text-mute'
           }`}
         >
-          {note ??
-            'Invites go out in small batches. One email when yours is ready.'}
+          {note ?? 'An occasional email when we ship something new.'}
         </p>
       )}
     </motion.form>
@@ -312,7 +311,7 @@ function Ticket({ email, tone }: { email: string; tone: Tone }) {
           {scramble('0'.repeat(48))}
         </span>
         <span className="chip chip-lime shrink-0 text-[10.5px] tracking-wide uppercase max-sm:hidden!">
-          early access
+          updates
         </span>
       </div>
       <p
@@ -320,7 +319,7 @@ function Ticket({ email, tone }: { email: string; tone: Tone }) {
           tone === 'blue' ? 'text-paper-2' : 'text-mute'
         }`}
       >
-        Waiting for the next batch. We’ll email you.{' '}
+        We’ll email you when we ship something new.{' '}
         <button
           type="button"
           onClick={resetSignup}

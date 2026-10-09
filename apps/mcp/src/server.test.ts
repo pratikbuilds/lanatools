@@ -348,7 +348,7 @@ test('each client sees the catalog and only the tool families it was given', asy
   )
 
   const jupiter = await list(['account:read', 'jupiter:read'])
-  expect(count(jupiter, 'jupiter_')).toBe(9)
+  expect(count(jupiter, 'jupiter_')).toBe(10)
   expect(count(jupiter, 'phoenix_')).toBe(0)
   expect(jupiter).not.toContain('call')
 

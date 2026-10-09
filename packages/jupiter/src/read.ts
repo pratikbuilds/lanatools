@@ -9,6 +9,7 @@ import { getLendingMarkets } from './tools/get-lending-markets'
 import { getLendingPositions } from './tools/get-lending-positions'
 import { getTriggerOrders } from './tools/get-trigger-orders'
 import { quoteSwap } from './tools/quote-swap'
+import { buildSwap } from './tools/build-swap'
 import { getSwapVenues } from './tools/get-swap-venues'
 import type { JupiterData, JupiterOutcome } from './types'
 
@@ -52,6 +53,9 @@ export async function readJupiter(
         break
       case 'jupiter_quote_swap':
         data = await quoteSwap(context, input)
+        break
+      case 'jupiter_build_swap':
+        data = await buildSwap(context, input)
         break
       case 'jupiter_get_swap_venues':
         data = await getSwapVenues(context)

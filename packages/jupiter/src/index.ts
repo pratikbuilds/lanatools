@@ -13,6 +13,7 @@ export {
   LendingPositionsInput,
   TriggerOrdersInput,
   QuoteSwapInput,
+  BuildSwapInput,
   SwapVenuesInput,
   JupiterRequest,
 } from './inputs'

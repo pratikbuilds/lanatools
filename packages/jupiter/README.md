@@ -1,6 +1,7 @@
-# Jupiter reads
+# Jupiter tools
 
-`@lanatools/jupiter` owns all nine Jupiter read tools and the 18 REST route templates in
+`@lanatools/jupiter` owns nine Jupiter read tools and unsigned swap transaction
+preparation. The reads cover the 18 REST route templates in
 [the implementation plan](../../specs/jupiter-read-tools.md). Private Trigger V2
 reads and wallet authentication are outside the scope.
 
@@ -14,6 +15,7 @@ reads and wallet authentication are outside the scope.
 | `jupiter_get_lending_positions` | Earn positions by wallets, earnings by wallet/position addresses, Borrow positions by wallets/market |
 | `jupiter_get_trigger_orders`    | Public legacy price orders / time-based DCA; active/history and page                                 |
 | `jupiter_quote_swap`            | Different input/output mints, positive decimal amount, optional maximum slippage/minimum output      |
+| `jupiter_build_swap`            | The same swap fields plus a public wallet address; returns a transaction awaiting wallet signature   |
 | `jupiter_get_swap_venues`       | Full program-ID/label mapping; empty input                                                           |
 
 The package uses Web APIs and accepts an injected fetch implementation for
@@ -26,6 +28,21 @@ const client = new JupiterClient({ apiKey: serverManagedKey })
 const outcome = await client.read({
   tool: 'jupiter_search_tokens',
   input: { query: 'JUP' },
+})
+```
+
+Prepare a swap for a public wallet through the same client:
+
+```ts
+const swap = await client.read({
+  tool: 'jupiter_build_swap',
+  input: {
+    inputMint: 'So11111111111111111111111111111111111111112',
+    outputMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+    amount: '0.01',
+    wallet: publicWalletAddress,
+    maxSlippageBps: 50,
+  },
 })
 ```
 
@@ -68,6 +85,16 @@ repeats successful token metadata lookup.
   to execute. Impact/fees retain documented units and the safe provider quote is
   preserved.
 - Venue mappings are complete metadata, not pair-specific availability.
+- Swap preparation uses the same `/swap/v2/order` endpoint with `wallet` mapped
+  to `taker`. It requests v0 and returns the original base64 `transaction`,
+  quote/fee data, `requestId`, router and expiry metadata. `lastValidBlockHeight`
+  remains a string; absent expiry fields are `null`. Requested constraints must
+  be confirmed, and the selected wallet must be an unsigned required signer.
+  Unknown inputs, including network, RPC and destination overrides, are rejected.
+  Jupiter can refuse preparation for insufficient funds or other order errors.
+  The package never signs, simulates or submits. Preserve request/router metadata:
+  JupiterZ requires a market-maker signature through Jupiter execution, and a
+  sponsored transaction can have another fee payer or existing signatures.
 
 Success contains `source`, `network: mainnet-beta`, `fetchedAt`, `data`, and
 `warnings`. Optional metadata, new provider fields and nulls pass through
@@ -103,4 +130,7 @@ passed after these corrections.
 During this check the key was configured only in the ignored local API Worker
 `.dev.vars`; `bun run dev` now reads it from the root `.env`.
 Production Worker configuration and the deployed browser OAuth flow remain
-unverified. No transactions were created or submitted.
+unverified. The read-tool live checks created or submitted no transactions.
+Swap preparation has fixture and MCP coverage; its live public-wallet probe
+returned an insufficient-funds order refusal, so successful live preparation
+remains unverified. No swap was signed or submitted.

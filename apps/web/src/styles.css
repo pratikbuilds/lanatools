@@ -1,5 +1,13 @@
 @import 'tailwindcss';
 
+@font-face {
+  font-family: 'Paper Mono';
+  src: url('./fonts/paper-mono-variable.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+}
+
 @theme {
   --color-blue: #0b2fb2;
   --color-blue-deep: #071f7a;
@@ -15,7 +23,7 @@
   /* Coral dark enough for text on paper and card (>= 4.5:1). */
   --color-coral-ink: #b8361a;
 
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-mono: 'Paper Mono', ui-monospace, 'SF Mono', Menlo, monospace;
   --font-sans: var(--font-mono);
 
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
@@ -265,7 +273,7 @@ body {
     transform: translateX(560%);
   }
 }
-/* The same packet, running along the bottom of the early access field. */
+/* The same packet, running along the bottom of the updates email field. */
 .field-packet {
   position: absolute;
   inset: 0 auto 0 0;

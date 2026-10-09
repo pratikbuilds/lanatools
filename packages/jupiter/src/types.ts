@@ -207,6 +207,13 @@ export type QuoteSwapData = {
   providerQuote: ProviderRecord
 }
 export type SwapVenuesData = { venues: Record<string, string> }
+export type BuildSwapData = QuoteSwapData & {
+  wallet: string
+  transaction: string
+  requestId: string
+  lastValidBlockHeight: string | null
+  expireAt: string | null
+}
 export type JupiterData =
   | SearchTokensData
   | DiscoverTokensData
@@ -216,4 +223,5 @@ export type JupiterData =
   | LendingPositionsData
   | TriggerOrdersData
   | QuoteSwapData
+  | BuildSwapData
   | SwapVenuesData
