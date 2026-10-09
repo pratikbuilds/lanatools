@@ -1,4 +1,4 @@
-import { and, eq, isNull, lt, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
 import { formatUsd } from '@lanatools/contracts'
@@ -13,9 +13,13 @@ export type CallTarget = { method: string; origin: string; path: string }
 export class NoLongerOpenError extends Error {
   override readonly name = 'NoLongerOpenError'
   constructor(id: string) {
-    super(`Payment ${id} is no longer reserved`)
+    super(`Payment ${id} is no longer open`)
   }
 }
+
+// Workers from before migration 0011 could still write `uncertain` while a
+// deploy rolled out; such a row is held and closed like an ended reservation.
+const OPEN = ['reserved', 'uncertain'] as const
 
 type ClosedStatus = 'free' | 'refused' | 'failed'
 
@@ -68,13 +72,13 @@ export async function enabledSigner(database: D1Database, userId: string) {
 }
 
 // What the grant's client has committed: settled spend plus the holds of
-// calls still running.
+// calls not yet closed.
 const COMMITTED = sql`(
   select coalesce(sum(case when a.status = 'paid' then a.settled_atomic else a.reserved_atomic end), 0)
   from payment_activity a
   where a.privy_user_id = ${mcpGrant.privyUserId}
     and a.client_id = ${mcpGrant.clientId}
-    and a.status in ('paid', 'reserved')
+    and a.status in ('paid', 'reserved', 'uncertain')
 )`
 
 /** Why a grant may not pay, in the words the agent sees. */
@@ -171,7 +175,7 @@ export async function recordSigning(
   if (!row) throw new Error(`Payment ${id} can no longer be signed`)
 }
 
-/** The client's reservations opened before `before`. */
+/** The client's open reservations: any `uncertain`, or reserved before `before`. */
 export async function openReservations(
   database: D1Database,
   identity: GrantIdentity,
@@ -184,22 +188,31 @@ export async function openReservations(
       and(
         eq(paymentActivity.privyUserId, identity.userId),
         eq(paymentActivity.clientId, identity.clientId),
-        eq(paymentActivity.status, 'reserved'),
-        lt(paymentActivity.createdAt, before),
+        or(
+          eq(paymentActivity.status, 'uncertain'),
+          and(
+            eq(paymentActivity.status, 'reserved'),
+            lt(paymentActivity.createdAt, before),
+          ),
+        ),
       ),
     )
 }
 
-/** Replaces a reservation with the spend of a call the endpoint served. */
+/**
+ * Replaces a reservation with spend: the endpoint served the call, or the
+ * chain shows its payment landed. Chain proof also wins over a failure
+ * recorded from a lookup that missed the transaction.
+ */
 export async function settle(
   database: D1Database,
   id: string,
   settledAtomic: bigint,
   signature: string | null,
-  httpStatus: number,
+  httpStatus?: number,
   now = Date.now(),
 ) {
-  await transition(database, id, {
+  await transition(database, id, [...OPEN, 'failed'], {
     status: 'paid',
     settledAtomic: Number(settledAtomic),
     signature,
@@ -210,27 +223,36 @@ export async function settle(
 
 /**
  * Frees a reservation and closes its row: `free` when the endpoint served
- * the call without payment, `failed` otherwise.
+ * the call without payment, `failed` otherwise. Only call this when nothing
+ * was signed or the chain shows the signed payment never landed.
  */
 export async function release(
   database: D1Database,
   id: string,
-  outcome: { status: 'free' | 'failed'; error?: string; httpStatus?: number },
+  outcome: {
+    status: 'free' | 'failed'
+    error?: string
+    httpStatus?: number | undefined
+  },
   now = Date.now(),
 ) {
-  await transition(database, id, { ...outcome, completedAt: now })
+  await transition(database, id, OPEN, { ...outcome, completedAt: now })
 }
 
 async function transition(
   database: D1Database,
   id: string,
+  from: ReadonlyArray<(typeof OPEN)[number] | 'failed'>,
   set: Partial<typeof paymentActivity.$inferInsert>,
 ) {
   const [row] = await drizzle(database)
     .update(paymentActivity)
     .set(set)
     .where(
-      and(eq(paymentActivity.id, id), eq(paymentActivity.status, 'reserved')),
+      and(
+        eq(paymentActivity.id, id),
+        inArray(paymentActivity.status, [...from]),
+      ),
     )
     .returning({ id: paymentActivity.id })
   if (!row) throw new NoLongerOpenError(id)

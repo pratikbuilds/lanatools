@@ -275,7 +275,7 @@ export async function listClients(
       ),
       reserved: sql<
         number | null
-      >`coalesce(sum(case when ${paymentActivity.status} = 'reserved' then ${paymentActivity.reservedAtomic} else 0 end), 0)`.as(
+      >`coalesce(sum(case when ${paymentActivity.status} in ('reserved', 'uncertain') then ${paymentActivity.reservedAtomic} else 0 end), 0)`.as(
         'reserved',
       ),
     })

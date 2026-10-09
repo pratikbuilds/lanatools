@@ -87,7 +87,8 @@ export const paymentActivity = sqliteTable(
     path: text('path').notNull(),
     protocol: text('protocol', { enum: ['mpp', 'x402'] }),
     status: text('status', {
-      enum: ['free', 'refused', 'reserved', 'paid', 'failed'],
+      // `uncertain` is only left by Workers from before migration 0011.
+      enum: ['free', 'refused', 'reserved', 'paid', 'failed', 'uncertain'],
     }).notNull(),
     network: text('network'),
     mint: text('mint'),

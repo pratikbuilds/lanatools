@@ -40,13 +40,17 @@ import {
   asPayKitSigner,
   privyPaymentSigner,
 } from './privy-signer'
-import { receiptSignature, refusalDetails } from './settlement'
+import { findPayment, receiptSignature, refusalDetails } from './settlement'
+import type { ChainOutcome } from './settlement'
 
 // Pay Kit probes again, then sends the paid request; both share this budget.
 const PAYMENT_TIMEOUT_MS = 45_000
-// Longer than any `call` tool call (45 s to pay), so a reservation this old
-// belongs to a call that has ended.
+// Longer than any `call` tool call (45 s to pay, 2 min to settle a failed
+// one), so a reservation this old belongs to a call that has ended.
 const RECONCILE_AFTER_MS = 5 * 60_000
+// A signed transaction's blockhash expires within about 90 s; after that
+// the chain shows whether it landed.
+const SIGNED_OUTCOME = { timeoutMs: 120_000, intervalMs: 5_000 }
 
 export type PayHttpInput = OutboundInput & {
   url: string
@@ -89,6 +93,10 @@ export type PayHttpDeps = {
   /** Makes the payer for the user's wallet. */
   payer: (wallet: { walletId: string; walletAddress: string }) => Payer
   fetch?: typeof fetch
+  /** Where a signed transaction ended up; reads the chain by default. */
+  lookup?: (query: Parameters<typeof findPayment>[1]) => Promise<ChainOutcome>
+  /** How long a call that failed after signing waits for that answer. */
+  signedOutcome?: { timeoutMs: number; intervalMs: number }
 }
 
 /**
@@ -161,7 +169,7 @@ export async function payHttp(
   }
   await unpaid.body?.cancel().catch(() => undefined)
 
-  const { network } = await deps.config()
+  const { network, rpcUrl } = await deps.config()
   let charge: FixedCharge
   try {
     charge = parseFixedCharge(unpaid, input.protocol, network)
@@ -182,7 +190,8 @@ export async function payHttp(
       'Payments are not set up for your wallet. Set them up in the LanaTools dashboard.',
       { charge, httpStatus: 402 },
     )
-  await failEndedCalls(deps.db, identity)
+  const lookup = deps.lookup ?? ((query) => findPayment(rpcUrl, query))
+  await closeEndedCalls(deps.db, identity, lookup)
 
   // Nothing is signed before this reservation succeeds.
   const activityId = await reserve(
@@ -201,20 +210,40 @@ export async function payHttp(
       },
     )
 
-  // Set from Pay Kit's progress callback, so held in an object.
-  const progress = { signing: false }
+  // Set from Pay Kit's callbacks, so held in an object.
+  const progress: { signing: boolean; signed: SignedTransaction | null } = {
+    signing: false,
+    signed: null,
+  }
+  const closeSigned = (
+    transaction: SignedTransaction,
+    failure: { answer: string; httpStatus?: number; requestId?: string | null },
+  ) =>
+    closeFailedPayment(
+      deps,
+      lookup,
+      activityId,
+      { ...transaction, mint: charge.mint },
+      failure,
+    )
   let paid: Response
   try {
     paid = await deps.payer(signer)({
       url,
       init: { ...init, signal: AbortSignal.timeout(PAYMENT_TIMEOUT_MS) },
       charge,
-      onSigned: (payerSignature, blockhash) =>
-        recordSigning(deps.db, activityId, {
+      onSigned: async (payerSignature, blockhash) => {
+        await recordSigning(deps.db, activityId, {
           payerWallet: signer.walletAddress,
           payerSignature,
           blockhash,
-        }),
+        })
+        progress.signed = {
+          payerWallet: signer.walletAddress,
+          payerSignature,
+          blockhash,
+        }
+      },
       onProgress: (event) => {
         const update = event as {
           type?: string
@@ -235,17 +264,19 @@ export async function payHttp(
       },
     })
   } catch (error) {
-    // Once signing began, a call that ends without an answer may have paid,
-    // but only the endpoint's answer counts: it is recorded as failed.
     const refusal = provenUnsigned(error, progress.signing)
-    const message =
-      refusal ??
-      'The endpoint did not answer after the payment was signed, so it may have charged the wallet. The call is not counted against your limit; check the wallet before repeating it.'
-    await release(deps.db, activityId, {
-      status: 'failed',
-      error: refusal ?? `${message} (${errorText(error)})`,
-    })
-    throw new PayHttpError(message)
+    // A transaction that never reached `onSigned` never left the Worker.
+    if (refusal || !progress.signed) {
+      const message =
+        refusal ?? `The payment could not be signed: ${errorText(error)}`
+      await release(deps.db, activityId, { status: 'failed', error: message })
+      throw new PayHttpError(message)
+    }
+    throw new PayHttpError(
+      await closeSigned(progress.signed, {
+        answer: 'The endpoint did not answer after the payment was signed',
+      }),
+    )
   }
 
   if (!progress.signing) {
@@ -257,26 +288,32 @@ export async function payHttp(
     return unpaidResult(paid)
   }
 
-  // The endpoint's answer decides the payment: it served the call, so it
-  // was paid, or it did not, so it failed.
+  // An endpoint that does not serve the call may still have taken the
+  // payment, so the chain decides whether it was paid.
   if (!paid.ok) {
     await paid.body?.cancel().catch(() => undefined)
     const { reason, requestId } = refusalDetails(paid)
-    const message = [
-      `The endpoint answered ${paid.status} after the payment was signed`,
-      reason ? `: ${reason}` : '',
-      '. The call is not counted against your limit.',
-      requestId ? ` Its request ID is ${requestId}.` : '',
-    ].join('')
-    await release(deps.db, activityId, {
-      status: 'failed',
-      error: message,
-      httpStatus: paid.status,
-    })
-    throw new PayHttpError(message)
+    const answer = `The endpoint answered ${paid.status} after the payment was signed${reason ? `: ${reason}` : ''}`
+    if (!progress.signed) {
+      const message = `${answer}. Nothing was signed, so nothing was charged.`
+      await release(deps.db, activityId, {
+        status: 'failed',
+        error: message,
+        httpStatus: paid.status,
+      })
+      throw new PayHttpError(message)
+    }
+    throw new PayHttpError(
+      await closeSigned(progress.signed, {
+        answer,
+        httpStatus: paid.status,
+        requestId,
+      }),
+    )
   }
 
-  // The payment is already made, so a body that cannot be read is not an error.
+  // The endpoint served the call, so it was paid: the paid data comes back
+  // now, without waiting on the chain.
   const body = await readBody(paid).catch((): ResponseBody => ({
     body: '',
     bodyEncoding: 'text',
@@ -299,25 +336,114 @@ export async function payHttp(
   }
 }
 
+type SignedTransaction = {
+  payerWallet: string
+  payerSignature: string
+  blockhash: string
+}
+
+type Lookup = NonNullable<PayHttpDeps['lookup']>
+
 /**
- * Closes the client's reservations whose calls have ended without closing
- * them, such as a Worker stopped midway, so they do not hold the limit.
+ * Closes a call that failed after its payment was signed, by where the
+ * transaction ended up: paid if it landed, failed if it never can. It waits
+ * until the chain can tell; if it still cannot, the reservation stays held
+ * for the next call to close. Returns the message for the agent.
  */
-async function failEndedCalls(database: D1Database, identity: GrantIdentity) {
+async function closeFailedPayment(
+  deps: PayHttpDeps,
+  lookup: Lookup,
+  id: string,
+  transaction: SignedTransaction & { mint: string },
+  failure: { answer: string; httpStatus?: number; requestId?: string | null },
+) {
+  const { timeoutMs, intervalMs } = deps.signedOutcome ?? SIGNED_OUTCOME
+  const since = Date.now()
+  const deadline = since + timeoutMs
+  const support = failure.requestId
+    ? ` Its request ID is ${failure.requestId}.`
+    : ''
+  for (;;) {
+    const outcome = await lookup({
+      wallet: transaction.payerWallet,
+      payerSignature: transaction.payerSignature,
+      blockhash: transaction.blockhash,
+      mint: transaction.mint,
+      since: since - PAYMENT_TIMEOUT_MS,
+    }).catch((): ChainOutcome => ({ status: 'pending' }))
+    if (outcome.status === 'paid') {
+      await settle(
+        deps.db,
+        id,
+        outcome.spentAtomic,
+        outcome.signature,
+        failure.httpStatus,
+      )
+      return `${failure.answer}, but the payment landed, so the wallet was charged and it counts against your limit. Do not repeat this call.${support}`
+    }
+    if (outcome.status === 'unpaid') {
+      const message = `${failure.answer}. The payment never landed, so nothing was charged.${support}`
+      await release(deps.db, id, {
+        status: 'failed',
+        error: message,
+        httpStatus: failure.httpStatus,
+      })
+      return message
+    }
+    if (Date.now() >= deadline)
+      return `${failure.answer}. Whether the payment landed is not known yet, so it counts against your limit until LanaTools checks the chain. Do not repeat this call.${support}`
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+}
+
+/**
+ * Closes the client's reservations whose calls ended without closing them,
+ * such as a Worker stopped midway, so they do not hold the limit. A row
+ * with no signed transaction failed; a signed one is paid or failed once
+ * the chain shows where its transaction ended up, in the history of the
+ * wallet that signed it.
+ */
+async function closeEndedCalls(
+  database: D1Database,
+  identity: GrantIdentity,
+  lookup: Lookup,
+) {
   for (const row of await openReservations(
     database,
     identity,
     Date.now() - RECONCILE_AFTER_MS,
-  ))
-    await release(database, row.id, {
-      status: 'failed',
-      error: row.payerSignature
-        ? 'The call ended after the payment was signed, so it may have charged the wallet'
-        : 'The call ended before anything was signed',
-    }).catch((error: unknown) => {
+  )) {
+    const closing = async () => {
+      if (
+        !row.payerWallet ||
+        !row.payerSignature ||
+        !row.blockhash ||
+        !row.mint
+      )
+        return release(database, row.id, {
+          status: 'failed',
+          error: 'The call ended before anything was signed',
+        })
+      const outcome = await lookup({
+        wallet: row.payerWallet,
+        payerSignature: row.payerSignature,
+        blockhash: row.blockhash,
+        mint: row.mint,
+        since: row.createdAt,
+      }).catch((): ChainOutcome => ({ status: 'pending' }))
+      if (outcome.status === 'paid')
+        return settle(database, row.id, outcome.spentAtomic, outcome.signature)
+      if (outcome.status === 'unpaid')
+        return release(database, row.id, {
+          status: 'failed',
+          error: 'The call ended after signing; the payment never landed',
+        })
+    }
+    await closing().catch((error: unknown) => {
       // Another call may have closed the same row first.
       if (!(error instanceof NoLongerOpenError)) throw error
     })
+  }
 }
 
 class ChargeChangedError extends Error {

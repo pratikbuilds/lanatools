@@ -51,7 +51,7 @@ The app shows every connected client, its claimed name and redirect destination,
 
 For each call, show the client, catalog provider and endpoint, time, status, quoted or reserved amount, settled amount and token, and the payment transaction or receipt when one exists. Record free calls, denials, provider errors, and failed payments too. Keep request and response bodies out of the activity record by default because catalog calls may contain private data.
 
-Every call ends paid or failed, decided by the endpoint's answer. Once the payment is signed, an endpoint that serves the call was paid; any other answer, or none, fails the call and frees its reservation. A failure after signing tells the agent the wallet may have been charged and gives the endpoint's reason when it names one, so the agent does not blindly repeat it.
+Every call ends paid or failed. Once the payment is signed, an endpoint that serves the call was paid, and its data comes back without waiting on the chain. For any other answer, or none, the chain decides: the call is paid if the signed transaction landed and failed if it never can, which is known within about 90 seconds of signing. Until then its reservation stays held, and a call that ends before the chain can tell leaves it for the client's next call to close. The agent sees the endpoint's reason when it names one and whether the wallet was charged, so it does not blindly repeat the call.
 
 ## Initial scope and later work
 
