@@ -139,6 +139,11 @@ export async function createTransactionLink(
       )
       .get()
     if (!row) return failed('unauthorized')
+    if (row.creatorGrantId !== identity.grantId)
+      return failed(
+        'conflict',
+        'This request key belongs to a previous connection. Use a new idempotency key.',
+      )
     if (
       row.toolName !== name ||
       row.argumentsJson !== argumentsJson ||

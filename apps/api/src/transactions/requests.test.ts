@@ -6,6 +6,12 @@ import { CreatedTransactionLink, TransactionLink } from '@lanatools/contracts'
 import { mcpGrant, transactionLink } from '../db/schema'
 import { testDatabase } from '../test-database'
 import {
+  activateGrant,
+  prepareGrant,
+  recordConsent,
+  revokeGrant,
+} from '../mcp-grants'
+import {
   createTransactionLink,
   readTransactionLink,
   transactionLinkStatus,
@@ -120,6 +126,73 @@ test('concurrent identical requests return one row; changed terms conflict', asy
       input,
     ),
   ).toMatchObject({ ok: false, error: { code: 'conflict' } })
+})
+
+test('reconnecting rejects old request keys without reviving their links', async () => {
+  const { identity, link } = await create()
+  const before = await drizzle(db)
+    .select()
+    .from(transactionLink)
+    .where(eq(transactionLink.id, link.linkId))
+    .get()
+  await revokeGrant(db, identity.userId, identity.grantId)
+  const handle = crypto.randomUUID()
+  await recordConsent(db, {
+    handle,
+    clientId: identity.clientId,
+    clientName: 'Reconnected client',
+    redirectUri: 'https://client.example/callback',
+  })
+  const { grantId } = await prepareGrant(
+    db,
+    handle,
+    identity.clientId,
+    identity.userId,
+  )
+  const reconnected = { ...identity, grantId }
+  await activateGrant(db, handle, reconnected, [])
+  expect(grantId).not.toBe(identity.grantId)
+  expect(
+    await createTransactionLink(env(), reconnected, 'solana_transfer', input),
+  ).toMatchObject({
+    ok: false,
+    error: {
+      code: 'conflict',
+      message:
+        'This request key belongs to a previous connection. Use a new idempotency key.',
+      retryable: false,
+    },
+  })
+  expect(await readTransactionLink(db, link.linkId)).toMatchObject({
+    status: 'unavailable',
+  })
+  expect(
+    await drizzle(db)
+      .select()
+      .from(transactionLink)
+      .where(eq(transactionLink.id, link.linkId))
+      .get(),
+  ).toEqual(before)
+  const freshInput = { ...input, idempotencyKey: crypto.randomUUID() }
+  const fresh = await createTransactionLink(
+    env(),
+    reconnected,
+    'solana_transfer',
+    freshInput,
+  )
+  if (!fresh.ok) throw new Error(fresh.error.message)
+  expect(fresh.result.linkId).not.toBe(link.linkId)
+  expect(await readTransactionLink(db, fresh.result.linkId)).toMatchObject({
+    status: 'open',
+  })
+  expect(
+    await createTransactionLink(
+      env(),
+      reconnected,
+      'solana_transfer',
+      freshInput,
+    ),
+  ).toEqual(fresh)
 })
 
 test('idempotency is scoped to user and client, not a global request key', async () => {

@@ -85,6 +85,11 @@ The link service preserves its original deadline, one accepted signature, exact
 message/signature checks, identical-payload retries and renewal only after
 finalized expiry. Provider acknowledgments alone never establish confirmation.
 
+Request keys remain scoped to the user and client across reconnections. Reusing
+a key from a previous grant returns a conflict requesting a new key; it never
+returns or reassigns the old grant's link. Retries under the same grant still
+return the original link.
+
 ## Mainnet test boundary
 
 The agreed live test is 1 USDC to SOL with maximum slippage 50 bps.
