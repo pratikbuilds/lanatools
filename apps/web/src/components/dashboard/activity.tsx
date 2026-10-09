@@ -1,5 +1,9 @@
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useQuery,
+} from '@tanstack/react-query'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ACTIVITY_CHART_DAYS, formatUsd } from '@lanatools/contracts'
 import type {
@@ -96,7 +100,12 @@ export function ActivityPage({
       listActivity(getAccessToken, { ...filter, before: pageParam }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
-    refetchInterval: 15_000,
+    // A poll refetches every loaded page in turn, so it stops once more
+    // than the first page is loaded.
+    refetchInterval: (query) =>
+      (query.state.data?.pages.length ?? 0) > 1 ? false : 15_000,
+    // Keeps the current rows on screen while a new filter loads.
+    placeholderData: keepPreviousData,
   })
   const days = useQuery({
     queryKey: ['activity-days', userId],
@@ -105,7 +114,10 @@ export function ActivityPage({
   })
   const clients = useMcpClients()
   const [open, setOpen] = useState<ActivityItem>()
-  const items = calls.data?.pages.flatMap((page) => page.items)
+  const items = useMemo(
+    () => calls.data?.pages.flatMap((page) => page.items),
+    [calls.data],
+  )
   const filtered = filter.client !== undefined || filter.outcome !== undefined
 
   return (
@@ -277,7 +289,7 @@ function CallTable({ children }: { children: ReactNode }) {
   )
 }
 
-export function CallRows({
+export const CallRows = memo(function CallRows({
   items,
   onOpen,
   byDay = false,
@@ -297,7 +309,10 @@ export function CallRows({
         const heading = byDay && label !== day
         day = label
         return (
-          <li key={`${item.kind}:${item.id}`}>
+          <li
+            key={`${item.kind}:${item.id}`}
+            className="[contain-intrinsic-size:auto_54px] [content-visibility:auto]"
+          >
             {heading && (
               <h3 className="d-label flex min-h-[30px] items-center border-t border-line bg-surface px-3.5 lg:px-4">
                 {label}
@@ -357,7 +372,7 @@ export function CallRows({
       })}
     </ul>
   )
-}
+})
 
 /** Money that moved is bold, a refusal amber, a failure red, the rest faint. */
 function Outcome({ item }: { item: ActivityItem }) {

@@ -1,9 +1,14 @@
 import { CopyIcon } from '@phosphor-icons/react'
-import { QRCodeSVG } from 'qrcode.react'
+import { Suspense, lazy } from 'react'
 import { CopyStatus, copyLabel, useCopy } from '#/components/landing/copy-url'
 import { NETWORK } from '#/lib/solana'
 import { Modal } from './modal'
 import { WalletAddress } from './wallet-address'
+
+// Loaded with the open modal rather than with the wallet page.
+const QRCodeSVG = lazy(() =>
+  import('qrcode.react').then((m) => ({ default: m.QRCodeSVG })),
+)
 
 export function DepositModal({
   open,
@@ -25,16 +30,22 @@ export function DepositModal({
     >
       <div className="flex flex-col items-center">
         {/* Encode the full receiving address, never its display abbreviation. */}
-        <QRCodeSVG
-          value={walletAddress}
-          size={224}
-          level="M"
-          marginSize={4}
-          bgColor="#ffffff"
-          fgColor="#000000"
-          title="Scan this wallet address to deposit USDC"
-          className="h-auto max-w-full rounded-[9px]"
-        />
+        <Suspense
+          fallback={
+            <div className="aspect-square w-[224px] max-w-full rounded-[9px] bg-white" />
+          }
+        >
+          <QRCodeSVG
+            value={walletAddress}
+            size={224}
+            level="M"
+            marginSize={4}
+            bgColor="#ffffff"
+            fgColor="#000000"
+            title="Scan this wallet address to deposit USDC"
+            className="h-auto max-w-full rounded-[9px]"
+          />
+        </Suspense>
         <p className="mt-3 text-center text-[13px] text-fg-2">
           Scan with Phantom or another Solana wallet.
         </p>

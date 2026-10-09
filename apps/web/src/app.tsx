@@ -1,3 +1,4 @@
+import { Suspense, use } from 'react'
 import ReactDOM from 'react-dom/client'
 import { RouterProvider } from '@tanstack/react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -8,20 +9,35 @@ import {
 } from '@privy-io/react-auth/solana'
 import { getRouter } from './router'
 
-const router = getRouter()
-const queryClient = new QueryClient()
 const rootElement = document.getElementById('app')
 if (!rootElement) throw new Error('Application root is missing')
 
+const router = getRouter()
+// Route pages are split into their own chunks. Privy starts while the first
+// page's chunk downloads; until it arrives, the boot screen index.html
+// painted stays up, so the page never goes blank.
+const boot = rootElement.innerHTML
+const firstPage = router.load()
+function Pages() {
+  use(firstPage)
+  return <RouterProvider router={router} />
+}
+const queryClient = new QueryClient({
+  // Matches the dashboard's polling, so moving between pages reuses data.
+  defaultOptions: { queries: { staleTime: 15_000 } },
+})
+
 const app = (
   <QueryClientProvider client={queryClient}>
-    <RouterProvider router={router} />
+    <Suspense
+      fallback={
+        <div className="contents" dangerouslySetInnerHTML={{ __html: boot }} />
+      }
+    >
+      <Pages />
+    </Suspense>
   </QueryClientProvider>
 )
-
-// Route pages are split into their own chunks. Rendering before the page's
-// chunk arrives would swap the boot screen for a blank page.
-await router.load()
 
 const appId = import.meta.env.VITE_PRIVY_APP_ID
 ReactDOM.createRoot(rootElement).render(

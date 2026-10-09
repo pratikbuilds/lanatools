@@ -106,7 +106,9 @@ const CONNECT_STEPS = [
 
 function Hero() {
   return (
-    <section className={`${wide} pt-12 pb-14 sm:pt-16 lg:pt-20`}>
+    <section
+      className={`${wide} overflow-x-clip pt-12 pb-14 sm:pt-16 lg:pt-20`}
+    >
       <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-14">
         <div>
           <span className="chip chip-wrap gap-1.5">

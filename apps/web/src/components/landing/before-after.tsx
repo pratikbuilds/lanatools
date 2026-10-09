@@ -644,9 +644,11 @@ function Diagram({
   )
 }
 
+// Null until measured. The prerendered page renders both layouts and lets a
+// container query pick one, so the figure keeps its height when this resolves.
 function useWideLayout() {
   const ref = useRef<HTMLDivElement>(null)
-  const [wide, setWide] = useState(true)
+  const [wide, setWide] = useState<boolean | null>(null)
   useEffect(() => {
     const el = ref.current
     if (!el) return
@@ -658,6 +660,9 @@ function useWideLayout() {
   }, [])
   return { ref, wide }
 }
+
+// A wide figure is at least 640px, so the viewport is always past sm.
+const pad = 'px-3 py-5 @min-[640px]:px-6 @min-[640px]:py-6'
 
 const phaseOf = (v: number): Phase =>
   v < 0.06 ? 'today' : v > 0.8 ? 'after' : 'between'
@@ -741,7 +746,10 @@ export function BeforeAfter() {
 
   return (
     <div>
-      <figure ref={figure} className="box box-lg m-0 overflow-hidden">
+      <figure
+        ref={figure}
+        className="box box-lg @container m-0 overflow-hidden"
+      >
         <div className="flex flex-wrap items-center justify-between gap-3 border-b-[1.5px] border-ink bg-paper px-4 py-2.5 text-[12px] text-mute">
           <div className="flex items-center gap-2">
             {STATES.map((state, i) => {
@@ -776,15 +784,29 @@ export function BeforeAfter() {
             </span>
           </span>
         </div>
-        <div ref={ref} className={wide ? 'px-4 py-6 sm:px-6' : 'px-3 py-5'}>
-          <Diagram
-            key={wide ? 'wide' : 'narrow'}
-            g={wide ? WIDE : NARROW}
-            progress={progress}
-            phase={phase}
-            inView={seen}
-            live={live}
-          />
+        <div ref={ref} className={pad}>
+          {wide !== false && (
+            <div className={wide === null ? 'hidden @min-[640px]:block' : ''}>
+              <Diagram
+                g={WIDE}
+                progress={progress}
+                phase={phase}
+                inView={seen}
+                live={live}
+              />
+            </div>
+          )}
+          {wide !== true && (
+            <div className={wide === null ? '@min-[640px]:hidden' : ''}>
+              <Diagram
+                g={NARROW}
+                progress={progress}
+                phase={phase}
+                inView={seen}
+                live={live}
+              />
+            </div>
+          )}
         </div>
         <figcaption className="grid border-t-[1.5px] border-ink bg-paper sm:grid-cols-2">
           {STATES.map((state, i) => {
