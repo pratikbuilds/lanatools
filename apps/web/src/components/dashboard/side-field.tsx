@@ -94,14 +94,19 @@ function scatter(width: number, height: number, seed: number) {
 
 /** The window's size, measured at most once per frame. */
 function useViewport() {
-  const [size, setSize] = useState<{ width: number; height: number }>()
+  // Read on first render so a remounted frame keeps its art; only the app
+  // pages use this, and they are never prerendered.
+  const [size, setSize] = useState(() => ({
+    width: innerWidth,
+    height: innerHeight,
+  }))
   useEffect(() => {
     let frame = 0
     const measure = () => {
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() =>
         setSize((last) =>
-          last?.width === innerWidth && last.height === innerHeight
+          last.width === innerWidth && last.height === innerHeight
             ? last
             : { width: innerWidth, height: innerHeight },
         ),
@@ -127,7 +132,6 @@ export const SideField = memo(function SideField({
   column: number
 }) {
   const size = useViewport()
-  if (!size) return null
   const width = Math.floor((size.width - column) / 2)
   if (width < 110) return null
   return (
