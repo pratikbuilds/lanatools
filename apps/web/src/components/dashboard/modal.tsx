@@ -43,6 +43,23 @@ export function Modal({
     <dialog
       ref={ref}
       aria-label={title}
+      onKeyDown={(event) => {
+        if (event.key !== 'Tab') return
+        const elements = Array.from(
+          event.currentTarget.querySelectorAll<HTMLElement>(
+            'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]',
+          ),
+        ).filter((element) => element.getClientRects().length > 0)
+        const first = elements[0]
+        const last = elements.at(-1)
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault()
+          last?.focus()
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault()
+          first?.focus()
+        }
+      }}
       onCancel={(event) => {
         if (!closable) event.preventDefault()
       }}

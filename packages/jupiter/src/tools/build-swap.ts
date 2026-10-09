@@ -13,8 +13,11 @@ import { swapOrder } from '../swap'
 export async function buildSwap(
   context: ReadContext,
   input: z.output<typeof BuildSwapInput>,
+  policy?: { excludeRfq: true },
 ): Promise<BuildSwapData> {
-  const { quote, raw } = await swapOrder(context, input, input.wallet)
+  const { quote, raw } = await swapOrder(context, input, input.wallet, policy)
+  if (policy?.excludeRfq && quote.router === 'jupiterz')
+    throw unavailable('Jupiter returned an excluded swap router')
   if (quote.constraints.satisfied === false)
     throw new JupiterReadError({
       code: 'no_route',

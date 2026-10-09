@@ -6,10 +6,11 @@ import type { GetAccessToken } from './mcp-clients'
 import { NETWORKS, checkNetworkEnv } from './networks'
 
 function lookupNetwork() {
-  // Builds must name a network (see vite.config.ts); dev servers and tests
-  // fall back to devnet, like the local API.
+  // Vite validates dev/build configuration. Only unit tests may omit it.
   const { id } = checkNetworkEnv({
-    VITE_SOLANA_NETWORK: import.meta.env.VITE_SOLANA_NETWORK ?? 'devnet',
+    SOLANA_NETWORK:
+      import.meta.env.SOLANA_NETWORK ??
+      (process.env.NODE_ENV === 'test' ? 'devnet' : undefined),
   })
   return { ...NETWORKS[id], id, usdcMint: address(NETWORKS[id].usdcMint) }
 }

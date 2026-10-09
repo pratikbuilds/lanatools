@@ -162,3 +162,49 @@ export const agentFeedback = sqliteTable('agent_feedback', {
   feedback: text('feedback').notNull(),
   createdAt: integer('created_at').notNull(),
 })
+
+/** One public intent and its single transaction; signed bytes are never stored. */
+export const transactionLink = sqliteTable(
+  'transaction_link',
+  {
+    id: text('id').primaryKey(),
+    toolName: text('tool_name').notNull(),
+    argumentsJson: text('arguments_json').notNull(),
+    network: text('network', { enum: ['mainnet', 'devnet'] }).notNull(),
+    creatorUserId: text('creator_user_id').notNull(),
+    creatorClientId: text('creator_client_id').notNull(),
+    creatorGrantId: text('creator_grant_id').notNull(),
+    idempotencyKey: text('idempotency_key').notNull(),
+    status: text('status', {
+      enum: [
+        'open',
+        'preparing',
+        'ready',
+        'transaction_expired',
+        'submitting',
+        'confirmed',
+        'failed',
+        'expired',
+        'unknown',
+      ],
+    })
+      .notNull()
+      .default('open'),
+    revision: integer('revision').notNull().default(0),
+    account: text('account'),
+    candidateJson: text('candidate_json'),
+    signature: text('signature'),
+    receiptJson: text('receipt_json'),
+    errorCode: text('error_code'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+    expiresAt: integer('expires_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('transaction_link_creator_request').on(
+      table.creatorUserId,
+      table.creatorClientId,
+      table.idempotencyKey,
+    ),
+  ],
+)

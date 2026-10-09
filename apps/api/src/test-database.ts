@@ -7,6 +7,7 @@ export async function testDatabase() {
   const proxy = await getPlatformProxy<{
     DB: D1Database
     SIGNUP_LIMITER: RateLimit
+    TRANSACTION_LINK_LIMITER: RateLimit
   }>({
     configPath: new URL('../wrangler.local.jsonc', import.meta.url).pathname,
     persist: false,
@@ -23,6 +24,7 @@ export async function testDatabase() {
   return {
     db,
     signupLimiter: proxy.env.SIGNUP_LIMITER,
+    transactionLinkLimiter: proxy.env.TRANSACTION_LINK_LIMITER,
     dispose: () => proxy.dispose(),
   }
 }

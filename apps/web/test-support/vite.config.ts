@@ -1,9 +1,9 @@
 import { defineConfig, mergeConfig } from 'vite'
-import appConfig from '../vite.config'
+import { createWebConfig } from '../vite.config'
 
 // This server is used only by browser tests. Production never loads the auth stub.
-export default defineConfig(async (env) =>
-  mergeConfig(await appConfig(env), {
+export default defineConfig(() =>
+  mergeConfig(createWebConfig('devnet'), {
     root: new URL('..', import.meta.url).pathname,
     resolve: {
       alias: [
@@ -15,7 +15,6 @@ export default defineConfig(async (env) =>
     },
     define: {
       'import.meta.env.VITE_PRIVY_APP_ID': JSON.stringify('responsive-test'),
-      'import.meta.env.VITE_SOLANA_NETWORK': JSON.stringify('devnet'),
     },
     server: { host: '127.0.0.1', port: 4174, strictPort: true },
   }),

@@ -15,7 +15,13 @@ import {
   setTransactionMessageFeePayer,
   setTransactionMessageLifetimeUsingBlockhash,
 } from '@solana/kit'
-import { JupiterClient, readJupiter } from './index'
+import {
+  JupiterClient,
+  jupiterBuildSwapTool,
+  jupiterTools,
+  readJupiter,
+} from './index'
+import type { JupiterClientOptions } from './index'
 
 const sol = 'So11111111111111111111111111111111111111112'
 const usdc = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
@@ -69,7 +75,7 @@ function wire(signer = wallet, payer = signer, version: 0 | 'legacy' = 0) {
 const transaction = wire()
 function reader(overrides: Record<string, unknown> = {}, decimals = 6) {
   const calls: URL[] = []
-  const client = new JupiterClient({
+  const options: JupiterClientOptions = {
     apiKey: 'server-key',
     fetch: async (url, init) => {
       const parsed = new URL(url)
@@ -103,9 +109,87 @@ function reader(overrides: Record<string, unknown> = {}, decimals = 6) {
         ...overrides,
       })
     },
-  })
-  return { client, calls }
+  }
+  return { client: new JupiterClient(options), calls, options }
 }
+
+test('the existing build tool owns the shared operation and selects its signer at execution', async () => {
+  expect(jupiterTools.find((tool) => tool.name === 'jupiter_build_swap')).toBe(
+    jupiterBuildSwapTool,
+  )
+  const operation = jupiterBuildSwapTool.transaction
+  const { wallet: _wallet, ...arguments_ } = request.input
+  expect(operation.supportedNetworks).toEqual(['mainnet'])
+  expect(operation.arguments.safeParse(request.input).success).toBe(false)
+  expect(
+    operation.arguments.safeParse({ ...arguments_, maxSlippageBps: undefined })
+      .success,
+  ).toBe(false)
+  expect(
+    jupiterBuildSwapTool.input.safeParse({
+      ...request.input,
+      maxSlippageBps: undefined,
+    }).success,
+  ).toBe(true)
+  const { options, calls } = reader({ signatureFeePayer: wallet })
+  const candidate = await operation.build(arguments_, wallet, {
+    ...options,
+    network: 'mainnet',
+    blockHeight: async () => 100n,
+  })
+  expect(candidate).toMatchObject({
+    transaction,
+    account: wallet,
+    network: 'mainnet',
+    execution: { requestId: 'request-1' },
+    review: {
+      fields: expect.arrayContaining([
+        { label: 'Minimum receive', value: '0.12 SOL' },
+      ]),
+    },
+  })
+  expect(calls[1]!.searchParams.get('taker')).toBe(wallet)
+  expect(calls[1]!.searchParams.get('excludeRouters')).toBe('jupiterz')
+})
+
+test('shared Jupiter operation rejects unsupported signing or expiry policies', async () => {
+  const { wallet: _wallet, ...arguments_ } = request.input
+  for (const overrides of [
+    { signatureFeePayer: usdc },
+    { transaction: wire(wallet, usdc) },
+    { lastValidBlockHeight: null },
+    { lastValidBlockHeight: '99' },
+    { otherAmountThreshold: null },
+  ]) {
+    const { options } = reader({ signatureFeePayer: wallet, ...overrides })
+    await expect(
+      jupiterBuildSwapTool.transaction.build(arguments_, wallet, {
+        ...options,
+        network: 'mainnet',
+        blockHeight: async () => 100n,
+      }),
+    ).rejects.toThrow()
+  }
+})
+
+test('link preparation excludes RFQ without changing the general build tool', async () => {
+  const { client, calls } = reader()
+  expect(await client.prepareSwap(request.input)).toMatchObject({
+    ok: true,
+    result: { data: { transaction, requestId: 'request-1' } },
+  })
+  expect(calls[1]!.searchParams.get('excludeRouters')).toBe('jupiterz')
+  expect(
+    await reader({ router: 'jupiterz' }).client.prepareSwap(request.input),
+  ).toMatchObject({ ok: false, error: { code: 'upstream_unavailable' } })
+  expect(
+    await reader({ router: 'jupiterz' }).client.read(request),
+  ).toMatchObject({ ok: true, result: { data: { router: 'jupiterz' } } })
+  expect(
+    await client.prepareSwap({ ...request.input, wallet: 'invalid' }),
+  ).toMatchObject({ ok: false, error: { code: 'invalid_input' } })
+  expect(calls).toHaveLength(2)
+})
 
 test('build uses the existing order API, exact units and original unsigned transaction', async () => {
   const { client, calls } = reader()

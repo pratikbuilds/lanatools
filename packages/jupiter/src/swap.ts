@@ -59,6 +59,7 @@ export async function swapOrder(
   context: ReadContext,
   input: z.output<typeof QuoteSwapInput>,
   taker?: string,
+  policy?: { excludeRfq: true },
 ): Promise<{ quote: QuoteSwapData; raw: ProviderRecord }> {
   const tokens = context.tokens(
     await context.get('/tokens/v2/search', {
@@ -97,6 +98,7 @@ export async function swapOrder(
     parameters.taker = taker
     parameters.maxSupportedTransactionVersion = '0'
   }
+  if (policy?.excludeRfq) parameters.excludeRouters = 'jupiterz'
   const raw = await context.get('/swap/v2/order', parameters)
   if (!isRecord(raw)) throw unavailable()
   if (

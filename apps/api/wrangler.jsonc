@@ -26,8 +26,13 @@
   // SOLANA_RPC_URL (a secret) must serve it; the Worker checks its genesis
   // hash before paying. Use a provider's URL: public RPCs refuse Workers or
   // token-balance queries.
-  "vars": { "SOLANA_NETWORK": "mainnet" },
+  "vars": { "SOLANA_NETWORK": "mainnet", "WEB_ORIGIN": "https://lanatools.sh" },
   "ratelimits": [
+    {
+      "name": "TRANSACTION_LINK_LIMITER",
+      "namespace_id": "2001002",
+      "simple": { "limit": 120, "period": 60 },
+    },
     {
       "name": "SIGNUP_LIMITER",
       "namespace_id": "2001001",

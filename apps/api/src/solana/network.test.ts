@@ -1,5 +1,11 @@
 import { expect, mock, test } from 'bun:test'
 import {
+  SOLANA_NETWORKS as NETWORKS,
+  parseSolanaNetwork,
+  readSolanaNetwork,
+  solanaExplorerTransactionUrl,
+} from '@lanatools/contracts/networks'
+import {
   SOLANA_NETWORKS,
   createPaymentConfig,
   paymentConfig,
@@ -14,6 +20,73 @@ const MAINNET = {
   SOLANA_NETWORK: 'mainnet',
   SOLANA_RPC_URL: 'https://mainnet.example/?api-key=private-key',
 }
+
+test('the shared deployment selector switches all public metadata and rejects missing or unsupported values', () => {
+  for (const network of ['devnet', 'mainnet'] as const) {
+    expect(readSolanaNetwork({ SOLANA_NETWORK: network })).toBe(network)
+    expect(parseSolanaNetwork(network)).toBe(network)
+    const metadata = NETWORKS[network]
+    expect(metadata.name).toBe(network)
+    expect(String(metadata.caip2)).toBe(
+      `solana:${metadata.genesisHash.slice(0, 32)}`,
+    )
+    expect(metadata.chain).toBe(`solana:${network}`)
+  }
+  expect(NETWORKS.devnet.publicRpcUrl).toBe('https://api.devnet.solana.com')
+  expect(NETWORKS.mainnet.publicRpcUrl).toBe(
+    'https://api.mainnet-beta.solana.com',
+  )
+  expect(NETWORKS.devnet.explorerCluster).toBe('devnet')
+  expect(NETWORKS.mainnet.explorerCluster).toBeUndefined()
+  expect(NETWORKS.devnet.walletAdapterNetwork).toBe('Devnet')
+  expect(NETWORKS.mainnet.walletAdapterNetwork).toBe('Mainnet')
+  expect(NETWORKS.devnet.isTestNetwork).toBe(true)
+  expect(NETWORKS.mainnet.isTestNetwork).toBe(false)
+  expect(solanaExplorerTransactionUrl('devnet', 'signature')).toBe(
+    'https://explorer.solana.com/tx/signature?cluster=devnet',
+  )
+  expect(solanaExplorerTransactionUrl('mainnet', 'signature')).toBe(
+    'https://explorer.solana.com/tx/signature',
+  )
+  expect(
+    solanaExplorerTransactionUrl('mainnet', 'signature?cluster=devnet'),
+  ).toBe('https://explorer.solana.com/tx/signature%3Fcluster%3Ddevnet')
+  expect(() => readSolanaNetwork({})).toThrow('SOLANA_NETWORK')
+  for (const value of [
+    undefined,
+    null,
+    '',
+    'mainnet-beta',
+    'testnet',
+    '__proto__',
+    'constructor',
+    ' mainnet',
+    1,
+  ])
+    expect(() => parseSolanaNetwork(value)).toThrow(
+      'Unsupported SOLANA_NETWORK',
+    )
+})
+
+test('changing deployment network rechecks the same RPC and refuses a stale cluster', async () => {
+  let genesis = NETWORKS.devnet.genesisHash as string
+  const read = mock(async () => genesis)
+  const config = createPaymentConfig(read)
+  await config(DEVNET)
+  const switched = { ...DEVNET, SOLANA_NETWORK: 'mainnet' }
+  await expect(config(switched)).rejects.toThrow(
+    'does not match SOLANA_NETWORK',
+  )
+  expect(read).toHaveBeenCalledTimes(2)
+  genesis = NETWORKS.mainnet.genesisHash
+  expect((await config(switched)).network).toEqual({
+    name: 'mainnet',
+    usdcMint: NETWORKS.mainnet.usdcMint,
+    genesisHash: NETWORKS.mainnet.genesisHash,
+    caip2: NETWORKS.mainnet.caip2,
+  })
+  expect(read).toHaveBeenCalledTimes(3)
+})
 
 test('read config resolves devnet and mainnet without an RPC probe', async () => {
   for (const [env, network] of [

@@ -1,3 +1,5 @@
+import { transactionLinks } from './routes/transaction-links'
+import type { TransactionLinksEnv } from './routes/transaction-links'
 import { createApp } from './app'
 import type { McpDashboardEnv } from './mcp-service'
 import { activity } from './routes/activity'
@@ -10,7 +12,8 @@ import type { EarlyAccessEnv } from './routes/early-access'
 
 export { McpAccessService } from './mcp-service'
 
-const app = createApp<McpDashboardEnv & EarlyAccessEnv>()
+const app = createApp<McpDashboardEnv & EarlyAccessEnv & TransactionLinksEnv>()
+app.route('/api/transaction-links', transactionLinks)
 app.route('/api/activity', activity)
 app.route('/api/early-access', earlyAccess)
 app.route('/api/mcp/clients', mcpClients)

@@ -3,7 +3,9 @@ import {
   PRODUCTION_PRIVY_APP_ID,
   checkLocalConfig,
   checkLocalEnv,
+  localStateDirectory,
   parseUsdc,
+  requireDevnetFunding,
 } from './local-env'
 
 const env = {
@@ -11,11 +13,26 @@ const env = {
   PRIVY_APP_SECRET: 'secret',
   PRIVY_PAYMENT_SIGNER_ID: 'signer',
   PRIVY_PAYMENT_SIGNER_KEY: 'key',
+  SOLANA_NETWORK: 'devnet',
   SOLANA_RPC_URL: 'https://devnet.example.com/?api-key=k',
 }
 
 test('accepts complete local secrets', () => {
   expect(checkLocalEnv(env)).toEqual([])
+  expect(
+    checkLocalEnv({
+      ...env,
+      SOLANA_NETWORK: 'mainnet',
+      SOLANA_RPC_URL: 'https://mainnet.example.com',
+    }),
+  ).toEqual([])
+})
+
+test('requires one explicit known network in root environment', () => {
+  for (const SOLANA_NETWORK of [undefined, '', 'testnet', 'sandbox'])
+    expect(checkLocalEnv({ ...env, SOLANA_NETWORK })).toContain(
+      'Set SOLANA_NETWORK to devnet or mainnet in .env',
+    )
 })
 
 test('names every missing secret', () => {
@@ -46,7 +63,7 @@ test('accepts the checked-in local Wrangler configs', async () => {
     expect(checkLocalConfig(path, await Bun.file(path).text())).toEqual([])
 })
 
-test('refuses remote bindings and a non-devnet network', () => {
+test('refuses remote bindings and unknown networks while allowing mainnet', () => {
   expect(
     checkLocalConfig(
       'c',
@@ -55,7 +72,29 @@ test('refuses remote bindings and a non-devnet network', () => {
   ).toEqual(['c has a remote binding; local bindings must stay local'])
   expect(
     checkLocalConfig('c', '{ "vars": { "SOLANA_NETWORK": "mainnet" } }'),
-  ).toEqual(['c must set SOLANA_NETWORK to devnet'])
+  ).toEqual([])
+  for (const value of ['testnet', '', 'sandbox'])
+    expect(
+      checkLocalConfig(
+        'c',
+        JSON.stringify({ vars: { SOLANA_NETWORK: value } }),
+      ),
+    ).toEqual(['c must set SOLANA_NETWORK to devnet or mainnet'])
+})
+
+test('local storage preserves devnet history and isolates mainnet', () => {
+  expect(localStateDirectory('devnet')).toBe('state')
+  expect(localStateDirectory('mainnet')).toBe('state-mainnet')
+})
+
+test('the local funding command only permits an explicit devnet selection', () => {
+  expect(() => requireDevnetFunding(env)).not.toThrow()
+  expect(() =>
+    requireDevnetFunding({ ...env, SOLANA_NETWORK: 'mainnet' }),
+  ).toThrow('mainnet funding is disabled')
+  expect(() =>
+    requireDevnetFunding({ ...env, SOLANA_NETWORK: undefined }),
+  ).toThrow('SOLANA_NETWORK')
 })
 
 test('parses USDC amounts into base units', () => {

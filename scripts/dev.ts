@@ -1,12 +1,12 @@
 /**
- * Runs LanaTools on this machine against Solana devnet.
+ * Runs LanaTools locally against the Solana network selected in root .env.
  *
  *   bun run dev                         web, API and MCP
  *   bun run dev:reset                   clear the local database and OAuth state
  *   bun run dev:fund <wallet> <usdc>    send devnet USDC from the Solana CLI wallet
  *
  * Secrets come only from the root `.env` (see `.env.example`). Startup refuses
- * the production Privy app, a non-devnet RPC and remote Cloudflare bindings.
+ * the production Privy app, a mismatched RPC and remote Cloudflare bindings.
  */
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { createServer } from 'node:net'
@@ -14,11 +14,20 @@ import { join } from 'node:path'
 import { parseEnv } from 'node:util'
 import { paymentConfig } from '../apps/api/src/solana/network'
 import { profiles } from '../packages/testbed/src/networks'
-import { checkLocalConfig, checkLocalEnv, parseUsdc } from './local-env'
+import { readSolanaNetwork } from '../packages/contracts/src/networks'
+import type { NetworkId } from '../packages/contracts/src/networks'
+import {
+  checkLocalConfig,
+  checkLocalEnv,
+  localStateDirectory,
+  parseUsdc,
+  requireDevnetFunding,
+} from './local-env'
 
 const ROOT = join(import.meta.dir, '..')
 const ENV_FILE = join(ROOT, '.env')
-const STATE = join(ROOT, 'apps/api/.wrangler/state')
+const statePath = (network: NetworkId) =>
+  join(ROOT, 'apps/api/.wrangler', localStateDirectory(network))
 // Where the two Workers find each other. Wrangler's shared registry keeps
 // entries from dev servers that were killed, pointing at dead ports, and the
 // Workers can use them for about a minute after a restart.
@@ -34,7 +43,13 @@ const MERCHANT =
  * MCP Worker's OAuth KV live together, and reach each other through
  * Wrangler's local dev registry. Each needs its own inspector port.
  */
-function worker(name: string, config: string, port: number, inspector: number) {
+function worker(
+  name: string,
+  config: string,
+  port: number,
+  inspector: number,
+  network: NetworkId,
+) {
   return {
     name,
     ports: [port, inspector],
@@ -50,7 +65,7 @@ function worker(name: string, config: string, port: number, inspector: number) {
       String(inspector),
       '--local',
       '--persist-to',
-      STATE,
+      statePath(network),
       '--env-file',
       ENV_FILE,
     ],
@@ -59,9 +74,9 @@ function worker(name: string, config: string, port: number, inspector: number) {
 
 // MCP's port must match MCP_ORIGIN in its local config. The web dev server
 // proxies /api to the API's port.
-const SERVICES = [
-  worker('api', API_CONFIG, 3000, 9230),
-  worker('mcp', MCP_CONFIG, 8788, 9231),
+const services = (network: NetworkId) => [
+  worker('api', API_CONFIG, 3000, 9230, network),
+  worker('mcp', MCP_CONFIG, 8788, 9231, network),
   {
     name: 'web',
     ports: [5173],
@@ -99,7 +114,7 @@ function run(cmd: Array<string>, env: Record<string, string | undefined>) {
   if (!result.success) fail(`${cmd.slice(0, 3).join(' ')} failed`)
 }
 
-function migrate() {
+function migrate(network: NetworkId) {
   run(
     [
       WRANGLER,
@@ -111,7 +126,7 @@ function migrate() {
       '-c',
       API_CONFIG,
       '--persist-to',
-      STATE,
+      statePath(network),
     ],
     process.env,
   )
@@ -137,19 +152,21 @@ async function portInUse(port: number) {
   return free.includes(false)
 }
 
-async function busyPorts() {
-  const ports = SERVICES.flatMap((service) => service.ports)
+async function busyPorts(network: NetworkId) {
+  const ports = services(network).flatMap((service) => service.ports)
   const busy = await Promise.all(ports.map(portInUse))
   return ports.filter((_, index) => busy[index])
 }
 
-/**
- * Fails unless the secrets, RPC and local configs are safe to start. Checks
- * the `.env` file itself, which is what the Workers load, not the shell.
- */
-async function preflight() {
+/** Read the same root file passed to both Workers through --env-file. */
+function localEnv() {
   if (!existsSync(ENV_FILE)) fail('Copy .env.example to .env and fill it in')
-  const secrets = parseEnv(readFileSync(ENV_FILE, 'utf8'))
+  return parseEnv(readFileSync(ENV_FILE, 'utf8'))
+}
+
+/** Validate local credentials, bindings and the RPC's selected network. */
+async function preflight() {
+  const secrets = localEnv()
   const problems = [
     ...checkLocalEnv(secrets),
     ...[API_CONFIG, MCP_CONFIG].flatMap((path) =>
@@ -160,7 +177,7 @@ async function preflight() {
   try {
     // The same check the API makes before it pays.
     await paymentConfig({
-      SOLANA_NETWORK: 'devnet',
+      SOLANA_NETWORK: readSolanaNetwork(secrets),
       SOLANA_RPC_URL: secrets.SOLANA_RPC_URL ?? '',
     })
   } catch (error) {
@@ -185,7 +202,9 @@ async function relay(name: string, stream: ReadableStream<Uint8Array>) {
 
 async function start() {
   const secrets = await preflight()
-  const busy = await busyPorts()
+  const network = readSolanaNetwork(secrets)
+  const selectedServices = services(network)
+  const busy = await busyPorts(network)
   if (busy.length)
     fail(`Port ${busy.join(', ')} is in use; stop what is using it`)
 
@@ -194,17 +213,20 @@ async function start() {
   // local API, whatever API_PROXY_TARGET the shell has.
   const env = {
     ...process.env,
+    ...secrets,
+    SOLANA_NETWORK: network,
     VITE_PRIVY_APP_ID: secrets.PRIVY_APP_ID,
-    VITE_SOLANA_NETWORK: 'devnet',
     API_PROXY_TARGET: 'http://127.0.0.1:3000',
     WRANGLER_REGISTRY_PATH: REGISTRY,
+    CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: 'true',
+    CLOUDFLARE_INCLUDE_PROCESS_ENV: 'false',
   }
   // The ports are free, so no running Worker still owns an entry here.
   rmSync(REGISTRY, { recursive: true, force: true })
-  migrate()
+  migrate(network)
   run(['bun', 'run', '--cwd', 'apps/mcp', 'build'], env)
 
-  const children = SERVICES.map((service) => {
+  const children = selectedServices.map((service) => {
     const child = Bun.spawn(service.cmd, {
       cwd: service.cwd,
       env,
@@ -229,15 +251,18 @@ async function start() {
   process.on('SIGTERM', () => stop(0, 'asked to stop; stopping all services'))
 
   console.log(`
-dev: LanaTools on Solana devnet
+dev: LanaTools on Solana ${network}
      Dashboard  http://localhost:5173
      MCP        http://localhost:8788/mcp
-     Merchant   ${MERCHANT}
+${network === 'devnet' ? `     Merchant   ${MERCHANT}` : '     Mainnet uses real funds.'}
 `)
 
   const first = await Promise.race(
     children.map((child, index) =>
-      child.exited.then((code) => ({ name: SERVICES[index]?.name, code })),
+      child.exited.then((code) => ({
+        name: selectedServices[index]?.name,
+        code,
+      })),
     ),
   )
   stop(
@@ -248,13 +273,20 @@ dev: LanaTools on Solana devnet
 }
 
 async function reset() {
-  if ((await busyPorts()).length) fail('Stop `bun run dev` before resetting')
-  rmSync(STATE, { recursive: true, force: true })
-  console.log('dev: cleared the local database and OAuth state')
-  migrate()
+  const network = readSolanaNetwork(localEnv())
+  if ((await busyPorts(network)).length)
+    fail('Stop `bun run dev` before resetting')
+  rmSync(statePath(network), { recursive: true, force: true })
+  console.log(`dev: cleared local ${network} database and OAuth state`)
+  migrate(network)
 }
 
 async function fund(wallet: string | undefined, amount: string | undefined) {
+  try {
+    requireDevnetFunding(localEnv())
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error))
+  }
   if (!wallet || !amount)
     fail('Usage: bun run dev:fund <wallet address> <USDC amount>')
   let units: bigint

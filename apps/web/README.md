@@ -5,22 +5,28 @@ in `src/routes`; the TanStack plugin generates `src/routeTree.gen.ts`. Do not ed
 the generated route tree by hand. `src/router.tsx` is the single router factory.
 
 From the repository root, use `bun run dev` to run it with the API and MCP
-Workers on devnet. The frontend
+Workers on the network selected in the root `.env`. The frontend
 requests relative `/api` URLs, validated against `@lanatools/contracts`.
 See the root README for checks and production routing requirements.
 
 ## Solana network
 
-`VITE_SOLANA_NETWORK` (`devnet` or `mainnet`) names the network the page
-labels and tells users to deposit on. Builds fail without it. The hosted
-`master` branch runs on mainnet: set `VITE_SOLANA_NETWORK=mainnet` in
-Cloudflare's build environment, matching the API's `SOLANA_NETWORK=mainnet`.
-`bun run deploy:web` also builds for mainnet; dev servers default to devnet.
+`SOLANA_NETWORK` (`devnet` or `mainnet`) selects the network for the API and
+browser. Local development reads it from the root `.env`; explicit process
+environment values take precedence for ordinary web builds. Missing or
+unsupported values fail validation. `VITE_SOLANA_NETWORK` is no longer used.
 
-The browser never talks to Solana. Balances come from `/api/wallet/balances`,
+For deployments, `bun run deploy:web` reads `SOLANA_NETWORK` from
+`apps/api/wrangler.jsonc`, the same configuration used to deploy the API.
+This overrides local settings so the deployed API and browser agree.
+Shared network addresses, labels, and Explorer URLs live in
+`packages/contracts/src/networks.ts`.
+
+Dashboard balances come from `/api/wallet/balances`,
 which reads them with the API's server-side `SOLANA_RPC_URL`, so the provider
 key never reaches the page. The API reports its network, and the page refuses
-to show balances from a network other than the one it names.
+to show balances from a network other than the one it names. The public
+transaction page uses the wallet adapter for signing and the API for submission.
 
 ## Tool activity and estimated credits
 

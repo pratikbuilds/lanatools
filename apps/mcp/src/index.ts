@@ -103,7 +103,7 @@ const defaultHandler = {
         const body = z
           .object({
             decision: z.enum(['approve', 'deny']),
-            // The tool families the user chose; none leaves the catalog only.
+            // Unscoped tools remain available when no families are selected.
             scopes: z.array(z.enum(TOOL_SCOPES)).default([]),
             // Required when the user allows payments.
             limitUsd: z.string().optional(),

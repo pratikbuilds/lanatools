@@ -18,8 +18,8 @@ scopes a client asks for in `/authorize` are ignored; `approveConsent` issues
 the token with the user's choice plus `account:read`, and the API stores the
 same list on the grant. Turning Pay on asks for a spending limit.
 
-The catalog tools, `whoami` and `send_feedback` have no family and every
-client gets them.
+The catalog tools, `whoami`, `send_feedback`, `solana_transfer` and
+`get_transaction_request` have no family and every active client gets them.
 A client only sees the families it was given in `tools/list`, and every call
 is checked again against the token and, for Helius, Jupiter and Pay, the stored
 grant. To change a client's families, the user disconnects it and connects it
@@ -27,6 +27,33 @@ again.
 
 `whoami` returns the Privy user ID, the OAuth client ID and the user's payment
 wallet address, which is null until the user sets one up.
+
+## Transaction review links
+
+`solana_transfer` takes `recipient`, decimal-string `amountLamports` and an
+`idempotencyKey`. It creates a public review URL without signing or sending.
+Network comes from API deployment configuration: production mainnet, local
+testing devnet. A retry with the same creator/client/key and input returns the
+same link; changed input conflicts. No extra consent scope is required.
+
+`get_transaction_request` takes `linkId` and reads a link owned by the active
+account and client. Public visitors can read its operation details at `/tx/:id`
+without signing in. The visitor connects a Solana wallet through the custom
+LanaTools picker, chooses Sign & send, then confirms the transaction in the wallet.
+LanaTools validates the signed message, records its signature, then broadcasts
+and checks confirmation. The wallet does not submit the transaction.
+
+All transaction types share `/api/transaction-links/:id`: GET reads the link,
+POST `/transaction` takes `{ account }` and returns the saved unsigned candidate,
+and POST `/send` takes `{ transaction }` with signed base64 bytes. Signed bytes
+are transient; only the unsigned candidate, signature and observed receipt are
+stored. The page builds when the visitor chooses Sign & send. A recorded signature
+always keeps its candidate; pending or unknown results never trigger replacement.
+Before signature acceptance, an expired candidate can be renewed for the same
+wallet after finalized block-height expiry, within the original link deadline.
+Revision checks prevent a stale signed candidate from being accepted after renewal.
+These constraints govern LanaTools submissions; the link is not an onchain guard
+against transactions a wallet independently constructs or broadcasts.
 
 ## Agent feedback
 

@@ -1,7 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { WalletPage } from '#/components/dashboard/wallet-page'
 
-export const Route = createFileRoute('/dashboard/')({ component: WalletRoute })
+export const Route = createFileRoute('/_account/dashboard/')({
+  component: WalletRoute,
+})
 
 function WalletRoute() {
   const navigate = Route.useNavigate()
