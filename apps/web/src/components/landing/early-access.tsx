@@ -6,7 +6,6 @@ import {
 } from 'motion/react'
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { EarlyAccessEmail } from '@lanatools/contracts'
 import {
   clearSignupError,
   joinEarlyAccess,
@@ -65,6 +64,8 @@ function JoinForm({ tone, note }: { tone: Tone; note?: ReactNode }) {
     event.preventDefault()
     const field = input.current
     if (!field || busy) return
+    // Loaded on submit so the schema library stays out of the landing bundle.
+    const { EarlyAccessEmail } = await import('@lanatools/contracts')
     const value = EarlyAccessEmail(field.value)
     if (typeof value !== 'string') {
       setError(

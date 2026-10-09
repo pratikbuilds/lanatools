@@ -98,7 +98,7 @@ export const activateAccount = defineTradeTool({
         login: { message: nonce.message, nonceId: nonce.nonce_id },
       },
       summary: register
-        ? // solOS's mainnet activation (2026-09-23) cost 0.0279 SOL rent.
+        ? // A mainnet activation (2026-09-23) cost 0.0279 SOL rent.
           `Activate this wallet's Phoenix account with referral code ${referralCode}: a one-time account rent of about 0.028 SOL plus the fee, paid by the wallet`
         : `Finish activating this wallet's Phoenix account with referral code ${referralCode}: the account already exists, so the wallet pays only the fee`,
       details: {

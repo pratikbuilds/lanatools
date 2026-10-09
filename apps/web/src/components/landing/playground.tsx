@@ -407,6 +407,7 @@ export function Playground() {
             type="button"
             className="-mr-2 h-[30px] px-2 text-[12px] font-semibold text-mute underline-offset-2 hover:text-ink hover:underline"
             onClick={() => {
+              clearTimeout(followUp.current)
               const fresh = initial()
               latest.current = fresh
               setState(fresh)

@@ -1,5 +1,3 @@
-import { EarlyAccessResponse } from '@lanatools/contracts'
-
 type SignupState =
   | { phase: 'edit'; failure: { formId: string; message: string } | null }
   | { phase: 'busy'; email: string }
@@ -52,6 +50,7 @@ export async function joinEarlyAccess(email: string, formId: string) {
     if (response.status === 429)
       message = 'Too many attempts. Wait a minute and try again.'
     if (!response.ok) throw new Error('Signup request failed')
+    const { EarlyAccessResponse } = await import('@lanatools/contracts')
     const saved = EarlyAccessResponse.assert(await response.json())
     if (saved.email !== email) throw new Error('Signup email did not match')
     if (pending === request) publish({ phase: 'joined', email: saved.email })

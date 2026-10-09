@@ -21,6 +21,15 @@ export default [
   },
   ...tanstackConfig,
   {
+    languageOptions: {
+      parserOptions: {
+        // One shared TypeScript service instead of a program per tsconfig,
+        // which ran CI out of memory.
+        project: false,
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
     rules: {
       'import/no-cycle': 'off',
       'import/order': 'off',

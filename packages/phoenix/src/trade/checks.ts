@@ -219,7 +219,7 @@ export function checkCollateral(
  * Checks Rise's referral activation against what Phoenix's onboarding
  * expects: `RegisterTrader` for the default cross-margin account when it is
  * missing, then `OnboardTraderDelegated`, both for the wallet's own trader
- * account. Same idea as solOS's onboarding guards.
+ * account.
  */
 export function checkActivation(
   instructions: readonly Instruction[],
