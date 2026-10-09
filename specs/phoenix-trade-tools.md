@@ -1,6 +1,6 @@
 # Phoenix trade tools: tech spec
 
-Status: Phases 1–4 built 2026-10-08 (all seven tools); Phase 4 waiting for review. Phase 5 (script) next.
+Status: Phases 1–5 built (tools and script); Phase 6, the mainnet run, waits for your go and a funded wallet.
 Background: [research-phoenix-transactions.md](research-phoenix-transactions.md).
 
 ## 1. Goal and scope
@@ -385,7 +385,7 @@ the login: it moves no funds and works either way.
 ## 6. Script (`packages/phoenix/scripts/trade.ts`)
 
 ```
-bun packages/phoenix/scripts/trade.ts <command> [args] --rpc <mainnet RPC URL> [--keypair ~/.config/solana/id.json] [--dry-run]
+bun packages/phoenix/scripts/trade.ts <command> [args] --rpc <mainnet RPC URL> [--keypair ~/.config/solana/id.json] [--dry-run [--as ADDRESS]]
 ```
 
 | Command | Action |
@@ -400,22 +400,29 @@ bun packages/phoenix/scripts/trade.ts <command> [args] --rpc <mainnet RPC URL> [
 
 **Trade tool flow:**
 
-1. `runTradeTool`
-2. Print the summary, details, warnings and simulation.
-3. Stop if the simulation failed.
+1. `runPhoenixTrade` (the tool by name).
+2. `nothing_to_do`: print it and stop. `simulation_failed`: print the
+   reason and stop with an error.
+3. Print the summary, details, warnings and simulation.
 4. With `--dry-run`, stop here.
 5. Otherwise ask you to type `yes`.
-6. Sign with the keypair.
-7. `sendSignedTransaction`
-8. Print the signature, an Explorer link and the new `state`.
+6. Sign with the keypair (`scripts/sign.ts`): the transaction partially,
+   since Phoenix adds its own signature to activation, and for activation
+   the login message.
+7. `submitSignedTransaction`
+8. Print the result, signature, an Explorer link and the new `state`. An
+   `unknown` result says to check the signature before trying again.
 
 **Guards:**
 
 - The RPC's genesis hash must be mainnet.
 - `--rpc` is required and has no default.
-- `activate` first checks that the wallet is not already activated and holds
-  enough SOL.
+- `activate` first checks that the wallet is not already activated; the
+  simulation decides whether its SOL covers rent and fees.
 - **Every send asks for confirmation. There is no `-y` flag.**
+- `--as ADDRESS` simulates as another wallet (D7), only with `--dry-run`; no
+  key is loaded and nothing can be signed for it.
+- Fees are D5's: a 20% compute margin, no priority fee.
 
 ## 7. Phases
 
@@ -587,6 +594,33 @@ to these fixes. They are described in place above.
 - **Tests:** argument parsing and guards (wrong genesis, missing `--rpc`). The `activate` command signs both the login message and the transaction.
 - **Verify:** `--dry-run` for each command against mainnet. This simulates only and needs D7.
 - **Exit:** the script is ready; nothing has been signed.
+- **Result (2026-10-09):**
+  - `scripts/args.ts` (parsing and guards), `scripts/sign.ts` (signing),
+    `scripts/trade.ts` (the CLI), a `runPhoenixTrade(name, …)` runner in the
+    trade entry point, and a README section. The package tsconfig now covers
+    `scripts/`, and the root `bun run test` runs it.
+  - 8 new tests (117 in the package): every command's mapping, defaults,
+    the required RPC, `--as` rules, worst-price rules, usage errors, and
+    signing. The signing tests check that a signed transaction passes the
+    send checks and that the login signature verifies.
+  - Repo: `bun run typecheck` passes and `bun run test` passes (489).
+  - **Dry runs on mainnet, nothing signed:**
+
+    | Command | Wallet | Result |
+    |---|---|---|
+    | `activate --dry-run` | CLI wallet | ready, simulates OK, 29,540 CU |
+    | `deposit 1` | `4WWb…` (`--as`) | ready, 28,683 CU |
+    | `market SOL buy 0.01 --slippage-bps 50` | `4WWb…` | ready, 195,543 CU |
+    | `limit SOL buy 0.01 50 --post-only` | `4WWb…` | ready, 219,829 CU |
+    | `cancel SOL` | `4WWb…` | `not_found` (no resting orders) |
+    | `close SOL --slippage-bps 100` | `DuyJ…` | ready, 487,055 CU |
+    | `withdraw 1` | `4WWb…` | ready, 47,233 CU |
+    | `deposit 1` | CLI wallet | `not_activated` |
+    | `state` | CLI wallet / `4WWb…` | "No Phoenix account yet" / the account |
+    | any command with `--as` but no `--dry-run` | — | refused |
+    | `--rpc` devnet | — | refused: not mainnet |
+
+  - CLI wallet balance on 2026-10-09: 0.0416 SOL and 0.07 USDC.
 
 ### Phase 6: mainnet run
 
