@@ -1,6 +1,6 @@
 # Phoenix trade tools: tech spec
 
-Status: Phases 1–5 built (tools and script); Phase 6, the mainnet run, waits for your go and a funded wallet.
+Status: built 2026-10-09. All seven tools and the script ran on mainnet (Phase 6 run log below). API/MCP wiring comes next, separately.
 Background: [research-phoenix-transactions.md](research-phoenix-transactions.md).
 
 ## 1. Goal and scope
@@ -647,6 +647,31 @@ Only when you say go. Each step needs your typed `yes` in the script.
 | Deposit 10 USDC | Confirmed; collateral 10 USDC | `5givaF53…PS66` |
 | Market buy 0.1 SOL, 50 bps | Confirmed, but **nothing filled**. The order expired at slot 454,781,680; the transaction landed at 454,781,719, after the 6-second window, since a person typed `yes`. Phoenix treats an expired order as a no-op that still succeeds. | `4QjhkWs1…4g4y` |
 | Post-only limit buy 0.01 SOL at $50 | Confirmed; resting, ID `18446744073632731858` | `5bfuVvyc…re4N` |
+| Cancel that order by ID | Confirmed; no resting orders | `3MHUQwWF…pEEd` |
+| *(fixes below, then)* Market buy 0.1 SOL, 50 bps | Confirmed; `Position SOL: 0 → 0.1`, entry $110.65 | `5cQwxk5s…khtsK` |
+| Close SOL, 100 bps | Confirmed; reduce-only sell, `Position SOL: 0.1 → 0`; collateral 9.987256 | `3zUHAq8e…rLxK` |
+| Withdraw 9.987256 USDC | First try: a Phoenix API timeout while preparing, nothing sent. Retry confirmed; collateral 0, wallet USDC 0.070885 → 10.058141 in the same transaction (no queue wait) | `3fP4Cky3…ZhnD` |
+| Deposit 1 USDC | Confirmed | `51BLRf96…Bks4` |
+| Plain (not post-only) limit buy 0.01 SOL at $50 | Confirmed; resting. Decoded on chain as `PlaceLimitOrder`. Before the deposit, its dry run stopped with `InsufficientFunds` and nothing to sign | `3WAzYcoN…bVJfbK` |
+| Cancel all SOL orders | Confirmed; the instruction is exactly `CancelAll` | `4YX37k8J…S7ui8` |
+| Withdraw 1 USDC | Confirmed; wallet USDC 10.058141 | `4Qa2XLHj…uPPtT3M` |
+
+Every Phoenix instruction the tools use has now run on mainnet:
+`RegisterTrader`, `OnboardTraderDelegated`, the Ember deposit and
+withdrawal, `DepositFunds`, `WithdrawFunds`, the token `Approve`,
+`PlaceMarketOrder` (open and reduce-only close), `PlaceLimitOrder`,
+`PlacePostOnlyOrder`, `CancelOrdersById` and `CancelAll`.
+
+**Cost:**
+- SOL 0.1416 → 0.1122: 0.0279 is the trader account's rent, which stays in
+  the account; the rest is fees.
+- USDC 10.0709 → 10.0581: two taker fees and the price moved over the round
+  trip.
+
+**Not run live:**
+- A partial close (`--fraction`) and a sell that opens a short. Both
+  simulated on mainnet.
+- Activating an already-registered account (unit tests only).
 
 **Fixes from that run:**
 - D2 is now 150 slots.
