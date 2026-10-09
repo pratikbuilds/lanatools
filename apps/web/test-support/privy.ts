@@ -30,6 +30,7 @@ export const useSigners = () => ({
   removeSigners: unavailable,
 })
 export const useCreateWallet = () => ({ createWallet: unavailable })
+export const useExportWallet = () => ({ exportWallet: unavailable })
 export const useWallets = () => ({ wallets: [] })
 export const useSignTransaction = () => ({ signTransaction: unavailable })
 export const useConnectWallet = () => ({ connectWallet: unavailable })

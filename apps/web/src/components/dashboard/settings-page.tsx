@@ -1,4 +1,5 @@
 import { AgentPayments } from './agent-payments'
+import { ExportWallet } from './export-wallet'
 import { PageHead } from './page-head'
 
 export function SettingsPage() {
@@ -11,6 +12,13 @@ export function SettingsPage() {
           What LanaTools may sign with your wallet.
         </p>
         <AgentPayments />
+      </section>
+      <section className="mt-9" aria-label="Wallet">
+        <h2 className="d-h2">Wallet</h2>
+        <p className="mt-1 mb-3 text-[13px] text-fg-2">
+          The payment wallet your agents pay from.
+        </p>
+        <ExportWallet />
       </section>
     </>
   )
