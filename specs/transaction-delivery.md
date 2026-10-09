@@ -1,6 +1,6 @@
 # Transaction delivery: tech spec
 
-Status: Phase 0 built 2026-10-09. Phase 1 needs approval before it starts.
+Status: Phases 0 and 1 built 2026-10-09. Phase 2 in progress.
 
 ## 1. Goal
 
@@ -56,13 +56,15 @@ TransactionResult = {
   status: TransactionStatus        // the former TransactionLinkStatus
   review: TransactionReview
   reviewUrl?: string               // link only
+  transaction?: PreparedTransaction // local, while ready to sign
   signature: string | null
   receipt: TransactionReceipt | null
   expiresAt: number
 }
 ```
 
-Phase 1 adds `transaction?: PreparedTransaction` for local delivery.
+`transaction?: PreparedTransaction` is set for a local request that is ready
+to sign.
 
 ## 5. Phases
 

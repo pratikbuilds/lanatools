@@ -95,6 +95,7 @@ function toResult(
   link: TransactionLink,
   delivery: TransactionDelivery,
   webOrigin: string,
+  transaction?: PreparedTransaction,
 ): TransactionResult {
   return {
     id: link.id,
@@ -104,6 +105,7 @@ function toResult(
     status: link.status,
     review: link.review,
     ...(delivery === 'link' ? { reviewUrl: `${webOrigin}/tx/${link.id}` } : {}),
+    ...(transaction ? { transaction } : {}),
     signature: link.signature,
     receipt: link.receipt,
     expiresAt: link.expiresAt,
@@ -111,18 +113,24 @@ function toResult(
 }
 
 const RequestEnvelope = z.looseObject({
-  delivery: z.literal('link'),
+  delivery: z.enum(['link', 'local']),
+  wallet: z.string().refine(isAddress).optional(),
   idempotencyKey: RequestKey,
 })
 
+/**
+ * Stores a transaction intent. A link waits for its review page; a local
+ * request is built at once for the agent's wallet and returned unsigned.
+ */
 export async function createTransactionRequest(
-  env: TransactionLinkEnv,
+  env: TransactionExecutionEnv,
   identity: GrantIdentity,
   name: string,
   input: unknown,
-  now = Date.now(),
-  tools?: TransactionRegistry,
+  options: ExecutionOptions = {},
 ): Promise<TransactionLinkOutcome<TransactionResult>> {
+  const now = options.now ?? Date.now()
+  const tools = options.tools
   try {
     const tool = transactionOperation(name, tools)
     const access = await authorizeGrant(
@@ -136,7 +144,12 @@ export async function createTransactionRequest(
     if (!tool) return failed('invalid_input')
     const envelope = RequestEnvelope.safeParse(input)
     if (!envelope.success) return failed('invalid_input')
-    const { delivery, idempotencyKey, ...rawArguments } = envelope.data
+    const { delivery, wallet, idempotencyKey, ...rawArguments } = envelope.data
+    if ((delivery === 'local') !== (wallet !== undefined))
+      return failed(
+        'invalid_input',
+        'Local delivery needs the signing wallet; a link takes no wallet.',
+      )
     const parsed = tool.arguments.safeParse(rawArguments)
     if (!parsed.success) return failed('invalid_input')
     const args = parsed.data
@@ -187,9 +200,25 @@ export async function createTransactionRequest(
       row.delivery !== delivery
     )
       return failed('conflict')
+    let transaction: PreparedTransaction | undefined
+    if (row.delivery === 'local' && wallet) {
+      // A retry returns the same unsigned bytes while they are valid. Once a
+      // signature is accepted the request is closed and only status remains.
+      const prepared = await prepareTransactionLink(
+        env,
+        row.id,
+        { account: wallet },
+        { ...options, now },
+      )
+      if (prepared.ok) transaction = prepared.result
+      else if (prepared.error.code !== 'closed') return prepared
+    }
     const link = await readTransactionLink(env.DB, row.id, now, tools)
     if (!link) return failed('unavailable')
-    return { ok: true, result: toResult(link, row.delivery, config.webOrigin) }
+    return {
+      ok: true,
+      result: toResult(link, row.delivery, config.webOrigin, transaction),
+    }
   } catch {
     return failed('unavailable')
   }
@@ -284,12 +313,22 @@ export async function transactionStatus(
       .get()
     if (!owned) return failed('not_found')
     const link = await observeTransactionLink(env, id, options)
-    return link
-      ? {
-          ok: true,
-          result: toResult(link, owned.delivery, configuration(env).webOrigin),
-        }
-      : failed('not_found')
+    if (!link) return failed('not_found')
+    const row =
+      owned.delivery === 'local' && link.status === 'ready'
+        ? await storedLink(env.DB, id)
+        : undefined
+    return {
+      ok: true,
+      result: toResult(
+        link,
+        owned.delivery,
+        configuration(env).webOrigin,
+        row?.candidateJson
+          ? publicTransaction(JSON.parse(row.candidateJson))
+          : undefined,
+      ),
+    }
   } catch {
     return failed('unavailable')
   }
@@ -800,6 +839,55 @@ export async function sendTransactionLink(
       options.now ?? Date.now(),
     )
     return snapshot()
+  } catch {
+    return failed('unavailable')
+  }
+}
+
+/** The delivery a stored request uses, or null when there is no such request. */
+export async function requestDelivery(database: D1Database, id: string) {
+  const row = await drizzle(database)
+    .select({ delivery: transactionRequest.delivery })
+    .from(transactionRequest)
+    .where(eq(transactionRequest.id, id))
+    .get()
+  return row?.delivery ?? null
+}
+
+/** Accepts the agent's signed bytes for its own local request, then relays them. */
+export async function sendTransaction(
+  env: TransactionExecutionEnv,
+  identity: GrantIdentity,
+  id: string,
+  input: unknown,
+  options: ExecutionOptions = {},
+): Promise<TransactionLinkOutcome<TransactionResult>> {
+  try {
+    if ((await authorizeGrant(env.DB, identity, null)) !== 'active')
+      return failed('unauthorized')
+    const owned = await drizzle(env.DB)
+      .select({ delivery: transactionRequest.delivery })
+      .from(transactionRequest)
+      .where(
+        and(
+          eq(transactionRequest.id, id),
+          eq(transactionRequest.creatorUserId, identity.userId),
+          eq(transactionRequest.creatorClientId, identity.clientId),
+        ),
+      )
+      .get()
+    if (!owned) return failed('not_found')
+    if (owned.delivery !== 'local')
+      return failed(
+        'invalid_input',
+        'Only local transactions are sent here. A link is signed on its review page.',
+      )
+    const sent = await sendTransactionLink(env, id, input, options)
+    if (!sent.ok) return sent
+    return {
+      ok: true,
+      result: toResult(sent.result, 'local', configuration(env).webOrigin),
+    }
   } catch {
     return failed('unavailable')
   }

@@ -51,6 +51,7 @@ test('an MCP transaction tool creates a D1 link that the anonymous HTTP route re
         createTransactionRequest: (grant, name, input) =>
           createTransactionRequest(env, grant, name, input),
         transactionStatus: (grant, id) => transactionStatus(env, grant, id),
+        sendTransaction: unused,
         walletAddress: unused,
         payHttp: unused,
         callTool: unused,

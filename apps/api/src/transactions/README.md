@@ -18,8 +18,10 @@ intent in `transaction_request`; it never builds, signs, or sends.
 Sent to `jupiter_swap`, this requests 1 USDC to SOL with 0.5% maximum
 slippage. A stored intent never changes. Neither network nor wallet belongs in
 the arguments: the deployment fixes the network, and for `link` the visitor
-selects a wallet on the page. Only `link` delivery exists today; local and
-embedded signing are planned in `specs/transaction-delivery.md`.
+selects a wallet on the page. With `local` delivery the agent passes `wallet`,
+gets the unsigned transaction at once, and returns the signed bytes through
+`send_transaction`, which uses the same checks and relay as the link page.
+Embedded signing is planned in `specs/transaction-delivery.md`.
 
 Every transaction tool and `get_transaction_status` return the same
 `TransactionResult` (`packages/contracts`).

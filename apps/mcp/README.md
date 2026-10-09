@@ -19,8 +19,8 @@ scopes a client asks for in `/authorize` are ignored; `approveConsent` issues
 the token with the user's choice plus `account:read`, and the API stores the
 same list on the grant. Turning Pay on asks for a spending limit.
 
-The catalog tools, `whoami`, `send_feedback` and `get_transaction_status` have
-no family and every active client gets them. A client only sees the families it
+The catalog tools, `whoami`, `send_feedback`, `get_transaction_status` and
+`send_transaction` have no family and every active client gets them. A client only sees the families it
 was given in `tools/list`, and every call is checked again against the token
 and the stored grant. To change a client's families, the user disconnects it and connects it
 again.
@@ -34,14 +34,23 @@ Each transaction tool takes its own arguments plus `delivery` and an
 `idempotencyKey`: `solana_transfer` (`recipient`, decimal-string
 `amountLamports`; scope `solana:transfer`) and `jupiter_swap` (`inputMint`,
 `outputMint`, decimal `amount`, `maxSlippageBps`, optional `minOutputAmount`;
-scope `jupiter:read`). Only `delivery: "link"` is available today. No call
-signs or sends. Network comes from API deployment configuration. A retry with
-the same client, key and input returns the same transaction; changed input
-conflicts.
+scope `jupiter:read`). No call signs or sends.
+
+- `delivery: "link"` returns `reviewUrl`; the user signs on that page and
+  LanaTools sends.
+- `delivery: "local"` takes `wallet` and returns `transaction`, the unsigned
+  bytes for that wallet. The agent signs them and calls `send_transaction`
+  with the id and the signed base64. LanaTools checks the exact bytes and the
+  wallet's signature, sends, and returns the result. Local requests are not
+  visible on the public link routes.
+  Network comes from API deployment configuration. A retry with
+  the same client, key and input returns the same transaction; changed input
+  conflicts.
 
 Every transaction tool and `get_transaction_status` return the same result:
 `id`, `tool`, `network`, `delivery`, `status`, `review`, `signature`,
-`receipt`, `expiresAt`, and `reviewUrl` for links. `get_transaction_status`
+`receipt`, `expiresAt`, `reviewUrl` for links, and `transaction` for a local
+request that is ready to sign. `get_transaction_status`
 reads a transaction owned by the active account and client.
 
 Public visitors can read a link's operation details at `/tx/:id` without

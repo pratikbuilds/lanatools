@@ -35,6 +35,7 @@ export type ServerDependencies = {
     | 'sendFeedback'
     | 'createTransactionRequest'
     | 'transactionStatus'
+    | 'sendTransaction'
   >
   typesafeApiKey: string | undefined
   revokeClient: (identity: GrantIdentity) => void
@@ -132,7 +133,7 @@ export function createServer(
   // Each transaction tool prepares one intent; the agent picks how it is
   // signed with `delivery`. Nothing is signed or sent when it is created.
   const signing =
-    'Nothing is signed or sent by this call. With delivery "link", share the returned reviewUrl: the user signs and LanaTools sends. Arguments are visible on the review page. Reuse idempotencyKey to retry the same intent. Read the outcome with get_transaction_status.'
+    'This call never signs or sends. delivery "link": share the returned reviewUrl; the user signs there and LanaTools sends; arguments are visible on that page. delivery "local": pass wallet; sign result.transaction.transaction (base64) with that wallet before lastValidBlockHeight and pass it to send_transaction; do not broadcast it yourself. Reuse idempotencyKey to retry the same intent. Read the outcome with get_transaction_status.'
   for (const [name, tool] of Object.entries(transactionTools).filter(
     ([, each]) => allows(each.scope),
   ))
@@ -165,6 +166,41 @@ export function createServer(
           }
         }),
     )
+  server.registerTool(
+    'send_transaction',
+    {
+      title: 'Send a locally signed transaction',
+      description:
+        'Send a transaction prepared with delivery "local" after your wallet signed it. Pass its id and the signed transaction as base64. LanaTools checks it is the exact prepared transaction signed by that wallet, sends it, and returns the shared result. Resending the same signed bytes is safe.',
+      inputSchema: z.object({
+        id: z.string().min(1).max(64),
+        transaction: z
+          .string()
+          .min(1)
+          .max(1644)
+          .describe('The signed transaction, base64 encoded'),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    ({ id, transaction }) =>
+      withGrant(null, async (grant) => {
+        try {
+          const outcome = await dependencies.api.sendTransaction(grant, id, {
+            transaction,
+          })
+          if (!outcome.ok && outcome.error.code === 'unauthorized')
+            dependencies.revokeClient(grant)
+          return toCallToolResult(outcome)
+        } catch {
+          return toolError(SERVICE_UNAVAILABLE)
+        }
+      }),
+  )
   server.registerTool(
     'get_transaction_status',
     {

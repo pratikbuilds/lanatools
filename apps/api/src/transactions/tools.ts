@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isAddress } from '@solana/kit'
 import { jupiterSwapTool } from '@lanatools/jupiter'
 import type { ToolScope } from '@lanatools/contracts'
 import { solTransfer } from './sol-transfer'
@@ -69,17 +70,34 @@ export const idempotencyKey = z
   .regex(/^[A-Za-z0-9._:-]+$/)
 
 const delivery = z
-  .enum(['link'])
+  .enum(['link', 'local'])
   .describe(
-    'How the transaction is signed. link returns a review URL the user opens to sign with their own browser wallet.',
+    'How the transaction is signed. link: returns reviewUrl; the user opens it and signs with their browser wallet. local: returns the unsigned transaction for wallet; sign it with that wallet and pass it to send_transaction.',
+  )
+
+const wallet = z
+  .string()
+  .refine(isAddress, 'Expected a Solana wallet address')
+  .optional()
+  .describe(
+    'The address that signs and pays fees. Required for local delivery; omit it for link.',
   )
 
 /** A tool's input: the operation's own arguments plus delivery and a request key. */
 export function transactionToolInput(operation: { arguments: z.ZodObject }) {
-  return operation.arguments.safeExtend({
-    delivery,
-    idempotencyKey: idempotencyKey.describe(
-      'A key you choose for this intent. Reuse it to retry the same request; use a new one for a new transaction.',
-    ),
-  })
+  return operation.arguments
+    .safeExtend({
+      delivery,
+      wallet,
+      idempotencyKey: idempotencyKey.describe(
+        'A key you choose for this intent. Reuse it to retry the same request; use a new one for a new transaction.',
+      ),
+    })
+    .refine(
+      (input) => (input.delivery === 'local') === (input.wallet !== undefined),
+      {
+        message: 'Local delivery needs wallet; a link takes no wallet.',
+        path: ['wallet'],
+      },
+    )
 }

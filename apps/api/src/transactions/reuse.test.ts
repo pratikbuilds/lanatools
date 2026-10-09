@@ -168,8 +168,7 @@ test.each(cases)(
       identity,
       fixture.name,
       input,
-      Date.now(),
-      tools,
+      { tools },
     )
     if (!created.ok) throw new Error(created.error.message)
     const id = created.result.id
@@ -186,14 +185,9 @@ test.each(cases)(
       signature: null,
     })
     expect(
-      await createTransactionRequest(
-        env,
-        identity,
-        fixture.name,
-        input,
-        Date.now(),
+      await createTransactionRequest(env, identity, fixture.name, input, {
         tools,
-      ),
+      }),
     ).toMatchObject({ ok: true, result: { id } })
 
     const broadcasts: string[] = []

@@ -321,7 +321,11 @@ export const TransactionLink = type({
 })
 export type TransactionLink = typeof TransactionLink.infer
 
-/** What every transaction tool returns to the agent, in every delivery mode. */
+/**
+ * What every transaction tool returns to the agent, in every delivery mode.
+ * `reviewUrl` is set for links; `transaction` is the unsigned transaction a
+ * local wallet signs while the request is ready.
+ */
 export const TransactionResult = type({
   id: 'string',
   tool: 'string',
@@ -330,6 +334,7 @@ export const TransactionResult = type({
   status: TransactionStatus,
   review: TransactionReview,
   'reviewUrl?': 'string',
+  'transaction?': PreparedTransaction,
   signature: 'string | null',
   receipt: TransactionReceipt.or('null'),
   expiresAt: 'number',

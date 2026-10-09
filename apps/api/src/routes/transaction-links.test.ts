@@ -34,7 +34,12 @@ beforeAll(async () => {
     createdAt: Date.now(),
   })
   const created = await createTransactionRequest(
-    { DB: db, SOLANA_NETWORK: 'devnet', WEB_ORIGIN: 'http://localhost:5173' },
+    {
+      DB: db,
+      SOLANA_NETWORK: 'devnet',
+      SOLANA_RPC_URL: 'https://unused.example',
+      WEB_ORIGIN: 'http://localhost:5173',
+    },
     identity,
     'solana_transfer',
     {

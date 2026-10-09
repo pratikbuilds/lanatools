@@ -75,6 +75,9 @@ async function connect(
     transactionStatus: mock<ServerDependencies['api']['transactionStatus']>(
       async () => ({ ok: true, result: transactionResult }),
     ),
+    sendTransaction: mock<ServerDependencies['api']['sendTransaction']>(
+      async () => ({ ok: true, result: transactionResult }),
+    ),
   }
   const revokeClient = mock<ServerDependencies['revokeClient']>(() => {})
   const server = createServer(
@@ -341,6 +344,7 @@ test('each client sees the catalog and only the tool families it was given', asy
       'search_catalog',
       'send_feedback',
       'get_transaction_status',
+      'send_transaction',
       'whoami',
     ].sort(),
   )
@@ -382,10 +386,11 @@ test('each transaction tool is its own MCP tool with a flat input and the shared
       })
       expect(tool?.inputSchema).not.toHaveProperty('anyOf')
       expect(tool?.inputSchema.properties).toMatchObject({
-        delivery: { enum: ['link'] },
+        delivery: { enum: ['link', 'local'] },
+        wallet: { type: 'string' },
         idempotencyKey: { type: 'string' },
       })
-      expect(tool?.inputSchema.properties).not.toHaveProperty('wallet')
+      expect(tool?.inputSchema.required).not.toContain('wallet')
       expect(tool?.inputSchema.properties).not.toHaveProperty('network')
     }
     expect(transfer?.inputSchema.required).toEqual(
@@ -445,6 +450,10 @@ test('transaction tools reject invalid intents and authority overrides before AP
       ['solana_transfer', { ...transferInput, amountLamports: '0.01' }],
       ['solana_transfer', { ...transferInput, idempotencyKey: '' }],
       ['solana_transfer', { ...transferInput, delivery: 'local' }],
+      [
+        'solana_transfer',
+        { ...transferInput, delivery: 'local', wallet: 'invalid' },
+      ],
       ['solana_transfer', { ...transferInput, delivery: 'embedded' }],
       ['solana_transfer', withoutDelivery],
       ['jupiter_swap', withoutSlippage],

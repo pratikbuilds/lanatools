@@ -17,6 +17,7 @@ import {
 import type { ConsentInput, GrantIdentity } from './mcp-grants'
 import {
   createTransactionRequest,
+  sendTransaction,
   transactionStatus,
 } from './transactions/requests'
 import type { TransactionLinkEnv } from './transactions/requests'
@@ -155,6 +156,10 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
 
   async transactionStatus(identity: GrantIdentity, id: string) {
     return transactionStatus(this.env, identity, id)
+  }
+
+  async sendTransaction(identity: GrantIdentity, id: string, input: unknown) {
+    return sendTransaction(this.env, identity, id, input)
   }
 
   /** Runs any provider tool, recording it in the client's activity. */
