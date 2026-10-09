@@ -10,7 +10,7 @@ import {
   readTransactionLink,
   transactionLinkStatus,
 } from './requests'
-import { SolanaTransferInput } from './tools'
+import { CreateTransactionLinkInput } from './tools'
 
 let db: D1Database
 let dispose: () => Promise<void>
@@ -199,9 +199,10 @@ test('strict inputs reject signer, network, malformed amounts and unregistered t
     ).toMatchObject({ ok: false, error: { code: 'invalid_input' } })
   }
   expect(
-    SolanaTransferInput.safeParse({
-      ...input,
-      amountLamports: '18446744073709551615',
+    CreateTransactionLinkInput.safeParse({
+      tool: 'solana_transfer',
+      arguments: { recipient, amountLamports: '18446744073709551615' },
+      idempotencyKey: input.idempotencyKey,
     }).success,
   ).toBe(true)
   expect(

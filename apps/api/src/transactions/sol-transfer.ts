@@ -1,5 +1,6 @@
 import {
   address,
+  isAddress,
   appendTransactionMessageInstructions,
   compileTransaction,
   createNoopSigner,
@@ -15,13 +16,51 @@ import type {
   PreparedTransaction,
   TransactionReview,
 } from '@lanatools/contracts'
-import type { TransactionRpc } from './submission'
+import { z } from 'zod'
+import { defineTransactionOperation } from '@lanatools/toolkit/transactions'
+import type { BuilderContext } from './adapter'
 
-export type BuilderContext = {
-  linkId: string
-  network: 'mainnet' | 'devnet'
-  rpc: TransactionRpc
+const solTransferArguments = z.strictObject({
+  recipient: z.string().refine(isAddress, 'Enter a valid Solana address'),
+  amountLamports: z
+    .string()
+    .regex(/^[1-9][0-9]{0,19}$/)
+    .pipe(
+      z
+        .string()
+        .refine((value) => BigInt(value) <= 18_446_744_073_709_551_615n),
+    ),
+})
+
+type SolTransferArguments = z.infer<typeof solTransferArguments>
+
+function describeTransfer(input: SolTransferArguments): TransactionReview {
+  const lamports = BigInt(input.amountLamports)
+  const fraction = (lamports % 1_000_000_000n)
+    .toString()
+    .padStart(9, '0')
+    .replace(/0+$/, '')
+  const amount = `${lamports / 1_000_000_000n}${fraction ? `.${fraction}` : ''} SOL`
+  return {
+    title: 'Send SOL',
+    description: 'Send SOL from your connected wallet to the recipient below.',
+    actionLabel: 'Send SOL',
+    fields: [
+      { label: 'Amount', value: amount },
+      { label: 'Recipient', value: input.recipient },
+    ],
+  }
 }
+
+export const solTransfer = defineTransactionOperation({
+  arguments: solTransferArguments,
+  describe: describeTransfer,
+  build: buildSolTransfer,
+  submission: {
+    schema: z.undefined(),
+    send: (wire, _candidate, _execution, context) => context.rpc.send(wire),
+  },
+})
 
 export async function buildSolTransfer(
   input: { recipient: string; amountLamports: string },

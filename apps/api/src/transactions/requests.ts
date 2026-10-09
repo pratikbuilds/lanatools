@@ -1,5 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm'
 import { isAddress } from '@solana/kit'
+import { readSolanaNetwork } from '@lanatools/contracts/networks'
 import { z } from 'zod'
 import { PreparedTransaction, TransactionReceipt } from '@lanatools/contracts'
 import {
@@ -18,8 +19,9 @@ import type {
 import { mcpGrant, transactionLink } from '../db/schema'
 import { authorizeGrant } from '../mcp-grants'
 import type { GrantIdentity } from '../mcp-grants'
-import { transactionTool } from './tools'
-import type { TransactionToolRegistry } from './tools'
+import { transactionOperation, idempotencyKey as RequestKey } from './tools'
+import { publicTransaction } from './adapter'
+import type { TransactionRegistry } from './tools'
 
 export const PREPARATION_LEASE_MS = 30_000
 
@@ -63,8 +65,7 @@ function failed(code: keyof typeof ERRORS, message: string = ERRORS[code]) {
 }
 
 function configuration(env: TransactionLinkEnv) {
-  if (env.SOLANA_NETWORK !== 'mainnet' && env.SOLANA_NETWORK !== 'devnet')
-    throw new Error('Invalid transaction network')
+  const network = readSolanaNetwork(env)
   const origin = new URL(env.WEB_ORIGIN)
   if (
     origin.username ||
@@ -79,7 +80,7 @@ function configuration(env: TransactionLinkEnv) {
       ))
   )
     throw new Error('Invalid web origin')
-  return { network: env.SOLANA_NETWORK, webOrigin: origin.origin } as const
+  return { network, webOrigin: origin.origin }
 }
 
 export async function createTransactionLink(
@@ -88,18 +89,28 @@ export async function createTransactionLink(
   name: string,
   input: unknown,
   now = Date.now(),
-  tools?: TransactionToolRegistry,
+  tools?: TransactionRegistry,
 ): Promise<TransactionLinkOutcome<CreatedTransactionLink>> {
   try {
     if ((await authorizeGrant(env.DB, identity, null, now)) !== 'active')
       return failed('unauthorized')
-    const tool = transactionTool(name, tools)
+    const tool = transactionOperation(name, tools)
     if (!tool) return failed('invalid_input')
-    const parsed = tool.input.safeParse(input)
+    const envelope = z
+      .looseObject({ idempotencyKey: RequestKey })
+      .safeParse(input)
+    if (!envelope.success) return failed('invalid_input')
+    const { idempotencyKey, ...rawArguments } = envelope.data
+    const parsed = tool.arguments.safeParse(rawArguments)
     if (!parsed.success) return failed('invalid_input')
-    const { idempotencyKey, ...args } = parsed.data
+    const args = parsed.data
     const argumentsJson = JSON.stringify(args)
     const config = configuration(env)
+    if (!tool.supportedNetworks.includes(config.network))
+      return failed(
+        'invalid_input',
+        'This transaction is not supported on this deployment network.',
+      )
     const db = drizzle(env.DB)
     // The insert checks the grant again atomically so concurrent revocation
     // cannot create a usable new intent after authorization was read.
@@ -154,7 +165,7 @@ export async function readTransactionLink(
   database: D1Database,
   id: string,
   now = Date.now(),
-  tools?: TransactionToolRegistry,
+  tools?: TransactionRegistry,
 ): Promise<TransactionLink | null> {
   const db = drizzle(database)
   const row = await db
@@ -163,7 +174,7 @@ export async function readTransactionLink(
     .where(eq(transactionLink.id, id))
     .get()
   if (!row) return null
-  const tool = transactionTool(row.toolName, tools)
+  const tool = transactionOperation(row.toolName, tools)
   if (!tool) throw new Error('Stored transaction tool is unavailable')
   const args = tool.arguments.parse(JSON.parse(row.argumentsJson))
   const grant = await db
@@ -200,7 +211,7 @@ export async function readTransactionLink(
     tool: row.toolName,
     network: row.network,
     review: row.candidateJson
-      ? PreparedTransaction.assert(JSON.parse(row.candidateJson)).review
+      ? publicTransaction(JSON.parse(row.candidateJson)).review
       : tool.describe(args),
     status,
     account:
@@ -246,9 +257,10 @@ export async function transactionLinkStatus(
 
 export type TransactionExecutionEnv = TransactionLinkEnv & {
   SOLANA_RPC_URL: string
+  JUPITER_API_KEY?: string
 }
 export type ExecutionOptions = {
-  tools?: TransactionToolRegistry
+  tools?: TransactionRegistry
   rpc?: TransactionRpc
   now?: number
   observation?: { attempts?: number; intervalMs?: number }
@@ -420,7 +432,7 @@ export async function prepareTransactionLink(
       return failed('preparing')
     const rpc = options.rpc ?? transactionRpc(env.SOLANA_RPC_URL)
     const previous = row.candidateJson
-      ? PreparedTransaction.assert(JSON.parse(row.candidateJson))
+      ? publicTransaction(JSON.parse(row.candidateJson))
       : null
     let finalizedHeight: bigint | undefined
     if (previous) {
@@ -468,16 +480,17 @@ export async function prepareTransactionLink(
     }
     reservation = reserved.revision
     if (!previous) await verifyRpcNetwork(rpc, config.network)
-    const tool = transactionTool(row.toolName, options.tools)
+    const tool = transactionOperation(row.toolName, options.tools)
     if (!tool) throw new Error('Unavailable builder')
     const args = tool.arguments.parse(JSON.parse(row.argumentsJson))
-    const candidate = PreparedTransaction.assert(
-      await tool.build(args, parsed.data.account, {
-        linkId: id,
-        network: config.network,
-        rpc,
-      }),
-    )
+    if (!tool.supportedNetworks.includes(config.network))
+      throw new Error('Unsupported network')
+    const candidate = await tool.build(args, parsed.data.account, {
+      linkId: id,
+      network: config.network,
+      rpc,
+      jupiterApiKey: env.JUPITER_API_KEY,
+    })
     if (
       candidate.account !== parsed.data.account ||
       candidate.network !== config.network
@@ -512,7 +525,7 @@ export async function prepareTransactionLink(
       )
       .returning({ id: transactionLink.id })
     if (!persisted) throw new Error('Reservation no longer valid')
-    return { ok: true, result: candidate }
+    return { ok: true, result: publicTransaction(candidate) }
   } catch {
     if (reservation !== undefined) {
       // A failed renewal retains the old candidate and its wallet; every cleanup is fenced.
@@ -591,6 +604,15 @@ export async function sendTransactionLink(
     }
     const rpc = options.rpc ?? transactionRpc(env.SOLANA_RPC_URL)
     await verifyRpcNetwork(rpc, config.network)
+    const tool = transactionOperation(row.toolName, options.tools)
+    if (!tool || !tool.supportedNetworks.includes(config.network))
+      return failed('unavailable')
+    const relay = tool.relay(JSON.parse(row.candidateJson), {
+      linkId: id,
+      network: config.network,
+      rpc,
+      jupiterApiKey: env.JUPITER_API_KEY,
+    })
     const db = drizzle(env.DB)
     if (row.signature) {
       const observed = await observeSubmission(rpc, extracted, { attempts: 1 })
@@ -718,9 +740,9 @@ export async function sendTransactionLink(
       .get()
     if (stillValid && relayAllowed) {
       try {
-        const sent = await rpc.send(parsed.data.transaction)
+        const sent = await relay(parsed.data.transaction)
         if (sent !== extracted)
-          throw new Error('RPC returned a different signature')
+          throw new Error('Submission returned a different signature')
       } catch {
         // A lost response may follow a successful broadcast. Observe the signature.
       }

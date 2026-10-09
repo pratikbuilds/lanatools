@@ -17,7 +17,7 @@ import {
 } from '@lanatools/toolkit/mcp'
 import type { McpAccessService } from '../../api/src/mcp-service'
 import { PROVIDERS } from '../../api/src/tools/providers'
-import { SolanaTransferInput } from '../../api/src/transactions/tools'
+import { CreateTransactionLinkInput } from '../../api/src/transactions/tools'
 import { Identity } from './identity'
 import type { GrantIdentity } from './identity'
 
@@ -127,17 +127,17 @@ export function createServer(
 
   const server = new McpServer({ name: 'LanaTools', version: '0.1.0' })
   server.registerTool(
-    'solana_transfer',
+    'create_transaction_link',
     {
-      title: 'Create a SOL transfer review link',
+      title: 'Create a transaction review link',
       description: [
-        'Creates a public LanaTools link to review a native SOL transfer.',
-        'The visitor chooses the signing wallet on the page; network is fixed by the deployment.',
-        'Creating a link does not sign or send a transaction. The visitor reviews and signs on the page; LanaTools submits it.',
-        'Reuse the same idempotencyKey when retrying the same request; use a new key only for a new intent.',
-        'The recipient and amount are visible to anyone with the link.',
+        'Create a public review link for an existing internal transaction tool.',
+        'Choose a transaction-capable tool and its intent arguments from the input schema.',
+        'Supply the tool name and its intent arguments. The visitor selects the wallet on the page; network comes from deployment configuration.',
+        'No signing or sending happens when creating the link. LanaTools submits after the visitor signs.',
+        'Arguments are public. Reuse idempotencyKey for the same intent. Read current status through the returned review link.',
       ].join(' '),
-      inputSchema: SolanaTransferInput,
+      inputSchema: CreateTransactionLinkInput,
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -145,42 +145,13 @@ export function createServer(
         openWorldHint: false,
       },
     },
-    (input) =>
+    ({ tool, arguments: args, idempotencyKey }) =>
       withGrant(null, async (grant) => {
         try {
           const outcome = await dependencies.api.createTransactionLink(
             grant,
-            'solana_transfer',
-            input,
-          )
-          if (!outcome.ok && outcome.error.code === 'unauthorized')
-            dependencies.revokeClient(grant)
-          return toCallToolResult(outcome)
-        } catch {
-          return toolError(SERVICE_UNAVAILABLE)
-        }
-      }),
-  )
-  server.registerTool(
-    'get_transaction_request',
-    {
-      title: 'Read a transaction link',
-      description:
-        'Returns the review details and status of a transaction link created by this account and client. Reading a link never prepares, signs or sends a transaction.',
-      inputSchema: z.strictObject({ linkId: z.uuid() }),
-      annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: false,
-      },
-    },
-    ({ linkId }) =>
-      withGrant(null, async (grant) => {
-        try {
-          const outcome = await dependencies.api.transactionLinkStatus(
-            grant,
-            linkId,
+            tool,
+            { ...args, idempotencyKey },
           )
           if (!outcome.ok && outcome.error.code === 'unauthorized')
             dependencies.revokeClient(grant)

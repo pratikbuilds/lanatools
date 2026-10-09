@@ -30,10 +30,11 @@ import type { TransactionLinksEnv } from '../routes/transaction-links'
 import { PAYMENT_NETWORKS } from '../solana/network'
 import { testDatabase } from '../test-database'
 import { createTransactionLink } from './requests'
-import type { BuilderContext } from './sol-transfer'
+import type { BuilderContext } from './adapter'
 import { verifySignedTransaction } from './submission'
 import type { TransactionRpc } from './submission'
-import { defineTransactionTool, transactionTool } from './tools'
+import { defineTransactionOperation } from '@lanatools/toolkit/transactions'
+import { transactionOperation } from './tools'
 
 // These memo-only operations exercise different data shapes, not production integrations.
 async function buildMemo(
@@ -64,7 +65,12 @@ async function buildMemo(
 }
 
 const tools = {
-  record_note: defineTransactionTool({
+  record_note: defineTransactionOperation({
+    submission: {
+      schema: z.undefined(),
+      send: (wire, _candidate, _execution, context: BuilderContext) =>
+        context.rpc.send(wire),
+    },
     arguments: z.strictObject({ message: z.string().min(1).max(100) }),
     describe: ({ message }) => ({
       title: 'Record a note',
@@ -75,7 +81,12 @@ const tools = {
     build: ({ message }, account, context, review) =>
       buildMemo(message, account, context, review),
   }),
-  record_ballot: defineTransactionTool({
+  record_ballot: defineTransactionOperation({
+    submission: {
+      schema: z.undefined(),
+      send: (wire, _candidate, _execution, context: BuilderContext) =>
+        context.rpc.send(wire),
+    },
     arguments: z.strictObject({
       proposal: z.string().min(1),
       choice: z.enum(['yes', 'no']),
@@ -274,18 +285,18 @@ test.each(cases)(
 
 test('test tools are isolated and registry does not expose inherited object names', () => {
   for (const name of ['record_note', 'record_ballot', 'toString', '__proto__'])
-    expect(transactionTool(name)).toBeNull()
+    expect(transactionOperation(name)).toBeNull()
   for (const name of ['toString', '__proto__'])
-    expect(transactionTool(name, tools)).toBeNull()
+    expect(transactionOperation(name, tools)).toBeNull()
   expect(
-    tools.record_note.input.safeParse({
+    tools.record_note.arguments.safeParse({
       message: 'hello',
       idempotencyKey: 'x',
       network: 'mainnet',
     }).success,
   ).toBe(false)
   expect(
-    tools.record_ballot.input.safeParse({
+    tools.record_ballot.arguments.safeParse({
       proposal: 'Garden',
       choice: 'invalid',
       idempotencyKey: 'x',

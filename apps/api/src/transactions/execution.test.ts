@@ -31,7 +31,7 @@ import {
 } from './requests'
 import { verifySignedTransaction } from './submission'
 import type { TransactionRpc } from './submission'
-import { transactionTools } from './tools'
+import { transactionOperations } from './tools'
 
 let db: D1Database
 let dispose: () => Promise<void>
@@ -281,18 +281,18 @@ test('real Ed25519 signatures are required; altered instructions, amounts, signe
   expect(signature.length).toBeGreaterThan(80)
   const corrupt = new Uint8Array(getBase64Encoder().encode(wire))
   corrupt[1] = corrupt[1]! ^ 1
-  const alteredAmount = await transactionTools.solana_transfer.build(
+  const alteredAmount = await transactionOperations.solana_transfer.build(
     { ...args, amountLamports: '999' },
     wallet.address,
     { linkId: id, network: 'devnet', rpc: fake.rpc },
   )
   const otherWallet = await generateKeyPairSigner()
-  const alteredSigner = await transactionTools.solana_transfer.build(
+  const alteredSigner = await transactionOperations.solana_transfer.build(
     args,
     otherWallet.address,
     { linkId: id, network: 'devnet', rpc: fake.rpc },
   )
-  const alteredMemo = await transactionTools.solana_transfer.build(
+  const alteredMemo = await transactionOperations.solana_transfer.build(
     args,
     wallet.address,
     { linkId: 'other-link', network: 'devnet', rpc: fake.rpc },
@@ -1232,7 +1232,7 @@ test('a builder cannot publish a candidate for a different selected account or d
   for (const mismatch of ['account', 'network']) {
     const { id } = await create()
     const fake = mockRpc()
-    const tool = transactionTools.solana_transfer
+    const tool = transactionOperations.solana_transfer
     const tools = {
       solana_transfer: {
         ...tool,

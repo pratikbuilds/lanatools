@@ -214,6 +214,12 @@ export type BuildSwapData = QuoteSwapData & {
   lastValidBlockHeight: string | null
   expireAt: string | null
 }
+/** Provider acknowledgement only; confirmation must come from Solana RPC. */
+export type ExecuteSwapData = {
+  status: 'Success' | 'Failed'
+  signature: string | null
+  code: number | null
+}
 export type JupiterData =
   | SearchTokensData
   | DiscoverTokensData

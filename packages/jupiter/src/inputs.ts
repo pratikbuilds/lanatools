@@ -110,19 +110,30 @@ const DecimalAmount = z
   .trim()
   .regex(/^\d+(?:\.\d+)?$/, 'Expected a plain decimal amount')
   .refine((value) => /[1-9]/.test(value), 'Amount must be positive')
-export const QuoteSwapInput = z
-  .object({
+export const SwapArguments = z
+  .strictObject({
     inputMint: Mint,
     outputMint: Mint,
-    amount: DecimalAmount,
-    maxSlippageBps: z.number().int().min(0).max(10000).optional(),
-    minOutputAmount: DecimalAmount.optional(),
+    amount: DecimalAmount.describe(
+      'Input amount in decimal token units, for example 1 means one USDC, not one base unit.',
+    ),
+    maxSlippageBps: z
+      .number()
+      .int()
+      .min(0)
+      .max(10000)
+      .describe('Maximum slippage in basis points. 50 means 0.5%.')
+      .optional(),
+    minOutputAmount: DecimalAmount.describe(
+      'Optional minimum output in decimal units of the output token.',
+    ).optional(),
   })
   .refine(
     (input) => input.inputMint !== input.outputMint,
     'Input and output mints must differ',
   )
-export const BuildSwapInput = QuoteSwapInput.safeExtend({
+export const QuoteSwapInput = SwapArguments.strip()
+export const BuildSwapInput = SwapArguments.safeExtend({
   wallet: z
     .string()
     .trim()

@@ -1,3 +1,7 @@
+import {
+  SOLANA_NETWORKS,
+  solanaExplorerTransactionUrl,
+} from '@lanatools/contracts/networks'
 import { useRef, useState } from 'react'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -212,7 +216,7 @@ function TransactionPage({
         end: (
           <span>
             <SolanaMark />
-            {link ? `Solana ${link.network}` : 'Solana'}
+            {link ? SOLANA_NETWORKS[link.network].label : 'Solana'}
           </span>
         ),
       }}
@@ -320,7 +324,10 @@ function TransactionPage({
               )}
             {link.signature && (
               <a
-                href={`https://explorer.solana.com/tx/${encodeURIComponent(link.signature)}${link.network === 'devnet' ? '?cluster=devnet' : ''}`}
+                href={solanaExplorerTransactionUrl(
+                  link.network,
+                  link.signature,
+                )}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="tx-explorer"
@@ -412,9 +419,9 @@ function Review({ link }: { link: TransactionLink }) {
         <div>
           <dt>Network</dt>
           <dd>
-            {link.network === 'devnet'
-              ? 'Solana devnet · Test funds'
-              : 'Solana mainnet'}
+            {SOLANA_NETWORKS[link.network].isTestNetwork
+              ? `${SOLANA_NETWORKS[link.network].label} · Test funds`
+              : SOLANA_NETWORKS[link.network].label}
           </dd>
         </div>
       </dl>

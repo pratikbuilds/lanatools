@@ -1,3 +1,8 @@
+import {
+  SOLANA_NETWORKS,
+  readSolanaNetwork,
+} from '@lanatools/contracts/networks'
+import type { NetworkId } from '@lanatools/contracts/networks'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
@@ -19,28 +24,24 @@ export function TransactionWalletProvider({
   network,
 }: {
   children: ReactNode
-  network: 'mainnet' | 'devnet' | undefined
+  network: NetworkId | undefined
 }) {
+  const selected =
+    SOLANA_NETWORKS[
+      network ??
+        readSolanaNetwork({ SOLANA_NETWORK: import.meta.env.SOLANA_NETWORK })
+    ]
   const additionalAdapters = useMemo(
     () => [
       new PhantomWalletAdapter(),
       new SolflareWalletAdapter({
-        network:
-          network === 'devnet'
-            ? WalletAdapterNetwork.Devnet
-            : WalletAdapterNetwork.Mainnet,
+        network: WalletAdapterNetwork[selected.walletAdapterNetwork],
       }),
     ],
-    [network],
+    [selected.walletAdapterNetwork],
   )
   return (
-    <ConnectionProvider
-      endpoint={
-        network === 'devnet'
-          ? 'https://api.devnet.solana.com'
-          : 'https://api.mainnet-beta.solana.com'
-      }
-    >
+    <ConnectionProvider endpoint={selected.publicRpcUrl}>
       <WalletProvider
         wallets={additionalAdapters}
         autoConnect={false}

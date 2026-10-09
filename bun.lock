@@ -141,6 +141,7 @@
     "packages/jupiter": {
       "name": "@lanatools/jupiter",
       "dependencies": {
+        "@lanatools/contracts": "workspace:*",
         "@lanatools/toolkit": "workspace:*",
         "@solana/kit": "~6.10.0",
         "zod": "4.4.3",
@@ -173,6 +174,7 @@
     "packages/toolkit": {
       "name": "@lanatools/toolkit",
       "dependencies": {
+        "@lanatools/contracts": "workspace:*",
         "@modelcontextprotocol/server": "2.0.0",
         "zod": "4.4.3",
       },

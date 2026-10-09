@@ -19,9 +19,19 @@ const review = {
   fields: [{ label: 'Recipient', value: address }],
 }
 const transferInput = {
-  recipient: address,
-  amountLamports: '10000000',
+  tool: 'solana_transfer',
+  arguments: { recipient: address, amountLamports: '10000000' },
   idempotencyKey: 'request-1',
+}
+const swapInput = {
+  tool: 'jupiter_build_swap',
+  arguments: {
+    inputMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+    outputMint: 'So11111111111111111111111111111111111111112',
+    amount: '1',
+    maxSlippageBps: 50,
+  },
+  idempotencyKey: 'swap-request-1',
 }
 
 async function connect(
@@ -341,8 +351,7 @@ test('each client sees the catalog and only the tool families it was given', asy
       'list_catalog',
       'search_catalog',
       'send_feedback',
-      'solana_transfer',
-      'get_transaction_request',
+      'create_transaction_link',
       'whoami',
     ].sort(),
   )
@@ -361,96 +370,176 @@ test('each client sees the catalog and only the tool families it was given', asy
   expect(pay).not.toContain('pay_http')
 })
 
-test('transaction links work without a new scope and preserve structured results', async () => {
+test('one transaction-link wrapper serves both operations without a new scope', async () => {
   const session = await connect([])
   try {
     const tools = (await session.client.listTools()).tools
-    const transfer = tools.find((tool) => tool.name === 'solana_transfer')
-    expect(transfer?.annotations).toMatchObject({
+    const wrapper = tools.find(
+      (tool) => tool.name === 'create_transaction_link',
+    )
+    expect(wrapper?.annotations).toMatchObject({
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: true,
     })
-    expect(transfer?.inputSchema.properties).not.toHaveProperty('network')
-    expect(transfer?.inputSchema.properties).not.toHaveProperty('account')
-
-    const created = await session.client.callTool({
-      name: 'solana_transfer',
-      arguments: transferInput,
+    expect(wrapper?.inputSchema).toMatchObject({
+      anyOf: [
+        {
+          required: ['tool', 'arguments', 'idempotencyKey'],
+          properties: {
+            tool: { const: 'solana_transfer' },
+            arguments: { required: ['recipient', 'amountLamports'] },
+          },
+        },
+        {
+          required: ['tool', 'arguments', 'idempotencyKey'],
+          properties: {
+            tool: { const: 'jupiter_build_swap' },
+            arguments: {
+              required: ['inputMint', 'outputMint', 'amount', 'maxSlippageBps'],
+            },
+          },
+        },
+      ],
     })
-    expect(created.isError).not.toBe(true)
-    expect(created.structuredContent).toMatchObject({
-      linkId,
-      network: 'devnet',
-    })
-    expect(created.content).toEqual([
-      { type: 'text', text: JSON.stringify(created.structuredContent) },
-    ])
-    expect(session.api.createTransactionLink).toHaveBeenCalledWith(
-      identity,
+    expect(
+      tools.filter((tool) => tool.name === 'create_transaction_link'),
+    ).toHaveLength(1)
+    for (const removed of [
       'solana_transfer',
-      transferInput,
-    )
-    const status = await session.client.callTool({
-      name: 'get_transaction_request',
-      arguments: { linkId },
-    })
-    expect(status.structuredContent).toMatchObject({
-      id: linkId,
-      status: 'open',
-      signature: null,
-    })
-    expect(session.api.transactionLinkStatus).toHaveBeenCalledWith(
-      identity,
-      linkId,
-    )
+      'jupiter_swap',
+      'get_transaction_request',
+    ]) {
+      expect(tools.map((tool) => tool.name)).not.toContain(removed)
+      const result = await session.client
+        .callTool({ name: removed, arguments: {} })
+        .catch(() => ({ isError: true }))
+      expect(result.isError).toBe(true)
+    }
+    expect(tools.map((tool) => tool.name)).not.toContain('jupiter_build_swap')
+
+    for (const input of [transferInput, swapInput]) {
+      const created = await session.client.callTool({
+        name: 'create_transaction_link',
+        arguments: input,
+      })
+      expect(created.isError).not.toBe(true)
+      expect(created.structuredContent).toMatchObject({ linkId })
+      expect(created.content).toEqual([
+        { type: 'text', text: JSON.stringify(created.structuredContent) },
+      ])
+      expect(session.api.createTransactionLink).toHaveBeenCalledWith(
+        identity,
+        input.tool,
+        { ...input.arguments, idempotencyKey: input.idempotencyKey },
+      )
+    }
     expect(session.api.whoami).toHaveBeenCalledTimes(2)
+    expect(session.api.callTool).not.toHaveBeenCalled()
+    expect(session.api.transactionLinkStatus).not.toHaveBeenCalled()
   } finally {
     await session.close()
   }
 })
 
-test('transaction tool input rejects authority and network overrides before API access', async () => {
+test('the link wrapper rejects invalid intents, authority overrides and unsupported tools before API access', async () => {
   const session = await connect([])
   try {
-    for (const args of [
+    const { maxSlippageBps: _slippage, ...withoutSlippage } =
+      swapInput.arguments
+    const invalidTransfers = [
+      { ...transferInput.arguments, network: 'mainnet' },
+      { ...transferInput.arguments, account: address },
+      { ...transferInput.arguments, wallet: address },
+      { ...transferInput.arguments, idempotencyKey: 'nested-key' },
+      { ...transferInput.arguments, recipient: 'invalid' },
+      { ...transferInput.arguments, amountLamports: '0' },
+      { ...transferInput.arguments, amountLamports: '18446744073709551616' },
+      { ...transferInput.arguments, amountLamports: '0.01' },
+    ].map((args) => ({ ...transferInput, arguments: args }))
+    const invalidSwaps = [
+      withoutSlippage,
+      { ...swapInput.arguments, network: 'mainnet' },
+      { ...swapInput.arguments, wallet: address },
+      { ...swapInput.arguments, account: address },
+      { ...swapInput.arguments, maxSlippageBps: -1 },
+      { ...swapInput.arguments, outputMint: swapInput.arguments.inputMint },
+      { ...swapInput.arguments, idempotencyKey: 'nested-key' },
+    ].map((args) => ({ ...swapInput, arguments: args }))
+    for (const input of [
+      ...invalidTransfers,
+      ...invalidSwaps,
       { ...transferInput, network: 'mainnet' },
-      { ...transferInput, account: address },
-      { ...transferInput, recipient: 'invalid' },
-      { ...transferInput, amountLamports: '0' },
-      { ...transferInput, amountLamports: '18446744073709551616' },
-      { ...transferInput, amountLamports: '0.01' },
+      { ...transferInput, wallet: address },
       { ...transferInput, idempotencyKey: '' },
+      { ...transferInput, tool: 'unknown_transaction' },
+      { ...transferInput, tool: 'jupiter_swap' },
+      { ...transferInput, tool: 'jupiter_quote_swap' },
+      {
+        ...transferInput,
+        tool: 'get_accounts',
+        arguments: { addresses: [address] },
+      },
+      { ...transferInput, tool: '__proto__' },
     ]) {
       const result = await session.client.callTool({
-        name: 'solana_transfer',
-        arguments: args,
+        name: 'create_transaction_link',
+        arguments: input,
       })
       expect(result.isError).toBe(true)
     }
     expect(session.api.whoami).not.toHaveBeenCalled()
+    expect(session.api.createTransactionLink).not.toHaveBeenCalled()
+    expect(session.api.callTool).not.toHaveBeenCalled()
+  } finally {
+    await session.close()
+  }
+})
+
+test('the raw Jupiter build tool retains provider scope and wallet input beside the link wrapper', async () => {
+  const session = await connect(['jupiter:read'])
+  try {
+    const tools = (await session.client.listTools()).tools
+    expect(
+      tools.find((tool) => tool.name === 'jupiter_build_swap')?.inputSchema
+        .required,
+    ).toContain('wallet')
+    expect(
+      tools.filter((tool) => tool.name === 'create_transaction_link'),
+    ).toHaveLength(1)
+    const input = { ...swapInput.arguments, wallet: address }
+    expect(
+      await session.client.callTool({
+        name: 'jupiter_build_swap',
+        arguments: input,
+      }),
+    ).not.toHaveProperty('isError', true)
+    expect(session.api.callTool).toHaveBeenCalledWith(
+      identity,
+      'jupiter_build_swap',
+      input,
+    )
     expect(session.api.createTransactionLink).not.toHaveBeenCalled()
   } finally {
     await session.close()
   }
 })
 
-test('transaction tools refuse inactive or malformed connection identity', async () => {
+test('the link wrapper refuses inactive or malformed connection identity', async () => {
   for (const [active, props] of [
     [false, identity],
     [true, { ...identity, grantId: 'invalid' }],
   ] as const) {
     const session = await connect([], active, props)
     try {
-      for (const [name, args] of [
-        ['solana_transfer', transferInput],
-        ['get_transaction_request', { linkId }],
-      ] as const) {
-        const result = await session.client.callTool({ name, arguments: args })
+      for (const args of [transferInput, swapInput]) {
+        const result = await session.client.callTool({
+          name: 'create_transaction_link',
+          arguments: args,
+        })
         expect(result.isError).toBe(true)
       }
       expect(session.api.createTransactionLink).not.toHaveBeenCalled()
-      expect(session.api.transactionLinkStatus).not.toHaveBeenCalled()
       if (!active) expect(session.revokeClient).toHaveBeenCalledWith(identity)
     } finally {
       await session.close()
@@ -465,13 +554,13 @@ test('transaction service failures are safe and API revocation still revokes the
       throw new Error('private-database-detail')
     })
     const failed = await session.client.callTool({
-      name: 'solana_transfer',
+      name: 'create_transaction_link',
       arguments: transferInput,
     })
     expect(failed.isError).toBe(true)
     expect(JSON.stringify(failed)).toContain('service_unavailable')
     expect(JSON.stringify(failed)).not.toContain('private-database-detail')
-    session.api.transactionLinkStatus.mockImplementationOnce(async () => ({
+    session.api.createTransactionLink.mockImplementationOnce(async () => ({
       ok: false,
       error: {
         code: 'unauthorized',
@@ -480,8 +569,8 @@ test('transaction service failures are safe and API revocation still revokes the
       },
     }))
     const revoked = await session.client.callTool({
-      name: 'get_transaction_request',
-      arguments: { linkId },
+      name: 'create_transaction_link',
+      arguments: transferInput,
     })
     expect(revoked.isError).toBe(true)
     expect(session.revokeClient).toHaveBeenCalledWith(identity)

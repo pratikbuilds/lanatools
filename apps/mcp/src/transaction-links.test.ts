@@ -75,10 +75,13 @@ test('MCP creates a D1 link that the anonymous HTTP route reads without preparin
   ])
   try {
     const called = await client.callTool({
-      name: 'solana_transfer',
+      name: 'create_transaction_link',
       arguments: {
-        recipient: '11111111111111111111111111111111',
-        amountLamports: '10000001',
+        tool: 'solana_transfer',
+        arguments: {
+          recipient: '11111111111111111111111111111111',
+          amountLamports: '10000001',
+        },
         idempotencyKey: 'integration-review',
       },
     })
@@ -112,11 +115,8 @@ test('MCP creates a D1 link that the anonymous HTTP route reads without preparin
       label: 'Amount',
       value: '0.010000001 SOL',
     })
-    const status = await client.callTool({
-      name: 'get_transaction_request',
-      arguments: { linkId: created.linkId },
-    })
-    expect(status.structuredContent).toEqual(link)
+    const status = await transactionLinkStatus(env, identity, created.linkId)
+    expect(status).toEqual({ ok: true, result: link })
     const row = await db
       .prepare('SELECT * FROM transaction_link WHERE id = ?')
       .bind(created.linkId)

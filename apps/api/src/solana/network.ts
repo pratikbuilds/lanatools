@@ -1,8 +1,12 @@
 import { createSolanaRpc } from '@solana/kit'
+import {
+  SOLANA_NETWORKS as NETWORKS,
+  readSolanaNetwork,
+} from '@lanatools/contracts/networks'
 
 /**
- * Everything LanaTools knows about Solana networks and the server's network
- * configuration. Read tools use `solanaConfig`; payments use `paymentConfig`,
+ * Server configuration using shared network metadata from contracts.
+ * Read tools use `solanaConfig`; payments use `paymentConfig`,
  * which also proves the RPC serves the network before funds can move.
  */
 
@@ -10,8 +14,8 @@ import { createSolanaRpc } from '@solana/kit'
 export const RPC_TIMEOUT_MS = 10_000
 
 export const SOLANA_NETWORKS = {
-  devnet: { name: 'devnet' },
-  mainnet: { name: 'mainnet' },
+  devnet: { name: NETWORKS.devnet.name },
+  mainnet: { name: NETWORKS.mainnet.name },
 } as const
 
 export type SolanaNetwork =
@@ -35,20 +39,16 @@ export type PaymentNetwork = {
 }
 export type PaymentConfig = { network: PaymentNetwork; rpcUrl: string }
 
-// x402 names a Solana network by the first 32 characters of its genesis hash.
+function paymentNetwork(
+  network: (typeof NETWORKS)[SolanaNetwork['name']],
+): PaymentNetwork {
+  const { name, genesisHash: genesis, caip2, usdcMint } = network
+  return { name, genesisHash: genesis, caip2, usdcMint }
+}
+
 export const PAYMENT_NETWORKS: Record<SolanaNetwork['name'], PaymentNetwork> = {
-  devnet: {
-    name: 'devnet',
-    genesisHash: 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG',
-    caip2: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
-    usdcMint: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
-  },
-  mainnet: {
-    name: 'mainnet',
-    genesisHash: '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d',
-    caip2: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
-    usdcMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-  },
+  devnet: paymentNetwork(NETWORKS.devnet),
+  mainnet: paymentNetwork(NETWORKS.mainnet),
 }
 
 function readRPCURL(env: SolanaEnv) {
@@ -56,16 +56,10 @@ function readRPCURL(env: SolanaEnv) {
   return env.SOLANA_RPC_URL
 }
 
-function readNetwork(env: SolanaEnv): SolanaNetwork['name'] {
-  if (env.SOLANA_NETWORK !== 'devnet' && env.SOLANA_NETWORK !== 'mainnet')
-    throw new Error('Unsupported SOLANA_NETWORK')
-  return env.SOLANA_NETWORK
-}
-
 /** Read tools use the server configuration without an extra RPC probe. */
 export async function solanaConfig(env: SolanaEnv): Promise<SolanaConfig> {
   return {
-    network: SOLANA_NETWORKS[readNetwork(env)],
+    network: SOLANA_NETWORKS[readSolanaNetwork(env)],
     rpcUrl: readRPCURL(env),
   }
 }
@@ -80,7 +74,7 @@ type GenesisReader = (rpcUrl: string) => Promise<string>
 export function createPaymentConfig(readGenesis: GenesisReader = genesisHash) {
   let cached: { key: string; verification: Promise<void> } | undefined
   return async (env: SolanaEnv): Promise<PaymentConfig> => {
-    const network = PAYMENT_NETWORKS[readNetwork(env)]
+    const network = PAYMENT_NETWORKS[readSolanaNetwork(env)]
     const url = readRPCURL(env)
     const key = `${network.name} ${url}`
     if (cached?.key !== key) {

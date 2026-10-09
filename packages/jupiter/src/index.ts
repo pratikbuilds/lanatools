@@ -1,8 +1,3 @@
-import type { JupiterClientOptions } from './client'
-import type { JupiterRequest } from './inputs'
-import { readJupiter } from './read'
-import type { JupiterOutcome } from './types'
-
 export * from './types'
 export {
   SearchTokensInput,
@@ -12,20 +7,19 @@ export {
   LendingMarketsInput,
   LendingPositionsInput,
   TriggerOrdersInput,
+  SwapArguments,
   QuoteSwapInput,
   BuildSwapInput,
   SwapVenuesInput,
   JupiterRequest,
 } from './inputs'
 export type { JupiterClientOptions, JupiterFetch } from './client'
+export type { ExecuteSwapInput } from './swap-execution'
 
 export { jupiter, jupiterTools } from './provider'
 export { readJupiter } from './read'
 
-export class JupiterClient {
-  constructor(private readonly options: JupiterClientOptions) {}
+export { JupiterClient } from './jupiter-client'
 
-  read(request: JupiterRequest): Promise<JupiterOutcome> {
-    return readJupiter(this.options, request)
-  }
-}
+export { jupiterBuildSwapTool } from './transaction'
+export type { JupiterTransactionContext } from './transaction'

@@ -944,3 +944,97 @@ for (const rejection of ['transaction_expired', 'invalid_input'] as const) {
     ])
   })
 }
+
+test('Jupiter uses the shared mainnet connect, sign and Explorer flow', async ({
+  page,
+}) => {
+  await installWallet(page)
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  const review = {
+    title: 'Swap USDC for SOL',
+    description: 'Swap from your connected wallet through Jupiter.',
+    actionLabel: 'Swap tokens',
+    fields: [
+      { label: 'You pay', value: '1 USDC' },
+      { label: 'You receive', value: 'SOL' },
+      { label: 'Maximum slippage', value: '0.5%' },
+    ],
+  }
+  const swap = {
+    ...link,
+    tool: 'jupiter_build_swap',
+    network: 'mainnet',
+    review,
+  }
+  let preparations = 0
+  let sends = 0
+  const signature = '4'.repeat(88)
+  await page.route('**/api/transaction-links/public-review-test', (route) =>
+    route.fulfill({ json: swap }),
+  )
+  await page.route(
+    '**/api/transaction-links/public-review-test/transaction',
+    (route) => {
+      preparations++
+      expect(route.request().postDataJSON()).toEqual({ account: walletAccount })
+      return route.fulfill({
+        json: {
+          transaction: unsignedTransaction,
+          account: walletAccount,
+          network: 'mainnet',
+          review: {
+            ...review,
+            fields: [
+              ...review.fields,
+              { label: 'Minimum receive', value: '0.005 SOL' },
+            ],
+          },
+          blockhash: '11111111111111111111111111111111',
+          lastValidBlockHeight: '1234',
+        },
+      })
+    },
+  )
+  await page.route(
+    '**/api/transaction-links/public-review-test/send',
+    (route) => {
+      sends++
+      expect(Object.keys(route.request().postDataJSON())).toEqual([
+        'transaction',
+      ])
+      return route.fulfill({
+        json: {
+          ...swap,
+          status: 'confirmed',
+          account: walletAccount,
+          signature,
+          receipt: { signature, slot: '42', commitment: 'confirmed' },
+        },
+      })
+    },
+  )
+  await page.goto('/tx/public-review-test')
+  await expect(
+    page.getByRole('heading', { name: 'Swap USDC for SOL' }),
+  ).toBeVisible()
+  await expect(page.getByText('1 USDC', { exact: true })).toBeVisible()
+  await expect(page.getByText('0.5%', { exact: true })).toBeVisible()
+  await page
+    .getByRole('button', { name: 'Connect wallet', exact: true })
+    .click()
+  await page.getByRole('button', { name: /Test Solana Wallet/ }).click()
+  await expect(
+    page.getByRole('button', { name: 'Sign & send', exact: true }),
+  ).toBeEnabled()
+  expect(preparations).toBe(0)
+  await page.getByRole('button', { name: 'Sign & send', exact: true }).click()
+  await expect(page.getByRole('status')).toContainText('Transaction confirmed')
+  await expect(
+    page.getByRole('link', { name: 'View on Solana Explorer', exact: true }),
+  ).toHaveAttribute('href', `https://explorer.solana.com/tx/${signature}`)
+  expect(preparations).toBe(1)
+  expect(sends).toBe(1)
+  expect(await walletCalls(page)).toEqual(['connect', 'signTransaction'])
+  expect(errors).toEqual([])
+})

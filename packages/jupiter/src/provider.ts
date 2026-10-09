@@ -1,4 +1,5 @@
 import { defineProvider } from '@lanatools/toolkit'
+import { jupiterBuildSwapTool } from './transaction'
 import type { ToolInfo } from '@lanatools/toolkit'
 import type { JupiterClientOptions } from './client'
 import { readJupiter } from './read'
@@ -11,7 +12,6 @@ import {
   LendingPositionsInput,
   TriggerOrdersInput,
   QuoteSwapInput,
-  BuildSwapInput,
   SwapVenuesInput,
 } from './inputs'
 import type { JupiterData, JupiterResult } from './types'
@@ -74,13 +74,7 @@ export const jupiterTools: readonly ToolInfo[] = [
       'Estimate an ExactIn swap using decimal token units. Reports slippage/minimum-output constraints. No taker, transaction, signature or submission; quotes may change.',
     input: QuoteSwapInput,
   },
-  {
-    name: 'jupiter_build_swap',
-    title: 'Prepare a Jupiter swap transaction',
-    description:
-      'Prepare an ExactIn swap for a public wallet using decimal token units. Returns a base64 transaction awaiting wallet signature, quote, fees, request ID and expiry. Never signs or submits. Preserve router/request metadata for downstream execution; JupiterZ needs Jupiter execution.',
-    input: BuildSwapInput,
-  },
+  jupiterBuildSwapTool,
   {
     name: 'jupiter_get_swap_venues',
     title: 'Read Jupiter swap venues',

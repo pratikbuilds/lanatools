@@ -15,7 +15,8 @@ import type {
   PreparedTransaction,
   TransactionReceipt,
 } from '@lanatools/contracts'
-import { PAYMENT_NETWORKS } from '../solana/network'
+import { SOLANA_NETWORKS } from '@lanatools/contracts/networks'
+import type { NetworkId } from '@lanatools/contracts/networks'
 
 export type TransactionRpc = {
   genesisHash: () => Promise<string>
@@ -68,9 +69,9 @@ export function transactionRpc(url: string): TransactionRpc {
 
 export async function verifyRpcNetwork(
   rpc: TransactionRpc,
-  network: 'mainnet' | 'devnet',
+  network: NetworkId,
 ) {
-  if ((await rpc.genesisHash()) !== PAYMENT_NETWORKS[network].genesisHash)
+  if ((await rpc.genesisHash()) !== SOLANA_NETWORKS[network].genesisHash)
     throw new Error('RPC network mismatch')
 }
 

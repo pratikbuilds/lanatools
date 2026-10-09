@@ -13,19 +13,21 @@ TanStack Query, and Tailwind. Shared HTTP schemas live in `packages/contracts`.
 | `packages/contracts`                    | Types shared by the API and web app                              |
 | `apps/api/src/tools`                    | Which providers LanaTools serves (`providers.ts`) and `callTool` |
 | `apps/api/src/mcp-grants.ts`            | Consent, grants and `authorizeGrant`, the one grant check        |
-| `apps/api/src/solana/network.ts`        | Solana network table and server network configuration            |
+| `packages/contracts/src/networks.ts`    | Shared Solana network definitions and environment selection      |
 | `apps/api/src/payments`                 | `call`: challenges, spending limits, signing and settlement      |
 | `apps/api/src/solana/usdc-transfer.ts`  | Withdrawals: the USDC transfer the user signs in the dashboard   |
 | `apps/mcp`                              | OAuth and the MCP server; provider tools run in the API          |
-| `scripts/dev.ts`                        | Local devnet setup: `bun run dev`, `dev:reset` and `dev:fund`    |
+| `scripts/dev.ts`                        | Local setup: `bun run dev`, `dev:reset` and `dev:fund`           |
 
 ## Development
 
 Install Bun **1.4.2** and Node.js **24 LTS**. Node runs the Vite/ESLint toolchain;
 Bun installs packages and runs unit tests. Wrangler runs the local Workers.
 
-Local development runs on Solana devnet with a local database, so it never
-touches production users, wallets or data.
+Set `SOLANA_NETWORK` in the root `.env` to select the network for API, MCP and
+web. Start with `devnet`; use `mainnet` with a matching RPC for real swaps.
+Cloudflare storage and the local Privy app stay separate from production.
+Mainnet transactions use real funds.
 
 1. Copy `.env.example` to `.env` and fill it in. Use a Privy app made for
    local development, never the production one, and create its payment signer
@@ -48,25 +50,28 @@ and starts three services:
 
 It reads secrets only from the root `.env`; per-app `.dev.vars` and
 `.env.local` files are not used. It refuses to start with the production Privy
-app, an RPC that does not serve devnet, Solana's public devnet RPC (Workers
+app, an RPC that does not match `SOLANA_NETWORK`, Solana's public devnet RPC (Workers
 cannot use it), a remote Cloudflare binding, or a busy port. If one service
 stops, the others stop too. The dashboard proxies `/api` to the API.
 
 Other commands:
 
-- `bun run dev:reset` clears the local database and OAuth state, then applies
-  migrations. Stop `bun run dev` first.
+- `bun run dev:reset` clears the database and OAuth state for the network
+  selected in root `.env`, then applies migrations. Stop `bun run dev` first.
+  Devnet keeps its existing `.wrangler/state` directory; mainnet uses
+  `.wrangler/state-mainnet`, so switching networks preserves both histories.
 - `bun run dev:fund <wallet> <usdc>` sends devnet USDC from the default Solana
   CLI wallet, for example to the payment wallet the dashboard shows. It uses
   `DEVNET_RPC_URL` from `.env`, or Solana's public devnet RPC, and checks that
-  it serves devnet first.
+  it serves devnet first. The command refuses to run when root `.env` selects
+  mainnet.
 
-Paid calls go to the hosted devnet merchant,
+For devnet payment testing, paid calls go to the hosted devnet merchant,
 `https://devnet-merchant-production.up.railway.app/api/v1/fixed` (0.01 USDC
 over MPP and x402). The local testbed merchant cannot be used here, because
 `pay_http` only calls public `https` URLs.
 
-To check the setup end to end: run `bun run dev`, sign in at
+To check the devnet setup end to end: run `bun run dev`, sign in at
 <http://localhost:5173>, set up the payment wallet and fund it with
 `dev:fund`, then connect Claude Code or Codex to `http://localhost:8788/mcp`,
 approve a spending limit and ask it to pay the merchant URL above.
@@ -259,10 +264,17 @@ Worker Previews for other branches. MCP builds only `master`; it has no
 branch previews. See [MCP build settings](apps/mcp/README.md#automatic-deployment)
 for its commands and required build variable.
 
-The hosted app runs on Solana mainnet and pays real USDC; local development
-and CI use devnet. Cloudflare calls the `master` environment "Production".
-Set the web build variable `VITE_SOLANA_NETWORK=mainnet` to match the API's
-`SOLANA_NETWORK=mainnet`.
+The hosted app runs on Solana mainnet and pays real USDC. Cloudflare calls
+the `master` environment "Production". The API deployment's
+`apps/api/wrangler.jsonc` defines `SOLANA_NETWORK` once for that environment.
+`bun run deploy:web` builds with the same value, overriding any local network
+setting. Keep this command as the web deployment entry point so its build and
+API runtime agree.
+
+Local Vite and `bun run dev` read `SOLANA_NETWORK` from root `.env`.
+CI sets `SOLANA_NETWORK=devnet` for its checks. An explicit environment value
+can override root `.env` for ordinary builds, but production web deployment
+always uses the API deployment target. There is no independent web selector.
 
 Each Worker builds and deploys independently. GitHub's full `Check` workflow
 runs separately and does not gate these deployments. API deployment applies

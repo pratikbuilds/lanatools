@@ -4,9 +4,11 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./mcp": "./src/mcp.ts"
+    "./mcp": "./src/mcp.ts",
+    "./transactions": "./src/transactions.ts"
   },
   "dependencies": {
+    "@lanatools/contracts": "workspace:*",
     "@modelcontextprotocol/server": "2.0.0",
     "zod": "4.4.3"
   },
