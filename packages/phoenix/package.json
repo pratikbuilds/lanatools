@@ -3,10 +3,13 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./trade": "./src/trade/index.ts"
   },
   "dependencies": {
+    "@ellipsis-labs/rise": "0.5.38",
     "@lanatools/toolkit": "workspace:*",
+    "@solana-program/compute-budget": "^0.15.0",
     "@solana/kit": "~6.10.0",
     "zod": "4.4.3"
   }

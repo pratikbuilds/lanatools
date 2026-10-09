@@ -47,3 +47,35 @@ are numbers trimmed to 10 significant digits.
 `bun test packages/phoenix/src` covers unit conversion, joins, cursors, input
 errors and upstream errors with a fake `fetch`. The fixtures are trimmed live
 responses from 2026-10-04.
+
+# Phoenix trades
+
+`@lanatools/phoenix/trade` holds the write tools. It is a separate entry
+point, so the read tools above never load the Rise SDK. Each tool returns an
+**unsigned** mainnet transaction, its simulation, and a plain summary;
+nothing in the package signs or holds a key. See
+[the spec](../../specs/phoenix-trade-tools.md).
+
+| Tool                                   | Does                                                                             |
+| -------------------------------------- | -------------------------------------------------------------------------------- |
+| `phoenix_activate_account`             | One-time referral activation (code `4L2RQ06K`); Phoenix co-signs and submits     |
+| `phoenix_deposit` / `phoenix_withdraw` | USDC in and out of the cross-margin account                                      |
+| `phoenix_market_order`                 | Fill now up to a required worst price; partial fills; expires in about 6 seconds |
+| `phoenix_limit_order`                  | Rest on the book (post-only never slides)                                        |
+| `phoenix_cancel_orders`                | Cancel resting orders by ID, or all in a market                                  |
+| `phoenix_close_position`               | Reduce-only close of all or part of a position                                   |
+
+`runPhoenixTrade(name, input, { rpc, fees })` prepares one;
+`submitSignedTransaction(prepared, { transaction, loginSignature? }, { rpc })`
+sends it once, after checking it is the transaction that was prepared.
+
+## Script
+
+```
+bun packages/phoenix/scripts/trade.ts <command> [args] --rpc <mainnet RPC URL> [--dry-run]
+```
+
+It signs with the Solana CLI wallet (`--keypair` to change), refuses any RPC
+that is not mainnet, and asks for a typed `yes` before every send.
+`--dry-run` only simulates; with `--as <address>` it simulates as another
+wallet, which never signs. Run it without a command for the full usage.
