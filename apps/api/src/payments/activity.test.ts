@@ -160,10 +160,9 @@ test('lists ended calls newest first, as the shared contract', async () => {
   })
 })
 
-test('a payment in progress or released is neither listed nor counted', async () => {
+test('a payment in progress is neither listed nor counted', async () => {
   const free = await record({})
-  for (const status of ['reserved', 'uncertain', 'released'] as const)
-    await record({ status, reservedAtomic: 10_000 })
+  await record({ status: 'reserved', reservedAtomic: 10_000 })
 
   const page = await listActivity(db, user, everything)
   expect(page.items.map((item) => item.id)).toEqual([free])
