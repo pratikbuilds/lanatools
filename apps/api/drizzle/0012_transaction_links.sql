@@ -1,4 +1,4 @@
-CREATE TABLE `transaction_link` (
+CREATE TABLE IF NOT EXISTS `transaction_link` (
 	`id` text PRIMARY KEY NOT NULL,
 	`tool_name` text NOT NULL,
 	`arguments_json` text NOT NULL,
@@ -19,4 +19,4 @@ CREATE TABLE `transaction_link` (
 	`expires_at` integer NOT NULL
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `transaction_link_creator_request` ON `transaction_link` (`creator_user_id`,`creator_client_id`,`idempotency_key`);
+CREATE UNIQUE INDEX IF NOT EXISTS `transaction_link_creator_request` ON `transaction_link` (`creator_user_id`,`creator_client_id`,`idempotency_key`);
