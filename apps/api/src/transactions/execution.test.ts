@@ -17,21 +17,21 @@ import {
 import type { KeyPairSigner } from '@solana/kit'
 import type { PreparedTransaction } from '@lanatools/contracts'
 import { parseTransferSolInstruction } from '@solana-program/system'
-import { mcpGrant, transactionLink } from '../db/schema'
+import { mcpGrant, transactionRequest } from '../db/schema'
 import { testDatabase } from '../test-database'
 import { PAYMENT_NETWORKS } from '../solana/network'
 import {
-  createTransactionLink,
+  createTransactionRequest,
   prepareTransactionLink,
   sendTransactionLink,
   readTransactionLink,
   observeTransactionLink,
-  transactionLinkStatus,
+  transactionStatus,
   PREPARATION_LEASE_MS,
 } from './requests'
 import { verifySignedTransaction } from './submission'
 import type { TransactionRpc } from './submission'
-import { transactionOperations } from './tools'
+import { solTransfer } from './sol-transfer'
 
 let db: D1Database
 let dispose: () => Promise<void>
@@ -55,8 +55,8 @@ const observation = { attempts: 1, intervalMs: 0 }
 const row = (id: string) =>
   drizzle(db)
     .select()
-    .from(transactionLink)
-    .where(eq(transactionLink.id, id))
+    .from(transactionRequest)
+    .where(eq(transactionRequest.id, id))
     .get()
 
 function mockRpc(overrides: Partial<TransactionRpc> = {}) {
@@ -104,19 +104,20 @@ async function create() {
     grantId: crypto.randomUUID(),
   }
   await drizzle(db).insert(mcpGrant).values({
+    scope: 'account:read jupiter:read solana:transfer',
     id: identity.grantId,
     privyUserId: identity.userId,
     clientId: identity.clientId,
     createdAt: Date.now(),
   })
-  const result = await createTransactionLink(
+  const result = await createTransactionRequest(
     env(),
     identity,
     'solana_transfer',
-    { ...args, idempotencyKey: crypto.randomUUID() },
+    { ...args, delivery: 'link', idempotencyKey: crypto.randomUUID() },
   )
   if (!result.ok) throw new Error(result.error.message)
-  return { id: result.result.linkId, identity }
+  return { id: result.result.id, identity }
 }
 
 async function prepare(
@@ -248,9 +249,9 @@ test('grant revocation or link expiry during building prevents candidate publica
             .where(eq(mcpGrant.id, identity.grantId))
         else
           await drizzle(db)
-            .update(transactionLink)
+            .update(transactionRequest)
             .set({ expiresAt: 0 })
-            .where(eq(transactionLink.id, id))
+            .where(eq(transactionRequest.id, id))
         return {
           blockhash: blockhash(PAYMENT_NETWORKS.devnet.genesisHash),
           lastValidBlockHeight: 500n,
@@ -281,22 +282,22 @@ test('real Ed25519 signatures are required; altered instructions, amounts, signe
   expect(signature.length).toBeGreaterThan(80)
   const corrupt = new Uint8Array(getBase64Encoder().encode(wire))
   corrupt[1] = corrupt[1]! ^ 1
-  const alteredAmount = await transactionOperations.solana_transfer.build(
+  const alteredAmount = await solTransfer.build(
     { ...args, amountLamports: '999' },
     wallet.address,
-    { linkId: id, network: 'devnet', rpc: fake.rpc },
+    { requestId: id, network: 'devnet', rpc: fake.rpc },
   )
   const otherWallet = await generateKeyPairSigner()
-  const alteredSigner = await transactionOperations.solana_transfer.build(
-    args,
-    otherWallet.address,
-    { linkId: id, network: 'devnet', rpc: fake.rpc },
-  )
-  const alteredMemo = await transactionOperations.solana_transfer.build(
-    args,
-    wallet.address,
-    { linkId: 'other-link', network: 'devnet', rpc: fake.rpc },
-  )
+  const alteredSigner = await solTransfer.build(args, otherWallet.address, {
+    requestId: id,
+    network: 'devnet',
+    rpc: fake.rpc,
+  })
+  const alteredMemo = await solTransfer.build(args, wallet.address, {
+    requestId: 'other-link',
+    network: 'devnet',
+    rpc: fake.rpc,
+  })
   for (const invalid of [
     candidate.transaction,
     getBase64Decoder().decode(corrupt),
@@ -368,7 +369,7 @@ test('failed signature persistence prevents every send RPC call', async () => {
   const wire = await signed(candidate)
   await db
     .prepare(
-      `create trigger reject_signature before update of signature on transaction_link when new.id = '${id}' begin select raise(abort, 'simulated disk failure'); end`,
+      `create trigger reject_signature before update of signature on transaction_request when new.id = '${id}' begin select raise(abort, 'simulated disk failure'); end`,
     )
     .run()
   try {
@@ -396,9 +397,9 @@ test('expiry and revoked grant block first signature acceptance and sending', as
     const candidate = await prepare(id, fake.rpc)
     if (closure === 'expiry')
       await drizzle(db)
-        .update(transactionLink)
+        .update(transactionRequest)
         .set({ expiresAt: 0 })
-        .where(eq(transactionLink.id, id))
+        .where(eq(transactionRequest.id, id))
     if (closure === 'grant')
       await drizzle(db)
         .update(mcpGrant)
@@ -519,7 +520,7 @@ test('reload and authenticated status recover a persisted signature without broa
     confirmationStatus: 'finalized',
   })
   expect(
-    await transactionLinkStatus(env(), identity, id, { rpc: fake.rpc }),
+    await transactionStatus(env(), identity, id, { rpc: fake.rpc }),
   ).toMatchObject({
     ok: true,
     result: {
@@ -542,9 +543,9 @@ test('a crash after signature persistence is recoverable using observation only'
   const candidate = await prepare(id, fake.rpc)
   const sig = await verifySignedTransaction(await signed(candidate), candidate)
   await drizzle(db)
-    .update(transactionLink)
+    .update(transactionRequest)
     .set({ signature: sig, status: 'submitting' })
-    .where(eq(transactionLink.id, id))
+    .where(eq(transactionRequest.id, id))
   expect(
     await observeTransactionLink(env(), id, { rpc: fake.rpc }),
   ).toMatchObject({ status: 'confirmed', signature: sig })
@@ -560,7 +561,7 @@ test('receipt persistence failure retains the signature and a later GET can reco
   fake.setSignature(sig)
   await db
     .prepare(
-      `create trigger reject_receipt before update of receipt_json on transaction_link when new.id = '${id}' begin select raise(abort, 'simulated receipt write failure'); end`,
+      `create trigger reject_receipt before update of receipt_json on transaction_request when new.id = '${id}' begin select raise(abort, 'simulated receipt write failure'); end`,
     )
     .run()
   try {
@@ -600,9 +601,9 @@ test('status RPC failure keeps an accepted signature unknown without inventing a
   const candidate = await prepare(id, fake.rpc)
   const sig = await verifySignedTransaction(await signed(candidate), candidate)
   await drizzle(db)
-    .update(transactionLink)
+    .update(transactionRequest)
     .set({ signature: sig, status: 'submitting' })
-    .where(eq(transactionLink.id, id))
+    .where(eq(transactionRequest.id, id))
   expect(
     await observeTransactionLink(env(), id, { rpc: fake.rpc }),
   ).toMatchObject({ status: 'unknown', signature: sig, receipt: null })
@@ -728,13 +729,13 @@ test('legacy blockhash-expired rows recover within the same TTL and grant, never
     const candidate = await prepare(id, fake.rpc)
     const before = await row(id)
     await drizzle(db)
-      .update(transactionLink)
+      .update(transactionRequest)
       .set({
         status: 'expired',
         errorCode: 'blockhash_expired',
         ...(closure === 'ttl' ? { expiresAt: 0 } : {}),
       })
-      .where(eq(transactionLink.id, id))
+      .where(eq(transactionRequest.id, id))
     if (closure === 'grant')
       await drizzle(db)
         .update(mcpGrant)
@@ -788,9 +789,9 @@ test('renewal waits for finalized expiry and cannot use confirmed height as proo
     ),
   ).toMatchObject({ ok: false, error: { code: 'preparing' } })
   await drizzle(db)
-    .update(transactionLink)
+    .update(transactionRequest)
     .set({ status: 'expired', errorCode: 'blockhash_expired' })
-    .where(eq(transactionLink.id, id))
+    .where(eq(transactionRequest.id, id))
   expect(
     await prepareTransactionLink(
       env(),
@@ -1030,9 +1031,9 @@ test('failed and crashed renewals preserve the reserved wallet and permit a fenc
     signature: null,
   })
   await drizzle(db)
-    .update(transactionLink)
+    .update(transactionRequest)
     .set({ status: 'preparing', updatedAt: Date.now() - PREPARATION_LEASE_MS })
-    .where(eq(transactionLink.id, id))
+    .where(eq(transactionRequest.id, id))
   expect(await readTransactionLink(db, id)).toMatchObject({
     status: 'transaction_expired',
     account: wallet.address,
@@ -1075,9 +1076,9 @@ test('accepted signature survives blockhash expiry and closure; retries observe 
         .where(eq(mcpGrant.id, identity.grantId))
     if (closure === 'expiry')
       await drizzle(db)
-        .update(transactionLink)
+        .update(transactionRequest)
         .set({ expiresAt: 0 })
-        .where(eq(transactionLink.id, id))
+        .where(eq(transactionRequest.id, id))
     expect(
       await sendTransactionLink(
         env(),
@@ -1108,9 +1109,9 @@ test('a stale unknown observation cannot downgrade a competing confirmed receipt
   const candidate = await prepare(id, fake.rpc)
   const sig = await verifySignedTransaction(await signed(candidate), candidate)
   await drizzle(db)
-    .update(transactionLink)
+    .update(transactionRequest)
     .set({ status: 'submitting', signature: sig })
-    .where(eq(transactionLink.id, id))
+    .where(eq(transactionRequest.id, id))
   let release!: () => void
   let started!: () => void
   const waiting = new Promise<void>((resolve) => {
@@ -1216,9 +1217,9 @@ test('a mismatched observation RPC never contributes chain evidence or sends', a
   const candidate = await prepare(id, fake.rpc)
   const sig = await verifySignedTransaction(await signed(candidate), candidate)
   await drizzle(db)
-    .update(transactionLink)
+    .update(transactionRequest)
     .set({ signature: sig, status: 'submitting' })
-    .where(eq(transactionLink.id, id))
+    .where(eq(transactionRequest.id, id))
   fake.calls.length = 0
   fake.rpc.genesisHash = async () => PAYMENT_NETWORKS.mainnet.genesisHash
   expect(
@@ -1232,7 +1233,7 @@ test('a builder cannot publish a candidate for a different selected account or d
   for (const mismatch of ['account', 'network']) {
     const { id } = await create()
     const fake = mockRpc()
-    const tool = transactionOperations.solana_transfer
+    const tool = solTransfer
     const tools = {
       solana_transfer: {
         ...tool,

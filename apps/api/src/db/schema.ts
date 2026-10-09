@@ -163,9 +163,9 @@ export const agentFeedback = sqliteTable('agent_feedback', {
   createdAt: integer('created_at').notNull(),
 })
 
-/** One public intent and its single transaction; signed bytes are never stored. */
-export const transactionLink = sqliteTable(
-  'transaction_link',
+/** One transaction intent and its single transaction; signed bytes are never stored. */
+export const transactionRequest = sqliteTable(
+  'transaction_request',
   {
     id: text('id').primaryKey(),
     toolName: text('tool_name').notNull(),
@@ -175,6 +175,9 @@ export const transactionLink = sqliteTable(
     creatorClientId: text('creator_client_id').notNull(),
     creatorGrantId: text('creator_grant_id').notNull(),
     idempotencyKey: text('idempotency_key').notNull(),
+    delivery: text('delivery', { enum: ['link', 'local', 'embedded'] })
+      .notNull()
+      .default('link'),
     status: text('status', {
       enum: [
         'open',
@@ -201,7 +204,7 @@ export const transactionLink = sqliteTable(
     expiresAt: integer('expires_at').notNull(),
   },
   (table) => [
-    uniqueIndex('transaction_link_creator_request').on(
+    uniqueIndex('transaction_request_creator_request').on(
       table.creatorUserId,
       table.creatorClientId,
       table.idempotencyKey,

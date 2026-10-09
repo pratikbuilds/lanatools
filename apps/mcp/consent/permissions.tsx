@@ -16,11 +16,16 @@ export const TOOL_FAMILIES: Record<
   },
   'jupiter:read': {
     title: 'Jupiter',
-    detail: 'Read token prices, swap quotes and lending data',
+    detail:
+      'Read token prices, swap quotes and lending data, and prepare swaps',
   },
   'phoenix:read': {
     title: 'Phoenix',
     detail: 'Read perps markets, order books and candles',
+  },
+  'solana:transfer': {
+    title: 'SOL transfers',
+    detail: 'Prepare SOL transfers from your wallet',
   },
 }
 

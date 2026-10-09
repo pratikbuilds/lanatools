@@ -17,13 +17,16 @@ export type EarlyAccessResponse = typeof EarlyAccessResponse.infer
 /**
  * One scope per tool family. The user picks these for each client on the
  * consent screen; the scopes the client requested do not decide them.
- * Catalog and transaction-link tools require only an active connection.
+ * Catalog and transaction-status tools require only an active connection.
+ * `jupiter:read` also covers Jupiter swaps; the name stays so existing grants
+ * keep working.
  */
 export const TOOL_SCOPES = [
   'helius:read',
   'payments:pay',
   'jupiter:read',
   'phoenix:read',
+  'solana:transfer',
 ] as const
 export type ToolScope = (typeof TOOL_SCOPES)[number]
 
@@ -48,7 +51,7 @@ export function isMcpScope(value: string): value is McpScope {
 /**
  * A grant's scopes for the tool families the user chose, in a fixed order, or
  * null if the choice is not a set of tool families. Choosing none leaves the
- * catalog and transaction-link tools.
+ * catalog and transaction-status tools.
  */
 export function grantScopes(toolScopes: readonly string[]): McpScope[] | null {
   if (
@@ -276,10 +279,15 @@ export const TransactionReview = type({
 })
 export type TransactionReview = typeof TransactionReview.infer
 
-export const TransactionLinkStatus = type(
+export const TransactionStatus = type(
   "'open' | 'preparing' | 'ready' | 'transaction_expired' | 'submitting' | 'confirmed' | 'failed' | 'expired' | 'unknown' | 'unavailable'",
 )
-export type TransactionLinkStatus = typeof TransactionLinkStatus.infer
+export type TransactionStatus = typeof TransactionStatus.infer
+
+/** How a prepared transaction is signed: review link, agent wallet or LanaTools wallet. */
+export const TRANSACTION_DELIVERIES = ['link', 'local', 'embedded'] as const
+export const TransactionDelivery = type.enumerated(...TRANSACTION_DELIVERIES)
+export type TransactionDelivery = typeof TransactionDelivery.infer
 
 export const TransactionReceipt = type({
   signature: 'string',
@@ -304,7 +312,7 @@ export const TransactionLink = type({
   tool: 'string',
   network: "'mainnet' | 'devnet'",
   review: TransactionReview,
-  status: TransactionLinkStatus,
+  status: TransactionStatus,
   account: 'string | null',
   signature: 'string | null',
   receipt: TransactionReceipt.or('null'),
@@ -313,11 +321,17 @@ export const TransactionLink = type({
 })
 export type TransactionLink = typeof TransactionLink.infer
 
-export const CreatedTransactionLink = type({
-  linkId: 'string',
-  reviewUrl: 'string',
+/** What every transaction tool returns to the agent, in every delivery mode. */
+export const TransactionResult = type({
+  id: 'string',
+  tool: 'string',
   network: "'mainnet' | 'devnet'",
+  delivery: TransactionDelivery,
+  status: TransactionStatus,
   review: TransactionReview,
+  'reviewUrl?': 'string',
+  signature: 'string | null',
+  receipt: TransactionReceipt.or('null'),
   expiresAt: 'number',
 })
-export type CreatedTransactionLink = typeof CreatedTransactionLink.infer
+export type TransactionResult = typeof TransactionResult.infer

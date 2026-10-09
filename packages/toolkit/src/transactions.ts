@@ -32,7 +32,7 @@ export function publicTransaction(value: unknown): PreparedTransaction {
 }
 
 export type TransactionOperation<TContext extends TransactionContext> = {
-  arguments: z.ZodType
+  arguments: z.ZodObject
   supportedNetworks: readonly NetworkId[]
   describe: (input: unknown) => TransactionReview
   build: (

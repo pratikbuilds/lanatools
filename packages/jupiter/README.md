@@ -15,7 +15,6 @@ reads and wallet authentication are outside the scope.
 | `jupiter_get_lending_positions` | Earn positions by wallets, earnings by wallet/position addresses, Borrow positions by wallets/market |
 | `jupiter_get_trigger_orders`    | Public legacy price orders / time-based DCA; active/history and page                                 |
 | `jupiter_quote_swap`            | Different input/output mints, positive decimal amount, optional maximum slippage/minimum output      |
-| `jupiter_build_swap`            | The same swap fields plus a public wallet address; returns a transaction awaiting wallet signature   |
 | `jupiter_get_swap_venues`       | Full program-ID/label mapping; empty input                                                           |
 
 The package uses Web APIs and accepts an injected fetch implementation for
@@ -31,20 +30,10 @@ const outcome = await client.read({
 })
 ```
 
-Prepare a swap for a public wallet through the same client:
-
-```ts
-const swap = await client.read({
-  tool: 'jupiter_build_swap',
-  input: {
-    inputMint: 'So11111111111111111111111111111111111111112',
-    outputMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-    amount: '0.01',
-    wallet: publicWalletAddress,
-    maxSlippageBps: 50,
-  },
-})
-```
+Swaps are a transaction tool, `jupiterSwapTool` (`jupiter_swap`). Its
+`transaction` operation builds a wallet-funded, single-signer swap and sends it
+through Jupiter's execute endpoint; the API registers it beside the other
+transaction tools.
 
 All calls use GET on `https://api.jup.ag` with the server key in `x-api-key`.
 Redirects are refused using manual redirect handling compatible with Workers. Default request timeout: 10 seconds; complete tool

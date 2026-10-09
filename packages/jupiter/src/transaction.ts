@@ -2,7 +2,7 @@ import { defineTransactionOperation } from '@lanatools/toolkit/transactions'
 import type { TransactionContext } from '@lanatools/toolkit/transactions'
 import { SOLANA_NETWORKS } from '@lanatools/contracts/networks'
 import type { JupiterClientOptions } from './client'
-import { BuildSwapInput, SwapArguments } from './inputs'
+import { SwapArguments } from './inputs'
 import { JupiterClient } from './jupiter-client'
 import {
   address,
@@ -121,11 +121,11 @@ const swapOperation = defineTransactionOperation({
   },
 })
 
-export const jupiterBuildSwapTool = {
-  name: 'jupiter_build_swap',
-  title: 'Prepare a Jupiter swap transaction',
+/** A wallet-funded Jupiter swap; network fees are paid in SOL by the signer. */
+export const jupiterSwapTool = {
+  name: 'jupiter_swap',
+  title: 'Swap tokens with Jupiter',
   description:
-    'Prepare an ExactIn swap for a public wallet using decimal token units. Returns a base64 transaction awaiting wallet signature, quote, fees, request ID and expiry. Never signs or submits. Preserve router/request metadata for downstream execution; JupiterZ needs Jupiter execution.',
-  input: BuildSwapInput,
+    'Swap an exact input amount through Jupiter, in decimal token units (1 means one USDC, not one base unit). The quote is fetched when the transaction is prepared for signing. The signing wallet pays network fees in SOL.',
   transaction: swapOperation,
 } as const

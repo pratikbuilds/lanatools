@@ -5,10 +5,10 @@ import { drizzle } from 'drizzle-orm/d1'
 import { eq } from 'drizzle-orm'
 import { blockhash } from '@solana/kit'
 import { createApp } from '../app'
-import { mcpGrant, transactionLink } from '../db/schema'
+import { mcpGrant, transactionRequest } from '../db/schema'
 import { testDatabase } from '../test-database'
 import { PAYMENT_NETWORKS } from '../solana/network'
-import { createTransactionLink } from '../transactions/requests'
+import { createTransactionRequest } from '../transactions/requests'
 import { createTransactionLinks, transactionLinks } from './transaction-links'
 import type { TransactionLinksEnv } from './transaction-links'
 
@@ -27,23 +27,25 @@ beforeAll(async () => {
   dispose = database.dispose
   const identity = { userId: 'creator', clientId: 'client', grantId: 'grant' }
   await drizzle(db).insert(mcpGrant).values({
+    scope: 'account:read jupiter:read solana:transfer',
     id: identity.grantId,
     privyUserId: identity.userId,
     clientId: identity.clientId,
     createdAt: Date.now(),
   })
-  const created = await createTransactionLink(
+  const created = await createTransactionRequest(
     { DB: db, SOLANA_NETWORK: 'devnet', WEB_ORIGIN: 'http://localhost:5173' },
     identity,
     'solana_transfer',
     {
       recipient: '11111111111111111111111111111111',
       amountLamports: '10000000',
+      delivery: 'link',
       idempotencyKey: 'route-test',
     },
   )
   if (!created.ok) throw new Error(created.error.message)
-  linkId = created.result.linkId
+  linkId = created.result.id
 }, 60_000)
 afterAll(() => dispose())
 const get = (id: string, rateLimit = limiter) =>
@@ -61,7 +63,7 @@ const get = (id: string, rateLimit = limiter) =>
 
 test('signed-out GET returns public review with no cache and no execution writes', async () => {
   const before = await db
-    .prepare('select * from transaction_link where id = ?')
+    .prepare('select * from transaction_request where id = ?')
     .bind(linkId)
     .first()
   const response = await get(linkId)
@@ -75,7 +77,7 @@ test('signed-out GET returns public review with no cache and no execution writes
   })
   expect<unknown>(
     await db
-      .prepare('select * from transaction_link where id = ?')
+      .prepare('select * from transaction_request where id = ?')
       .bind(linkId)
       .first(),
   ).toEqual(before)
@@ -111,7 +113,7 @@ test('public requests are rate limited before reading links', async () => {
 
 test('database failure returns a safe retriable error', async () => {
   await db
-    .prepare('alter table transaction_link rename to unavailable_links')
+    .prepare('alter table transaction_request rename to unavailable_links')
     .run()
   try {
     const response = await get(linkId)
@@ -121,7 +123,7 @@ test('database failure returns a safe retriable error', async () => {
     })
   } finally {
     await db
-      .prepare('alter table unavailable_links rename to transaction_link')
+      .prepare('alter table unavailable_links rename to transaction_request')
       .run()
   }
 })
@@ -166,23 +168,24 @@ test('public GET recovers chain confirmation from a saved signature without buil
     SOLANA_RPC_URL: 'https://unused.example',
     WEB_ORIGIN: 'http://localhost:5173',
   }
-  const created = await createTransactionLink(
+  const created = await createTransactionRequest(
     env,
     { userId: 'creator', clientId: 'client', grantId: 'grant' },
     'solana_transfer',
     {
       recipient: '11111111111111111111111111111111',
       amountLamports: '10',
+      delivery: 'link',
       idempotencyKey: crypto.randomUUID(),
     },
   )
   if (!created.ok) throw new Error(created.error.message)
-  const id = created.result.linkId
+  const id = created.result.id
   const signature = '5'.repeat(88)
   await drizzle(db)
-    .update(transactionLink)
+    .update(transactionRequest)
     .set({ status: 'submitting', signature })
-    .where(eq(transactionLink.id, id))
+    .where(eq(transactionRequest.id, id))
   const calls: string[] = []
   const recoveringApp = createApp<TransactionLinksEnv>().route(
     '/api/transaction-links',
@@ -224,8 +227,8 @@ test('public GET recovers chain confirmation from a saved signature without buil
   expect(
     await drizzle(db)
       .select()
-      .from(transactionLink)
-      .where(eq(transactionLink.id, id))
+      .from(transactionRequest)
+      .where(eq(transactionRequest.id, id))
       .get(),
   ).toMatchObject({ status: 'confirmed', signature })
 })

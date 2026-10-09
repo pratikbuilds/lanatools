@@ -963,7 +963,7 @@ test('Jupiter uses the shared mainnet connect, sign and Explorer flow', async ({
   }
   const swap = {
     ...link,
-    tool: 'jupiter_build_swap',
+    tool: 'jupiter_swap',
     network: 'mainnet',
     review,
   }

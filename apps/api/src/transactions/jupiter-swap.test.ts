@@ -24,11 +24,11 @@ import {
 import type { KeyPairSigner } from '@solana/kit'
 import { eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
-import { mcpGrant, transactionLink } from '../db/schema'
+import { mcpGrant, transactionRequest } from '../db/schema'
 import { PAYMENT_NETWORKS } from '../solana/network'
 import { testDatabase } from '../test-database'
 import {
-  createTransactionLink,
+  createTransactionRequest,
   observeTransactionLink,
   prepareTransactionLink,
   readTransactionLink,
@@ -66,8 +66,8 @@ const env = () => ({
 const row = (id: string) =>
   drizzle(db)
     .select()
-    .from(transactionLink)
-    .where(eq(transactionLink.id, id))
+    .from(transactionRequest)
+    .where(eq(transactionRequest.id, id))
     .get()
 
 async function identity() {
@@ -77,6 +77,7 @@ async function identity() {
     grantId: crypto.randomUUID(),
   }
   await drizzle(db).insert(mcpGrant).values({
+    scope: 'account:read jupiter:read solana:transfer',
     id: result.grantId,
     privyUserId: result.userId,
     clientId: result.clientId,
@@ -86,17 +87,18 @@ async function identity() {
 }
 
 async function create() {
-  const result = await createTransactionLink(
+  const result = await createTransactionRequest(
     env(),
     await identity(),
-    'jupiter_build_swap',
+    'jupiter_swap',
     {
       ...args,
+      delivery: 'link',
       idempotencyKey: crypto.randomUUID(),
     },
   )
   if (!result.ok) throw new Error(result.error.message)
-  return result.result.linkId
+  return result.result.id
 }
 
 // A locally encoded v0 transaction exercises ALT/signature handling without a real swap.
@@ -221,7 +223,11 @@ async function signed(candidate: PreparedTransaction) {
 
 test('Jupiter links enforce deployment mainnet and explicit slippage without choosing a wallet', async () => {
   const creator = await identity()
-  const input = { ...args, idempotencyKey: crypto.randomUUID() }
+  const input = {
+    ...args,
+    delivery: 'link',
+    idempotencyKey: crypto.randomUUID(),
+  }
   const { maxSlippageBps: _slippage, ...withoutSlippage } = input
   for (const invalid of [
     withoutSlippage,
@@ -231,26 +237,21 @@ test('Jupiter links enforce deployment mainnet and explicit slippage without cho
     { ...input, outputMint: usdc },
   ]) {
     expect(
-      await createTransactionLink(
-        env(),
-        creator,
-        'jupiter_build_swap',
-        invalid,
-      ),
+      await createTransactionRequest(env(), creator, 'jupiter_swap', invalid),
     ).toMatchObject({ ok: false, error: { code: 'invalid_input' } })
   }
   expect(
-    await createTransactionLink(
+    await createTransactionRequest(
       { ...env(), SOLANA_NETWORK: 'devnet' },
       creator,
-      'jupiter_build_swap',
+      'jupiter_swap',
       input,
     ),
   ).toMatchObject({ ok: false, error: { code: 'invalid_input' } })
-  const created = await createTransactionLink(
+  const created = await createTransactionRequest(
     env(),
     creator,
-    'jupiter_build_swap',
+    'jupiter_swap',
     input,
   )
   expect(created).toMatchObject({
@@ -268,7 +269,7 @@ test('Jupiter links enforce deployment mainnet and explicit slippage without cho
     },
   })
   if (!created.ok) throw new Error(created.error.message)
-  expect(await row(created.result.linkId)).toMatchObject({
+  expect(await row(created.result.id)).toMatchObject({
     account: null,
     signature: null,
     candidateJson: null,
@@ -368,14 +369,14 @@ test('Jupiter rejects a corrupted request ID before accepting a valid signed tra
     const candidate = await prepared(id, fake.rpc)
     const transaction = await signed(candidate)
     await drizzle(db)
-      .update(transactionLink)
+      .update(transactionRequest)
       .set({
         candidateJson: JSON.stringify({
           ...candidate,
           execution: { requestId: ' \t\n ' },
         }),
       })
-      .where(eq(transactionLink.id, id))
+      .where(eq(transactionRequest.id, id))
 
     expect(
       await sendTransactionLink(

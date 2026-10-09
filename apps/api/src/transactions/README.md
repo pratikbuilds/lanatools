@@ -1,63 +1,54 @@
-# One link tool, shared transaction operations
+# Transaction tools and shared operations
 
-`create_transaction_link` is the single link-related MCP tool. It references an
-existing internal transaction tool and stores its validated intent. It never
-builds, signs, or sends during link creation.
+Each transaction is its own MCP tool. Its input is the operation's own
+arguments plus `delivery` and an `idempotencyKey`. A call stores the validated
+intent in `transaction_request`; it never builds, signs, or sends.
 
 ```json
 {
-  "tool": "jupiter_build_swap",
-  "arguments": {
-    "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-    "outputMint": "So11111111111111111111111111111111111111112",
-    "amount": "1",
-    "maxSlippageBps": 50
-  },
+  "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "outputMint": "So11111111111111111111111111111111111111112",
+  "amount": "1",
+  "maxSlippageBps": 50,
+  "delivery": "link",
   "idempotencyKey": "usdc-sol-test-1"
 }
 ```
 
-This requests 1 USDC to SOL with 0.5% maximum slippage. To create another kind of
-transaction, change `tool` and `arguments`. A link's stored intent never changes.
-Neither network nor wallet belongs in the link arguments. The deployment fixes
-the network; the visitor selects a wallet on the page.
+Sent to `jupiter_swap`, this requests 1 USDC to SOL with 0.5% maximum
+slippage. A stored intent never changes. Neither network nor wallet belongs in
+the arguments: the deployment fixes the network, and for `link` the visitor
+selects a wallet on the page. Only `link` delivery exists today; local and
+embedded signing are planned in `specs/transaction-delivery.md`.
+
+Every transaction tool and `get_transaction_status` return the same
+`TransactionResult` (`packages/contracts`).
 
 ## Where each responsibility lives
 
-| Component                               | Responsibility                                                                                                                                |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/jupiter/src/transaction.ts`   | The existing `jupiterBuildSwapTool` definition, its shared argument schema, review, transaction preparation, and Jupiter execution capability |
-| `packages/toolkit/src/transactions.ts`  | Typed transaction capability, provider metadata validation, public candidate projection                                                       |
-| `apps/api/src/transactions/tools.ts`    | Bind internal operations to server dependencies and generate the generic link input schema                                                    |
-| `apps/api/src/transactions/requests.ts` | Grant, deadline, wallet reservation, signature acceptance, retries and chain confirmation                                                     |
-| `apps/mcp/src/server.ts`                | Register one link-creation MCP tool                                                                                                           |
+| Component                               | Responsibility                                                                              |
+| --------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `packages/jupiter/src/transaction.ts`   | `jupiterSwapTool`: swap arguments, review, preparation and Jupiter execution                |
+| `packages/toolkit/src/transactions.ts`  | Typed transaction operation, provider metadata validation, public candidate projection      |
+| `apps/api/src/transactions/tools.ts`    | The transaction tools: scope, title, operation bound to server dependencies, and tool input |
+| `apps/api/src/transactions/requests.ts` | Grant and scope, deadline, wallet reservation, signature acceptance, retries, confirmation  |
+| `apps/mcp/src/server.ts`                | Register each transaction tool and `get_transaction_status`                                 |
 
-There is no separate `jupiter_swap` tool or link-specific Jupiter implementation
-in the API. `jupiter_build_swap` still supports direct unsigned preparation.
-Both direct preparation and its shared transaction capability use the same swap
-builder. The capability exposes `build` and `relay` independently of link storage
-and HTTP routes, so embedded and local signing paths can consume it too. Those
-signing paths are not implemented by this link change.
+The operation exposes `build` and `relay` independently of storage and HTTP
+routes, so local and embedded signing can reuse it.
 
-The link path requires a wallet-funded, single-signer transaction whose fee payer
-is the selected wallet. JupiterZ RFQ and sponsored routes are excluded/rejected.
-Local callers of the existing unsigned tool retain its original behavior and
-must handle its returned router/signing requirements.
+Swaps require a wallet-funded, single-signer transaction whose fee payer is the
+signing wallet. JupiterZ RFQ and sponsored routes are excluded.
 
 ## Add support for another transaction
 
-1. Give the existing internal tool a transaction capability. Reuse its argument
-   schema and builder; define review and submission behavior once in its package.
-2. Bind that capability in `transactionOperations` using the existing tool name.
+1. Define the operation with `defineTransactionOperation`: argument schema,
+   review, builder and submission, once, in its package.
+2. Add it to `transactionTools` with its title, description and scope.
 
-The generic MCP input schema follows the registry automatically. No new MCP tool,
-HTTP route, database table, or transaction page is needed. A caller can invoke the
-same capability with its own provider dependencies and selected signer. Signing
-and lifecycle policy belong to that caller.
-
-The native SOL operation currently lives in `sol-transfer.ts`. It is selected as
-`tool: "solana_transfer"` with `recipient` and `amountLamports` arguments, through
-the same generic link tool.
+The MCP tool and its input schema follow the registry. No HTTP route, database
+table, or transaction page is needed. The native SOL operation lives in
+`sol-transfer.ts`.
 
 ## Link execution
 
@@ -72,8 +63,7 @@ The existing page and routes stay shared:
 5. RPC chain evidence confirms or fails the accepted signature. The page links to
    the correct Solana Explorer network.
 
-Status reads remain on the shared HTTP route. The former per-operation link MCP
-registrations and `get_transaction_request` MCP registration are removed.
+Agents read status with `get_transaction_status`; the page uses the HTTP route.
 
 An operation can return private `execution` metadata. Jupiter saves only its
 request ID beside the unsigned candidate in `candidate_json`. The submission

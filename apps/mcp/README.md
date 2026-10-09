@@ -13,33 +13,40 @@ consent cookie and a verified Privy access token.
 
 Each tool family has one scope, and the user picks them per client on the
 consent page: **Helius** (`helius:read`) and **Pay** (`payments:pay`) start on,
-**Jupiter** (`jupiter:read`) and **Phoenix** (`phoenix:read`) start off. The
+**Jupiter** (`jupiter:read`, which also covers swaps), **Phoenix**
+(`phoenix:read`) and **SOL transfers** (`solana:transfer`) start off. The
 scopes a client asks for in `/authorize` are ignored; `approveConsent` issues
 the token with the user's choice plus `account:read`, and the API stores the
 same list on the grant. Turning Pay on asks for a spending limit.
 
-The catalog tools, `whoami`, `send_feedback`, `solana_transfer` and
-`get_transaction_request` have no family and every active client gets them.
-A client only sees the families it was given in `tools/list`, and every call
-is checked again against the token and, for Helius, Jupiter and Pay, the stored
-grant. To change a client's families, the user disconnects it and connects it
+The catalog tools, `whoami`, `send_feedback` and `get_transaction_status` have
+no family and every active client gets them. A client only sees the families it
+was given in `tools/list`, and every call is checked again against the token
+and the stored grant. To change a client's families, the user disconnects it and connects it
 again.
 
 `whoami` returns the Privy user ID, the OAuth client ID and the user's payment
 wallet address, which is null until the user sets one up.
 
-## Transaction review links
+## Transactions
 
-`solana_transfer` takes `recipient`, decimal-string `amountLamports` and an
-`idempotencyKey`. It creates a public review URL without signing or sending.
-Network comes from API deployment configuration: production mainnet, local
-testing devnet. A retry with the same creator/client/key and input returns the
-same link; changed input conflicts. No extra consent scope is required.
+Each transaction tool takes its own arguments plus `delivery` and an
+`idempotencyKey`: `solana_transfer` (`recipient`, decimal-string
+`amountLamports`; scope `solana:transfer`) and `jupiter_swap` (`inputMint`,
+`outputMint`, decimal `amount`, `maxSlippageBps`, optional `minOutputAmount`;
+scope `jupiter:read`). Only `delivery: "link"` is available today. No call
+signs or sends. Network comes from API deployment configuration. A retry with
+the same client, key and input returns the same transaction; changed input
+conflicts.
 
-`get_transaction_request` takes `linkId` and reads a link owned by the active
-account and client. Public visitors can read its operation details at `/tx/:id`
-without signing in. The visitor connects a Solana wallet through the custom
-LanaTools picker, chooses Sign & send, then confirms the transaction in the wallet.
+Every transaction tool and `get_transaction_status` return the same result:
+`id`, `tool`, `network`, `delivery`, `status`, `review`, `signature`,
+`receipt`, `expiresAt`, and `reviewUrl` for links. `get_transaction_status`
+reads a transaction owned by the active account and client.
+
+Public visitors can read a link's operation details at `/tx/:id` without
+signing in. The visitor connects a Solana wallet through the custom LanaTools
+picker, chooses Sign & send, then confirms the transaction in the wallet.
 LanaTools validates the signed message, records its signature, then broadcasts
 and checks confirmation. The wallet does not submit the transaction.
 

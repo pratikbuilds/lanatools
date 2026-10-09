@@ -1,5 +1,4 @@
 import { defineProvider } from '@lanatools/toolkit'
-import { jupiterBuildSwapTool } from './transaction'
 import type { ToolInfo } from '@lanatools/toolkit'
 import type { JupiterClientOptions } from './client'
 import { readJupiter } from './read'
@@ -16,7 +15,7 @@ import {
 } from './inputs'
 import type { JupiterData, JupiterResult } from './types'
 
-/** Jupiter reads and unsigned transaction preparation. */
+/** Jupiter reads. Swaps are a transaction tool (`jupiterSwapTool`). */
 export const jupiterTools: readonly ToolInfo[] = [
   {
     name: 'jupiter_search_tokens',
@@ -74,7 +73,6 @@ export const jupiterTools: readonly ToolInfo[] = [
       'Estimate an ExactIn swap using decimal token units. Reports slippage/minimum-output constraints. No taker, transaction, signature or submission; quotes may change.',
     input: QuoteSwapInput,
   },
-  jupiterBuildSwapTool,
   {
     name: 'jupiter_get_swap_venues',
     title: 'Read Jupiter swap venues',
@@ -104,8 +102,6 @@ function summarize(result: JupiterResult<JupiterData>) {
     summary = `Returned ${data.earnings.length} earnings records.`
   else if ('orders' in data)
     summary = `Returned ${data.orders.length} ${data.view} records on page ${data.pagination.page}; more: ${data.pagination.hasMoreData ?? 'unknown'}.`
-  else if ('transaction' in data)
-    summary = `Prepared unsigned swap for ${data.wallet}: ${data.inputAmount.decimal} input to ${data.expectedOutput.decimal} expected output. No signing or submission.`
   else if ('providerQuote' in data)
     summary = `Quote: ${data.inputAmount.decimal} input to ${data.expectedOutput.decimal} expected output; constraints: ${data.constraints.satisfied ?? 'unknown'}.`
   else if ('venues' in data)
@@ -120,7 +116,7 @@ function summarize(result: JupiterResult<JupiterData>) {
   return summary
 }
 
-/** Jupiter reads and unsigned swap preparation. */
+/** Jupiter reads. */
 export const jupiter = defineProvider<JupiterClientOptions>({
   name: 'jupiter',
   tools: jupiterTools,

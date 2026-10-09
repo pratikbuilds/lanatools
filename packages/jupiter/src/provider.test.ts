@@ -66,7 +66,6 @@ test('MCP discovers ten read-only schemas and calls them through the executor', 
       'jupiter_get_lending_positions',
       'jupiter_get_trigger_orders',
       'jupiter_quote_swap',
-      'jupiter_build_swap',
       'jupiter_get_swap_venues',
     ])
     for (const tool of tools) {
@@ -136,15 +135,6 @@ test('MCP discovers ten read-only schemas and calls them through the executor', 
         name: 'jupiter_quote_swap',
         arguments: { inputMint: sol, outputMint: usdc, amount: '1' },
       },
-      {
-        name: 'jupiter_build_swap',
-        arguments: {
-          inputMint: sol,
-          outputMint: usdc,
-          amount: '1',
-          wallet: sol,
-        },
-      },
       { name: 'jupiter_get_swap_venues', arguments: {} },
     ]
     for (const call of remaining) {
@@ -154,20 +144,6 @@ test('MCP discovers ten read-only schemas and calls them through the executor', 
         source: 'jupiter',
         network: 'mainnet-beta',
       })
-      if (call.name === 'jupiter_build_swap') {
-        expect(response.structuredContent).toMatchObject({
-          data: {
-            wallet: sol,
-            transaction:
-              'AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAAAQabiFf+q4GE+2h/Y0YYwDXaxDncGus7VZig8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==',
-            requestId: 'request-1',
-          },
-        })
-        expect(response.content[0]).toMatchObject({
-          type: 'text',
-          text: expect.stringContaining('Prepared unsigned swap'),
-        })
-      }
       expect(response.content).toContainEqual({
         type: 'text',
         text: JSON.stringify(response.structuredContent),

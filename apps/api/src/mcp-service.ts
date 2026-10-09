@@ -16,8 +16,8 @@ import {
 } from './mcp-grants'
 import type { ConsentInput, GrantIdentity } from './mcp-grants'
 import {
-  createTransactionLink,
-  transactionLinkStatus,
+  createTransactionRequest,
+  transactionStatus,
 } from './transactions/requests'
 import type { TransactionLinkEnv } from './transactions/requests'
 import { paymentConfig } from './solana/network'
@@ -145,16 +145,16 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
     return saveFeedback(this.env.DB, identity, feedback)
   }
 
-  async createTransactionLink(
+  async createTransactionRequest(
     identity: GrantIdentity,
     name: string,
     input: unknown,
   ) {
-    return createTransactionLink(this.env, identity, name, input)
+    return createTransactionRequest(this.env, identity, name, input)
   }
 
-  async transactionLinkStatus(identity: GrantIdentity, id: string) {
-    return transactionLinkStatus(this.env, identity, id)
+  async transactionStatus(identity: GrantIdentity, id: string) {
+    return transactionStatus(this.env, identity, id)
   }
 
   /** Runs any provider tool, recording it in the client's activity. */

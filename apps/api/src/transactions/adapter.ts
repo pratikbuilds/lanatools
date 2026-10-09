@@ -7,7 +7,7 @@ import type { TransactionRpc } from './submission'
 export { publicTransaction } from '@lanatools/toolkit/transactions'
 
 export type BuilderContext = TransactionContext & {
-  linkId: string
+  requestId: string
   rpc: TransactionRpc
   jupiterApiKey?: string | undefined
 }

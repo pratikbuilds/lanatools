@@ -82,7 +82,7 @@ export async function buildSolTransfer(
             destination: address(input.recipient),
             amount: BigInt(input.amountLamports),
           }),
-          getAddMemoInstruction({ memo: `lanatools:${context.linkId}` }),
+          getAddMemoInstruction({ memo: `lanatools:${context.requestId}` }),
         ],
         message,
       ),

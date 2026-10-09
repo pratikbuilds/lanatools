@@ -15,27 +15,19 @@ import {
   setTransactionMessageFeePayer,
   setTransactionMessageLifetimeUsingBlockhash,
 } from '@solana/kit'
-import {
-  JupiterClient,
-  jupiterBuildSwapTool,
-  jupiterTools,
-  readJupiter,
-} from './index'
+import { JupiterClient, jupiterSwapTool, jupiterTools } from './index'
 import type { JupiterClientOptions } from './index'
 
 const sol = 'So11111111111111111111111111111111111111112'
 const usdc = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
 const wallet = 'GkwFnmMDvn3HGMpJpWBg8tgJxr3NxNvg3AXxvXVPbRGJ'
-const request = {
-  tool: 'jupiter_build_swap',
-  input: {
-    inputMint: usdc,
-    outputMint: sol,
-    amount: '10.000001',
-    wallet,
-    maxSlippageBps: 50,
-    minOutputAmount: '0.12',
-  },
+const input = {
+  inputMint: usdc,
+  outputMint: sol,
+  amount: '10.000001',
+  wallet,
+  maxSlippageBps: 50,
+  minOutputAmount: '0.12',
 } as const
 
 function wire(signer = wallet, payer = signer, version: 0 | 'legacy' = 0) {
@@ -113,24 +105,17 @@ function reader(overrides: Record<string, unknown> = {}, decimals = 6) {
   return { client: new JupiterClient(options), calls, options }
 }
 
-test('the existing build tool owns the shared operation and selects its signer at execution', async () => {
-  expect(jupiterTools.find((tool) => tool.name === 'jupiter_build_swap')).toBe(
-    jupiterBuildSwapTool,
-  )
-  const operation = jupiterBuildSwapTool.transaction
-  const { wallet: _wallet, ...arguments_ } = request.input
+test('the swap tool owns the shared operation and selects its signer at execution', async () => {
+  expect(jupiterSwapTool.name).toBe('jupiter_swap')
+  expect(jupiterTools.map((tool) => tool.name)).not.toContain('jupiter_swap')
+  const operation = jupiterSwapTool.transaction
+  const { wallet: _wallet, ...arguments_ } = input
   expect(operation.supportedNetworks).toEqual(['mainnet'])
-  expect(operation.arguments.safeParse(request.input).success).toBe(false)
+  expect(operation.arguments.safeParse(input).success).toBe(false)
   expect(
     operation.arguments.safeParse({ ...arguments_, maxSlippageBps: undefined })
       .success,
   ).toBe(false)
-  expect(
-    jupiterBuildSwapTool.input.safeParse({
-      ...request.input,
-      maxSlippageBps: undefined,
-    }).success,
-  ).toBe(true)
   const { options, calls } = reader({ signatureFeePayer: wallet })
   const candidate = await operation.build(arguments_, wallet, {
     ...options,
@@ -153,7 +138,7 @@ test('the existing build tool owns the shared operation and selects its signer a
 })
 
 test('shared Jupiter operation rejects unsupported signing or expiry policies', async () => {
-  const { wallet: _wallet, ...arguments_ } = request.input
+  const { wallet: _wallet, ...arguments_ } = input
   for (const overrides of [
     { signatureFeePayer: usdc },
     { transaction: wire(wallet, usdc) },
@@ -163,7 +148,7 @@ test('shared Jupiter operation rejects unsupported signing or expiry policies', 
   ]) {
     const { options } = reader({ signatureFeePayer: wallet, ...overrides })
     await expect(
-      jupiterBuildSwapTool.transaction.build(arguments_, wallet, {
+      jupiterSwapTool.transaction.build(arguments_, wallet, {
         ...options,
         network: 'mainnet',
         blockHeight: async () => 100n,
@@ -172,28 +157,25 @@ test('shared Jupiter operation rejects unsupported signing or expiry policies', 
   }
 })
 
-test('link preparation excludes RFQ without changing the general build tool', async () => {
+test('swap preparation excludes RFQ routes', async () => {
   const { client, calls } = reader()
-  expect(await client.prepareSwap(request.input)).toMatchObject({
+  expect(await client.prepareSwap(input)).toMatchObject({
     ok: true,
     result: { data: { transaction, requestId: 'request-1' } },
   })
   expect(calls[1]!.searchParams.get('excludeRouters')).toBe('jupiterz')
   expect(
-    await reader({ router: 'jupiterz' }).client.prepareSwap(request.input),
+    await reader({ router: 'jupiterz' }).client.prepareSwap(input),
   ).toMatchObject({ ok: false, error: { code: 'upstream_unavailable' } })
   expect(
-    await reader({ router: 'jupiterz' }).client.read(request),
-  ).toMatchObject({ ok: true, result: { data: { router: 'jupiterz' } } })
-  expect(
-    await client.prepareSwap({ ...request.input, wallet: 'invalid' }),
+    await client.prepareSwap({ ...input, wallet: 'invalid' }),
   ).toMatchObject({ ok: false, error: { code: 'invalid_input' } })
   expect(calls).toHaveLength(2)
 })
 
 test('build uses the existing order API, exact units and original unsigned transaction', async () => {
   const { client, calls } = reader()
-  const outcome = await client.read(request)
+  const outcome = await client.prepareSwap(input)
   expect(outcome.ok).toBe(true)
   if (!outcome.ok) throw new Error(outcome.error.message)
   const data = outcome.result.data
@@ -218,6 +200,7 @@ test('build uses the existing order API, exact units and original unsigned trans
     slippageBps: '50',
     taker: wallet,
     maxSupportedTransactionVersion: '0',
+    excludeRouters: 'jupiterz',
   })
   expect(
     getTransactionDecoder().decode(getBase64Encoder().encode(transaction))
@@ -228,40 +211,6 @@ test('build uses the existing order API, exact units and original unsigned trans
   if (!('providerQuote' in data)) throw new Error('Missing quote data')
   expect(JSON.stringify(data.providerQuote)).not.toContain('transaction')
   expect(JSON.stringify(data.routePlan)).not.toContain('nested-payload')
-})
-
-test('RFQ and sponsored orders preserve metadata and other signatures without signing', async () => {
-  const sponsored = new Uint8Array(
-    getBase64Encoder().encode(wire(wallet, usdc)),
-  )
-  sponsored[1] = 1
-  const original = getBase64Decoder().decode(sponsored)
-  const outcome = await reader({
-    transaction: original,
-    router: 'jupiterz',
-    lastValidBlockHeight: null,
-    expireAt: '2026-10-08T12:34:56Z',
-    signatureFeePayer: usdc,
-  }).client.read(request)
-  expect(outcome).toMatchObject({
-    ok: true,
-    result: {
-      data: {
-        transaction: original,
-        router: 'jupiterz',
-        requestId: 'request-1',
-        lastValidBlockHeight: null,
-        expireAt: '2026-10-08T12:34:56Z',
-        fees: { signatureFeePayer: usdc },
-      },
-      warnings: expect.arrayContaining([
-        expect.stringContaining('market-maker signature'),
-      ]),
-    },
-  })
-  const decoded = getTransactionDecoder().decode(sponsored)
-  expect(decoded.signatures[address(wallet)]).toBeNull()
-  expect(decoded.signatures[address(usdc)]?.[0]).toBe(1)
 })
 
 test('build rejects unusable transaction, wallet and expiry responses without exposing provider bodies', async () => {
@@ -287,7 +236,7 @@ test('build rejects unusable transaction, wallet and expiry responses without ex
     { lastValidBlockHeight: '-1' },
     { expireAt: 'invalid' },
   ]) {
-    const outcome = await reader(overrides).client.read(request)
+    const outcome = await reader(overrides).client.prepareSwap(input)
     expect(outcome).toMatchObject({
       ok: false,
       error: { code: 'upstream_unavailable', retryable: false },
@@ -307,26 +256,24 @@ test('build enforces requested constraints, echoed inputs and exact amount preci
     { outputMint: usdc },
     { swapMode: 'ExactOut' },
   ])
-    expect(await reader(overrides).client.read(request)).toMatchObject({
+    expect(await reader(overrides).client.prepareSwap(input)).toMatchObject({
       ok: false,
     })
   for (const amount of ['10.0000001', '18446744073709551616']) {
     const { client, calls } = reader()
-    expect(
-      await client.read({ ...request, input: { ...request.input, amount } }),
-    ).toMatchObject({ ok: false, error: { code: 'invalid_input' } })
+    expect(await client.prepareSwap({ ...input, amount })).toMatchObject({
+      ok: false,
+      error: { code: 'invalid_input' },
+    })
     expect(calls).toHaveLength(1)
   }
   const { client, calls } = reader({ inAmount: '9007199254740993' }, 0)
   expect(
-    await client.read({
-      ...request,
-      input: {
-        inputMint: usdc,
-        outputMint: sol,
-        amount: '9007199254740993',
-        wallet,
-      },
+    await client.prepareSwap({
+      inputMint: usdc,
+      outputMint: sol,
+      amount: '9007199254740993',
+      wallet,
     }),
   ).toMatchObject({
     ok: true,
@@ -349,18 +296,19 @@ test('build input rejects wallet, network and execution overrides before fetchin
       return Response.json({})
     },
   }
-  for (const input of [
-    { ...request.input, wallet: 'invalid' },
-    { ...request.input, inputMint: sol },
-    { ...request.input, network: 'devnet' },
-    { ...request.input, rpcUrl: 'https://untrusted.example' },
-    { ...request.input, receiver: usdc },
-    { ...request.input, execution: 'embedded' },
-    { ...request.input, amount: '1e6' },
+  for (const each of [
+    { ...input, wallet: 'invalid' },
+    { ...input, inputMint: sol },
+    { ...input, network: 'devnet' },
+    { ...input, rpcUrl: 'https://untrusted.example' },
+    { ...input, receiver: usdc },
+    { ...input, execution: 'embedded' },
+    { ...input, amount: '1e6' },
   ])
-    expect(
-      await readJupiter(options, { tool: request.tool, input }),
-    ).toMatchObject({ ok: false, error: { code: 'invalid_input' } })
+    expect(await new JupiterClient(options).prepareSwap(each)).toMatchObject({
+      ok: false,
+      error: { code: 'invalid_input' },
+    })
   expect(calls).toBe(0)
 })
 
@@ -370,7 +318,7 @@ test('an order refusal returns a safe error instead of an empty transaction', as
     errorCode: 1,
     errorMessage: 'private provider diagnostic',
     transaction: '',
-  }).client.read(request)
+  }).client.prepareSwap(input)
   expect(outcome).toMatchObject({
     ok: false,
     error: { code: 'no_route', retryable: false },

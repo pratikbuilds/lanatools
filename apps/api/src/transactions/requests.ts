@@ -13,13 +13,18 @@ import type { ChainObservation, TransactionRpc } from './submission'
 import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
 import type {
-  CreatedTransactionLink,
+  TransactionDelivery,
   TransactionLink,
+  TransactionResult,
 } from '@lanatools/contracts'
-import { mcpGrant, transactionLink } from '../db/schema'
+import { mcpGrant, transactionRequest } from '../db/schema'
 import { authorizeGrant } from '../mcp-grants'
 import type { GrantIdentity } from '../mcp-grants'
-import { transactionOperation, idempotencyKey as RequestKey } from './tools'
+import {
+  transactionOperation,
+  transactionScope,
+  idempotencyKey as RequestKey,
+} from './tools'
 import { publicTransaction } from './adapter'
 import type { TransactionRegistry } from './tools'
 
@@ -33,10 +38,12 @@ export type TransactionLinkEnv = {
 
 const ERRORS = {
   unauthorized: 'This client is not connected. Reconnect it in LanaTools.',
+  insufficient_scope:
+    'This client is not allowed to use this transaction tool. The user can allow it in LanaTools.',
   invalid_input: 'Invalid transaction tool or arguments.',
   conflict: 'This request key already belongs to a different transaction.',
-  not_found: 'Transaction link not found.',
-  unavailable: 'Transaction links are temporarily unavailable.',
+  not_found: 'Transaction not found.',
+  unavailable: 'Transactions are temporarily unavailable.',
   preparing: 'This link is being prepared. Try again shortly.',
   transaction_expired:
     'This signing session timed out. Sign again to continue.',
@@ -83,24 +90,53 @@ function configuration(env: TransactionLinkEnv) {
   return { network, webOrigin: origin.origin }
 }
 
-export async function createTransactionLink(
+/** What the agent sees: the shared result for any tool and delivery mode. */
+function toResult(
+  link: TransactionLink,
+  delivery: TransactionDelivery,
+  webOrigin: string,
+): TransactionResult {
+  return {
+    id: link.id,
+    tool: link.tool,
+    network: link.network,
+    delivery,
+    status: link.status,
+    review: link.review,
+    ...(delivery === 'link' ? { reviewUrl: `${webOrigin}/tx/${link.id}` } : {}),
+    signature: link.signature,
+    receipt: link.receipt,
+    expiresAt: link.expiresAt,
+  }
+}
+
+const RequestEnvelope = z.looseObject({
+  delivery: z.literal('link'),
+  idempotencyKey: RequestKey,
+})
+
+export async function createTransactionRequest(
   env: TransactionLinkEnv,
   identity: GrantIdentity,
   name: string,
   input: unknown,
   now = Date.now(),
   tools?: TransactionRegistry,
-): Promise<TransactionLinkOutcome<CreatedTransactionLink>> {
+): Promise<TransactionLinkOutcome<TransactionResult>> {
   try {
-    if ((await authorizeGrant(env.DB, identity, null, now)) !== 'active')
-      return failed('unauthorized')
     const tool = transactionOperation(name, tools)
+    const access = await authorizeGrant(
+      env.DB,
+      identity,
+      transactionScope(name),
+      now,
+    )
+    if (access === 'revoked') return failed('unauthorized')
+    if (access === 'insufficient_scope') return failed('insufficient_scope')
     if (!tool) return failed('invalid_input')
-    const envelope = z
-      .looseObject({ idempotencyKey: RequestKey })
-      .safeParse(input)
+    const envelope = RequestEnvelope.safeParse(input)
     if (!envelope.success) return failed('invalid_input')
-    const { idempotencyKey, ...rawArguments } = envelope.data
+    const { delivery, idempotencyKey, ...rawArguments } = envelope.data
     const parsed = tool.arguments.safeParse(rawArguments)
     if (!parsed.success) return failed('invalid_input')
     const args = parsed.data
@@ -115,13 +151,13 @@ export async function createTransactionLink(
     // The insert checks the grant again atomically so concurrent revocation
     // cannot create a usable new intent after authorization was read.
     await db.run(sql`
-      insert into transaction_link
+      insert into transaction_request
         (id, tool_name, arguments_json, network, creator_user_id,
-         creator_client_id, creator_grant_id, idempotency_key,
+         creator_client_id, creator_grant_id, idempotency_key, delivery,
          created_at, updated_at, expires_at)
       select ${crypto.randomUUID()}, ${name}, ${argumentsJson}, ${config.network},
         ${identity.userId}, ${identity.clientId}, ${identity.grantId}, ${idempotencyKey},
-        ${now}, ${now}, ${now + 15 * 60_000}
+        ${delivery}, ${now}, ${now}, ${now + 15 * 60_000}
       from mcp_grant where id = ${identity.grantId}
         and privy_user_id = ${identity.userId} and client_id = ${identity.clientId}
         and status = 'active'
@@ -129,12 +165,12 @@ export async function createTransactionLink(
     `)
     const row = await db
       .select()
-      .from(transactionLink)
+      .from(transactionRequest)
       .where(
         and(
-          eq(transactionLink.creatorUserId, identity.userId),
-          eq(transactionLink.creatorClientId, identity.clientId),
-          eq(transactionLink.idempotencyKey, idempotencyKey),
+          eq(transactionRequest.creatorUserId, identity.userId),
+          eq(transactionRequest.creatorClientId, identity.clientId),
+          eq(transactionRequest.idempotencyKey, idempotencyKey),
         ),
       )
       .get()
@@ -147,19 +183,13 @@ export async function createTransactionLink(
     if (
       row.toolName !== name ||
       row.argumentsJson !== argumentsJson ||
-      row.network !== config.network
+      row.network !== config.network ||
+      row.delivery !== delivery
     )
       return failed('conflict')
-    return {
-      ok: true,
-      result: {
-        linkId: row.id,
-        reviewUrl: `${config.webOrigin}/tx/${row.id}`,
-        network: row.network,
-        review: tool.describe(args),
-        expiresAt: row.expiresAt,
-      },
-    }
+    const link = await readTransactionLink(env.DB, row.id, now, tools)
+    if (!link) return failed('unavailable')
+    return { ok: true, result: toResult(link, row.delivery, config.webOrigin) }
   } catch {
     return failed('unavailable')
   }
@@ -175,8 +205,8 @@ export async function readTransactionLink(
   const db = drizzle(database)
   const row = await db
     .select()
-    .from(transactionLink)
-    .where(eq(transactionLink.id, id))
+    .from(transactionRequest)
+    .where(eq(transactionRequest.id, id))
     .get()
   if (!row) return null
   const tool = transactionOperation(row.toolName, tools)
@@ -232,29 +262,34 @@ export async function readTransactionLink(
   }
 }
 
-export async function transactionLinkStatus(
+export async function transactionStatus(
   env: TransactionExecutionEnv,
   identity: GrantIdentity,
   id: string,
   options: ExecutionOptions = {},
-): Promise<TransactionLinkOutcome<TransactionLink>> {
+): Promise<TransactionLinkOutcome<TransactionResult>> {
   try {
     if ((await authorizeGrant(env.DB, identity, null)) !== 'active')
       return failed('unauthorized')
     const owned = await drizzle(env.DB)
-      .select({ id: transactionLink.id })
-      .from(transactionLink)
+      .select({ delivery: transactionRequest.delivery })
+      .from(transactionRequest)
       .where(
         and(
-          eq(transactionLink.id, id),
-          eq(transactionLink.creatorUserId, identity.userId),
-          eq(transactionLink.creatorClientId, identity.clientId),
+          eq(transactionRequest.id, id),
+          eq(transactionRequest.creatorUserId, identity.userId),
+          eq(transactionRequest.creatorClientId, identity.clientId),
         ),
       )
       .get()
     if (!owned) return failed('not_found')
-    const result = await observeTransactionLink(env, id, options)
-    return result ? { ok: true, result } : failed('not_found')
+    const link = await observeTransactionLink(env, id, options)
+    return link
+      ? {
+          ok: true,
+          result: toResult(link, owned.delivery, configuration(env).webOrigin),
+        }
+      : failed('not_found')
   } catch {
     return failed('unavailable')
   }
@@ -282,21 +317,21 @@ export const SendTransactionInput = z.strictObject({
 })
 
 const liveGrant = sql`exists (select 1 from mcp_grant
-  where mcp_grant.id = transaction_link.creator_grant_id
-  and mcp_grant.privy_user_id = transaction_link.creator_user_id
-  and mcp_grant.client_id = transaction_link.creator_client_id
+  where mcp_grant.id = transaction_request.creator_grant_id
+  and mcp_grant.privy_user_id = transaction_request.creator_user_id
+  and mcp_grant.client_id = transaction_request.creator_client_id
   and mcp_grant.status = 'active')`
 
 async function storedLink(database: D1Database, id: string) {
   return drizzle(database)
     .select()
-    .from(transactionLink)
-    .where(eq(transactionLink.id, id))
+    .from(transactionRequest)
+    .where(eq(transactionRequest.id, id))
     .get()
 }
 
 function preparationLeaseExpired(
-  row: typeof transactionLink.$inferSelect,
+  row: typeof transactionRequest.$inferSelect,
   now: number,
 ) {
   return (
@@ -306,7 +341,7 @@ function preparationLeaseExpired(
   )
 }
 
-function isLegacyBlockhashExpiry(row: typeof transactionLink.$inferSelect) {
+function isLegacyBlockhashExpiry(row: typeof transactionRequest.$inferSelect) {
   return row.status === 'expired' && row.errorCode === 'blockhash_expired'
 }
 
@@ -318,7 +353,7 @@ async function persistObservation(
   now: number,
 ) {
   await drizzle(database)
-    .update(transactionLink)
+    .update(transactionRequest)
     .set({
       status: observed.status,
       receiptJson: observed.receipt ? JSON.stringify(observed.receipt) : null,
@@ -332,9 +367,9 @@ async function persistObservation(
     })
     .where(
       and(
-        eq(transactionLink.id, id),
-        eq(transactionLink.signature, signature),
-        sql`${transactionLink.status} in ('submitting', 'unknown')`,
+        eq(transactionRequest.id, id),
+        eq(transactionRequest.signature, signature),
+        sql`${transactionRequest.status} in ('submitting', 'unknown')`,
       ),
     )
     .run()
@@ -379,7 +414,7 @@ export async function observeTransactionLink(
       const height = await rpc.blockHeight('finalized').catch(() => null)
       if (height !== null && height > BigInt(candidate.lastValidBlockHeight))
         await drizzle(env.DB)
-          .update(transactionLink)
+          .update(transactionRequest)
           .set({
             status: 'transaction_expired',
             errorCode: 'blockhash_expired',
@@ -387,10 +422,10 @@ export async function observeTransactionLink(
           })
           .where(
             and(
-              eq(transactionLink.id, id),
-              eq(transactionLink.status, 'ready'),
-              eq(transactionLink.revision, row.revision),
-              sql`${transactionLink.signature} is null`,
+              eq(transactionRequest.id, id),
+              eq(transactionRequest.status, 'ready'),
+              eq(transactionRequest.revision, row.revision),
+              sql`${transactionRequest.signature} is null`,
             ),
           )
           .run()
@@ -460,7 +495,7 @@ export async function prepareTransactionLink(
     }
     const db = drizzle(env.DB)
     const [reserved] = await db
-      .update(transactionLink)
+      .update(transactionRequest)
       .set({
         status: 'preparing',
         account: parsed.data.account,
@@ -470,15 +505,15 @@ export async function prepareTransactionLink(
       })
       .where(
         and(
-          eq(transactionLink.id, id),
-          eq(transactionLink.revision, row.revision),
-          eq(transactionLink.status, row.status),
-          sql`${transactionLink.signature} is null`,
-          sql`${transactionLink.expiresAt} > ${now}`,
+          eq(transactionRequest.id, id),
+          eq(transactionRequest.revision, row.revision),
+          eq(transactionRequest.status, row.status),
+          sql`${transactionRequest.signature} is null`,
+          sql`${transactionRequest.expiresAt} > ${now}`,
           liveGrant,
         ),
       )
-      .returning({ revision: transactionLink.revision })
+      .returning({ revision: transactionRequest.revision })
     if (!reserved) {
       const current = await storedLink(env.DB, id)
       return failed(current?.signature ? 'closed' : 'preparing')
@@ -491,7 +526,7 @@ export async function prepareTransactionLink(
     if (!tool.supportedNetworks.includes(config.network))
       throw new Error('Unsupported network')
     const candidate = await tool.build(args, parsed.data.account, {
-      linkId: id,
+      requestId: id,
       network: config.network,
       rpc,
       jupiterApiKey: env.JUPITER_API_KEY,
@@ -509,7 +544,7 @@ export async function prepareTransactionLink(
       throw new Error('Builder returned an expired transaction')
     const completedAt = options.now ?? Date.now()
     const [persisted] = await db
-      .update(transactionLink)
+      .update(transactionRequest)
       .set({
         candidateJson: JSON.stringify(candidate),
         status: 'ready',
@@ -519,23 +554,23 @@ export async function prepareTransactionLink(
       })
       .where(
         and(
-          eq(transactionLink.id, id),
-          eq(transactionLink.revision, reservation),
-          eq(transactionLink.status, 'preparing'),
-          sql`${transactionLink.signature} is null`,
-          sql`${transactionLink.updatedAt} > ${completedAt - PREPARATION_LEASE_MS}`,
+          eq(transactionRequest.id, id),
+          eq(transactionRequest.revision, reservation),
+          eq(transactionRequest.status, 'preparing'),
+          sql`${transactionRequest.signature} is null`,
+          sql`${transactionRequest.updatedAt} > ${completedAt - PREPARATION_LEASE_MS}`,
           liveGrant,
-          sql`${transactionLink.expiresAt} > ${completedAt}`,
+          sql`${transactionRequest.expiresAt} > ${completedAt}`,
         ),
       )
-      .returning({ id: transactionLink.id })
+      .returning({ id: transactionRequest.id })
     if (!persisted) throw new Error('Reservation no longer valid')
     return { ok: true, result: publicTransaction(candidate) }
   } catch {
     if (reservation !== undefined) {
       // A failed renewal retains the old candidate and its wallet; every cleanup is fenced.
       await drizzle(env.DB)
-        .update(transactionLink)
+        .update(transactionRequest)
         .set({
           status: renewing ? 'transaction_expired' : 'open',
           account: renewing ? parsed.data.account : null,
@@ -544,10 +579,10 @@ export async function prepareTransactionLink(
         })
         .where(
           and(
-            eq(transactionLink.id, id),
-            eq(transactionLink.revision, reservation),
-            eq(transactionLink.status, 'preparing'),
-            sql`${transactionLink.signature} is null`,
+            eq(transactionRequest.id, id),
+            eq(transactionRequest.revision, reservation),
+            eq(transactionRequest.status, 'preparing'),
+            sql`${transactionRequest.signature} is null`,
           ),
         )
         .run()
@@ -613,7 +648,7 @@ export async function sendTransactionLink(
     if (!tool || !tool.supportedNetworks.includes(config.network))
       return failed('unavailable')
     const relay = tool.relay(JSON.parse(row.candidateJson), {
-      linkId: id,
+      requestId: id,
       network: config.network,
       rpc,
       jupiterApiKey: env.JUPITER_API_KEY,
@@ -650,7 +685,7 @@ export async function sendTransactionLink(
             'This signing session is ending. Retry shortly to check its final status.',
           )
         await db
-          .update(transactionLink)
+          .update(transactionRequest)
           .set({
             status: 'transaction_expired',
             errorCode: 'blockhash_expired',
@@ -658,10 +693,10 @@ export async function sendTransactionLink(
           })
           .where(
             and(
-              eq(transactionLink.id, id),
-              eq(transactionLink.status, 'ready'),
-              eq(transactionLink.revision, row.revision),
-              sql`${transactionLink.signature} is null`,
+              eq(transactionRequest.id, id),
+              eq(transactionRequest.status, 'ready'),
+              eq(transactionRequest.revision, row.revision),
+              sql`${transactionRequest.signature} is null`,
             ),
           )
           .run()
@@ -689,7 +724,7 @@ export async function sendTransactionLink(
       }
       const now = options.now ?? Date.now()
       const [accepted] = await db
-        .update(transactionLink)
+        .update(transactionRequest)
         .set({
           signature: extracted,
           status: 'submitting',
@@ -698,15 +733,15 @@ export async function sendTransactionLink(
         })
         .where(
           and(
-            eq(transactionLink.id, id),
-            eq(transactionLink.revision, row.revision),
-            eq(transactionLink.status, 'ready'),
-            sql`${transactionLink.signature} is null`,
+            eq(transactionRequest.id, id),
+            eq(transactionRequest.revision, row.revision),
+            eq(transactionRequest.status, 'ready'),
+            sql`${transactionRequest.signature} is null`,
             liveGrant,
-            sql`${transactionLink.expiresAt} > ${now}`,
+            sql`${transactionRequest.expiresAt} > ${now}`,
           ),
         )
-        .returning({ signature: transactionLink.signature })
+        .returning({ signature: transactionRequest.signature })
       if (!accepted) {
         const current = await storedLink(env.DB, id)
         if (!current?.signature) {
@@ -731,15 +766,15 @@ export async function sendTransactionLink(
     // Recheck closure after acceptance. A revoked/expired link can still be observed,
     // but cannot authorize another relay of the caller's retained payload.
     const relayAllowed = await db
-      .select({ id: transactionLink.id })
-      .from(transactionLink)
+      .select({ id: transactionRequest.id })
+      .from(transactionRequest)
       .where(
         and(
-          eq(transactionLink.id, id),
-          eq(transactionLink.signature, extracted),
-          sql`${transactionLink.status} in ('submitting', 'unknown')`,
+          eq(transactionRequest.id, id),
+          eq(transactionRequest.signature, extracted),
+          sql`${transactionRequest.status} in ('submitting', 'unknown')`,
           liveGrant,
-          sql`${transactionLink.expiresAt} > ${options.now ?? Date.now()}`,
+          sql`${transactionRequest.expiresAt} > ${options.now ?? Date.now()}`,
         ),
       )
       .get()
