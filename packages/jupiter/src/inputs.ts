@@ -122,12 +122,19 @@ export const QuoteSwapInput = z
     (input) => input.inputMint !== input.outputMint,
     'Input and output mints must differ',
   )
+export const BuildSwapInput = QuoteSwapInput.safeExtend({
+  wallet: z
+    .string()
+    .trim()
+    .refine((value) => isAddress(value), 'Expected a Solana wallet address'),
+}).strict()
 export const SwapVenuesInput = z.object({})
 export type PortfolioInput = z.input<typeof PortfolioInput>
 export type LendingMarketsInput = z.input<typeof LendingMarketsInput>
 export type LendingPositionsInput = z.input<typeof LendingPositionsInput>
 export type TriggerOrdersInput = z.input<typeof TriggerOrdersInput>
 export type QuoteSwapInput = z.input<typeof QuoteSwapInput>
+export type BuildSwapInput = z.input<typeof BuildSwapInput>
 export const JupiterRequest = z.discriminatedUnion('tool', [
   z.object({
     tool: z.literal('jupiter_search_tokens'),
@@ -152,6 +159,7 @@ export const JupiterRequest = z.discriminatedUnion('tool', [
     input: TriggerOrdersInput,
   }),
   z.object({ tool: z.literal('jupiter_quote_swap'), input: QuoteSwapInput }),
+  z.object({ tool: z.literal('jupiter_build_swap'), input: BuildSwapInput }),
   z.object({
     tool: z.literal('jupiter_get_swap_venues'),
     input: SwapVenuesInput,

@@ -89,8 +89,8 @@ function Header() {
               Tools
             </a>
           </nav>
-          <a href="#early-access" className="btn btn-sm btn-primary">
-            Get early access
+          <a href="/sign-in" className="btn btn-sm btn-primary">
+            Sign in
           </a>
         </div>
       </div>
@@ -129,9 +129,19 @@ function Hero() {
               You set the permissions and one limit for each agent.
             </p>
           </div>
-          <div className="mt-8">
-            <EarlyAccess tone="blue" />
-          </div>
+          {/* .btn is unlayered CSS, so size overrides need !important. */}
+          <a
+            href="/sign-in"
+            className="btn btn-primary group mt-8 h-14! gap-3! px-7! text-[16px]! max-sm:w-full"
+          >
+            Connect your agents
+            <span
+              aria-hidden="true"
+              className="transition-transform duration-200 ease-(--ease-out) group-hover:translate-x-1"
+            >
+              →
+            </span>
+          </a>
         </div>
         <div className="mx-auto w-full max-w-[560px]">
           <WalletFan />
@@ -249,10 +259,10 @@ export function Home() {
               <UrlBox />
             </Reveal>
             <Reveal className="mt-14" delay={0.25}>
-              <div id="early-access" className="scroll-mt-24">
-                <p className="eyebrow text-mute">early access</p>
+              <div id="updates" className="scroll-mt-24">
+                <p className="eyebrow text-mute">updates</p>
                 <h3 className="title mt-3 text-[clamp(1.3rem,2.4vw,1.7rem)]">
-                  Be first to put your agents to work on Solana.
+                  Follow what we&rsquo;re building.
                 </h3>
                 <div className="mt-6">
                   <EarlyAccess tone="paper" />

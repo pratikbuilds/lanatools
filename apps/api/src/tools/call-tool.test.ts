@@ -498,7 +498,7 @@ test('Jupiter and Phoenix calls are recorded in activity like Helius', async () 
   ])
 })
 
-test('all nine tools execute through the API grant boundary and revocation blocks every dispatch', async () => {
+test('all ten Jupiter tools run through the API grant boundary and revocation blocks every dispatch', async () => {
   const sol = 'So11111111111111111111111111111111111111112'
   const usdc = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
   const requests = [
@@ -523,6 +523,10 @@ test('all nine tools execute through the API grant boundary and revocation block
       tool: 'jupiter_quote_swap',
       input: { inputMint: sol, outputMint: usdc, amount: '1' },
     },
+    {
+      tool: 'jupiter_build_swap',
+      input: { inputMint: sol, outputMint: usdc, amount: '1', wallet: sol },
+    },
     { tool: 'jupiter_get_swap_venues', input: {} },
   ]
   let calls = 0
@@ -540,6 +544,12 @@ test('all nine tools execute through the API grant boundary and revocation block
         outputMint: usdc,
         inAmount: '1000000000',
         outAmount: '100000000',
+        taker: new URL(url).searchParams.get('taker'),
+        transaction:
+          'AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAAAQabiFf+q4GE+2h/Y0YYwDXaxDncGus7VZig8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==',
+        requestId: 'request-1',
+        router: 'metis',
+        lastValidBlockHeight: '123',
       })
     if (path.includes('getTriggerOrders')) return Response.json({ orders: [] })
     if (path === '/price/v3' || path === '/swap/v2/program-id-to-label')
@@ -552,7 +562,7 @@ test('all nine tools execute through the API grant boundary and revocation block
       await callTool(served(fetcher), grant, call.tool, call.input),
     ).toMatchObject({ ok: true, result: { source: 'jupiter' } })
   const successfulCalls = calls
-  expect(successfulCalls).toBe(10)
+  expect(successfulCalls).toBe(12)
   await revokeGrant(db, grant.userId, grant.grantId)
   for (const call of requests)
     expect(
