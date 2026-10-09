@@ -15,7 +15,6 @@ import { ChargeRefusedError, parseFixedCharge } from './challenge'
 import type { FixedCharge, Protocol } from './challenge'
 import {
   enabledSigner,
-  markUncertain,
   openReservations,
   recordCall,
   NoLongerOpenError,
@@ -41,13 +40,12 @@ import {
   asPayKitSigner,
   privyPaymentSigner,
 } from './privy-signer'
-import { findPayment, receiptSignature, verifySettlement } from './settlement'
-import type { ChainOutcome, Settlement } from './settlement'
+import { receiptSignature, refusalDetails } from './settlement'
 
 // Pay Kit probes again, then sends the paid request; both share this budget.
 const PAYMENT_TIMEOUT_MS = 45_000
-// Longer than any `call` tool call (45 s to pay, 60 s to finalize), so a
-// reservation this old belongs to a call that has ended.
+// Longer than any `call` tool call (45 s to pay), so a reservation this old
+// belongs to a call that has ended.
 const RECONCILE_AFTER_MS = 5 * 60_000
 
 export type PayHttpInput = OutboundInput & {
@@ -61,13 +59,12 @@ export type PayHttpResult = ResponseBody & {
   status: number
   contentType: string | null
   payment: {
-    state: 'paid' | 'uncertain'
+    state: 'paid'
     protocol: Protocol
     network: string
     mint: string
     amountAtomic: string
     signature: string | null
-    note?: string
   } | null
 }
 
@@ -92,12 +89,6 @@ export type PayHttpDeps = {
   /** Makes the payer for the user's wallet. */
   payer: (wallet: { walletId: string; walletAddress: string }) => Payer
   fetch?: typeof fetch
-  verify?: (
-    signature: string,
-    charge: FixedCharge,
-    payer: string,
-  ) => Promise<Settlement>
-  lookup?: (query: Parameters<typeof findPayment>[1]) => Promise<ChainOutcome>
 }
 
 /**
@@ -170,7 +161,7 @@ export async function payHttp(
   }
   await unpaid.body?.cancel().catch(() => undefined)
 
-  const { network, rpcUrl } = await deps.config()
+  const { network } = await deps.config()
   let charge: FixedCharge
   try {
     charge = parseFixedCharge(unpaid, input.protocol, network)
@@ -191,7 +182,7 @@ export async function payHttp(
       'Payments are not set up for your wallet. Set them up in the LanaTools dashboard.',
       { charge, httpStatus: 402 },
     )
-  await reconcile(deps, identity, rpcUrl)
+  await failEndedCalls(deps.db, identity)
 
   // Nothing is signed before this reservation succeeds.
   const activityId = await reserve(
@@ -244,26 +235,45 @@ export async function payHttp(
       },
     })
   } catch (error) {
+    // Once signing began, a call that ends without an answer may have paid,
+    // but only the endpoint's answer counts: it is recorded as failed.
     const refusal = provenUnsigned(error, progress.signing)
-    if (refusal) {
-      await release(deps.db, activityId, refusal)
-      throw new PayHttpError(refusal)
-    }
     const message =
-      'The payment may have been sent, but its outcome is unknown. It stays reserved against your limit until LanaTools resolves it on chain. Do not repeat this request.'
-    await markUncertain(deps.db, activityId, errorText(error))
+      refusal ??
+      'The endpoint did not answer after the payment was signed, so it may have charged the wallet. The call is not counted against your limit; check the wallet before repeating it.'
+    await release(deps.db, activityId, {
+      status: 'failed',
+      error: refusal ?? `${message} (${errorText(error)})`,
+    })
     throw new PayHttpError(message)
   }
 
   if (!progress.signing) {
     // Pay Kit's own probe was not a 402, so it returned without paying.
-    await release(
-      deps.db,
-      activityId,
-      'The endpoint did not ask for payment again',
-      paid.status,
-    )
+    await release(deps.db, activityId, {
+      status: 'free',
+      httpStatus: paid.status,
+    })
     return unpaidResult(paid)
+  }
+
+  // The endpoint's answer decides the payment: it served the call, so it
+  // was paid, or it did not, so it failed.
+  if (!paid.ok) {
+    await paid.body?.cancel().catch(() => undefined)
+    const { reason, requestId } = refusalDetails(paid)
+    const message = [
+      `The endpoint answered ${paid.status} after the payment was signed`,
+      reason ? `: ${reason}` : '',
+      '. The call is not counted against your limit.',
+      requestId ? ` Its request ID is ${requestId}.` : '',
+    ].join('')
+    await release(deps.db, activityId, {
+      status: 'failed',
+      error: message,
+      httpStatus: paid.status,
+    })
+    throw new PayHttpError(message)
   }
 
   // The payment is already made, so a body that cannot be read is not an error.
@@ -272,104 +282,42 @@ export async function payHttp(
     bodyEncoding: 'text',
   }))
   const signature = receiptSignature(paid, charge.protocol)
-  const settlement: Settlement = signature
-    ? await (deps.verify ?? ((s, c, p) => verifySettlement(rpcUrl, s, c, p)))(
-        signature,
-        charge,
-        signer.walletAddress,
-      ).catch(
-        () =>
-          ({
-            status: 'unconfirmed',
-            reason: 'Could not verify the transaction',
-          }) as const,
-      )
-    : {
-        status: 'unconfirmed',
-        reason: 'The endpoint returned no payment receipt',
-      }
-  if (settlement.status === 'paid' && signature)
-    await settle(deps.db, activityId, charge.amount, signature, paid.status)
-  else
-    await markUncertain(
-      deps.db,
-      activityId,
-      settlement.status === 'unconfirmed' ? settlement.reason : 'Unverified',
-      { signature, httpStatus: paid.status },
-    )
+  await settle(deps.db, activityId, charge.amount, signature, paid.status)
 
   return {
     status: paid.status,
     contentType: paid.headers.get('content-type'),
     ...body,
     payment: {
-      state: settlement.status === 'paid' ? 'paid' : 'uncertain',
+      state: 'paid',
       protocol: charge.protocol,
       network: charge.network,
       mint: charge.mint,
       amountAtomic: String(charge.amount),
       signature,
-      ...(settlement.status === 'unconfirmed'
-        ? {
-            note: `${settlement.reason}. The charge stays reserved against your limit until LanaTools resolves it on chain; do not repeat this request.`,
-          }
-        : {}),
     },
   }
 }
 
 /**
- * Resolves the client's reservations whose calls have ended, so a call cut
- * off midway does not hold the limit forever. A row without a recorded
- * transaction was never signed and is released. A signed row is settled or
- * released only once the chain proves where its transaction ended up, in
- * the history of the wallet that signed it.
+ * Closes the client's reservations whose calls have ended without closing
+ * them, such as a Worker stopped midway, so they do not hold the limit.
  */
-async function reconcile(
-  deps: PayHttpDeps,
-  identity: GrantIdentity,
-  rpcUrl: string,
-) {
-  const lookup = deps.lookup ?? ((query) => findPayment(rpcUrl, query))
+async function failEndedCalls(database: D1Database, identity: GrantIdentity) {
   for (const row of await openReservations(
-    deps.db,
+    database,
     identity,
     Date.now() - RECONCILE_AFTER_MS,
-  )) {
-    if (
-      !row.payerWallet ||
-      !row.payerSignature ||
-      !row.blockhash ||
-      !row.mint
-    ) {
-      await resolved(
-        release(deps.db, row.id, 'The call ended before anything was signed'),
-      )
-      continue
-    }
-    const outcome = await lookup({
-      wallet: row.payerWallet,
-      payerSignature: row.payerSignature,
-      blockhash: row.blockhash,
-      mint: row.mint,
-      since: row.createdAt,
-    }).catch((): ChainOutcome => ({ status: 'pending' }))
-    if (outcome.status === 'paid')
-      await resolved(
-        settle(deps.db, row.id, outcome.spentAtomic, outcome.signature),
-      )
-    else if (outcome.status === 'unpaid')
-      await resolved(
-        release(deps.db, row.id, 'The signed payment never landed on chain'),
-      )
-  }
-}
-
-/** Another call reconciling the same row may have resolved it first. */
-async function resolved(transition: Promise<void>) {
-  await transition.catch((error: unknown) => {
-    if (!(error instanceof NoLongerOpenError)) throw error
-  })
+  ))
+    await release(database, row.id, {
+      status: 'failed',
+      error: row.payerSignature
+        ? 'The call ended after the payment was signed, so it may have charged the wallet'
+        : 'The call ended before anything was signed',
+    }).catch((error: unknown) => {
+      // Another call may have closed the same row first.
+      if (!(error instanceof NoLongerOpenError)) throw error
+    })
 }
 
 class ChargeChangedError extends Error {

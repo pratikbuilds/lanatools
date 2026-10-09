@@ -5,7 +5,7 @@ import { drizzle } from 'drizzle-orm/d1'
 import { eq } from 'drizzle-orm'
 import { mcpGrant, paymentActivity, paymentSigner } from '../db/schema'
 import { listClients } from '../mcp-grants'
-import { reserve } from './ledger'
+import { recordSigning, reserve } from './ledger'
 import { testDatabase } from '../test-database'
 import { PayHttpError, payHttp } from './pay-http'
 import type { Payer, PayHttpDeps, PayHttpInput } from './pay-http'
@@ -144,7 +144,6 @@ function deps(overrides: Partial<PayHttpDeps> = {}): PayHttpDeps {
     config: async () => ({ network: DEVNET, rpcUrl: 'https://rpc.invalid' }),
     payer: () => fakePayer(),
     fetch: mock(async () => x402Response()) as unknown as typeof fetch,
-    verify: async () => ({ status: 'paid' }),
     ...overrides,
   }
 }
@@ -360,7 +359,7 @@ test('refuses headers outside the allowlist', async () => {
   ).rejects.toThrow('Header Authorization is not allowed')
 })
 
-test('a Privy policy denial releases the reservation', async () => {
+test('a Privy policy denial fails the call and frees its reservation', async () => {
   const grant = await connectClient(50_000)
   await enableSigner()
   const payer: Payer = async ({ onProgress }) => {
@@ -378,11 +377,11 @@ test('a Privy policy denial releases the reservation', async () => {
   await expect(
     payHttp(deps({ payer: () => payer }), grant, input()),
   ).rejects.toThrow('wallet policy refused')
-  expect((await activity()).map((a) => a.status)).toEqual(['released'])
+  expect((await activity()).map((a) => a.status)).toEqual(['failed'])
   expect(await totals()).toEqual({ spent: 0, reserved: 0 })
 })
 
-test('a Pay Kit permission denial releases the reservation', async () => {
+test('a Pay Kit permission denial frees the reservation', async () => {
   const grant = await connectClient(50_000)
   await enableSigner()
   const payer: Payer = async () => {
@@ -414,10 +413,10 @@ test('a charge that changes before payment is refused unsigned', async () => {
     payHttp(deps({ payer: () => payer }), grant, input()),
   ).rejects.toThrow('payment request changed')
   expect(signed).toBe(false)
-  expect((await activity()).map((a) => a.status)).toEqual(['released'])
+  expect((await activity()).map((a) => a.status)).toEqual(['failed'])
 })
 
-test('a lost response after signing stays reserved and is never repeated', async () => {
+test('a lost response after signing fails and says the wallet may be charged', async () => {
   const grant = await connectClient(15_000)
   await enableSigner()
   const payer = mock(() =>
@@ -426,19 +425,18 @@ test('a lost response after signing stays reserved and is never repeated', async
     }),
   )
   await expect(payHttp(deps({ payer }), grant, input())).rejects.toThrow(
-    'Do not repeat this request',
+    'may have charged the wallet',
   )
-  expect(payer).toHaveBeenCalledTimes(1)
-  expect((await activity()).map((a) => a.status)).toEqual(['uncertain'])
-  expect(await totals()).toEqual({ spent: 0, reserved: 10_000 })
-  // The held reservation still counts: a second charge would overspend.
-  await expect(payHttp(deps({ payer }), grant, input())).rejects.toThrow(
-    'remaining limit of $0.005',
-  )
-  expect(payer).toHaveBeenCalledTimes(1)
+  const [row] = await activity()
+  expect(row).toMatchObject({
+    status: 'failed',
+    payerSignature: PAYER_SIGNATURE,
+  })
+  expect(row?.error).toContain('Network connection lost')
+  expect(await totals()).toEqual({ spent: 0, reserved: 0 })
 })
 
-test('a paid response without a verifiable receipt stays uncertain', async () => {
+test('a served call without a receipt is paid', async () => {
   const grant = await connectClient(50_000)
   await enableSigner()
   const result = await payHttp(
@@ -446,25 +444,58 @@ test('a paid response without a verifiable receipt stays uncertain', async () =>
     grant,
     input(),
   )
-  expect(result.payment).toMatchObject({ state: 'uncertain', signature: null })
-  expect(result.payment?.note).toContain('do not repeat')
-  expect(await totals()).toEqual({ spent: 0, reserved: 10_000 })
-
-  const unverified = await payHttp(
-    deps({
-      verify: async () => ({
-        status: 'unconfirmed',
-        reason: 'The transaction did not finalize in time',
-      }),
-    }),
-    grant,
-    input(),
-  )
-  expect(unverified.payment).toMatchObject({
-    state: 'uncertain',
-    signature: SIGNATURE,
+  expect(result).toMatchObject({
+    status: 200,
+    body: 'ok',
+    payment: { state: 'paid', signature: null },
   })
-  expect(await totals()).toEqual({ spent: 0, reserved: 20_000 })
+  expect(await totals()).toEqual({ spent: 10_000, reserved: 0 })
+  const [row] = await activity()
+  expect(row).toMatchObject({ status: 'paid', payerSignature: PAYER_SIGNATURE })
+})
+
+test("a 402 after signing fails with the endpoint's reason", async () => {
+  const grant = await connectClient(50_000)
+  await enableSigner()
+  const required = btoa(
+    JSON.stringify({ x402Version: 2, error: 'settlement_failed', accepts: [] }),
+  )
+  const payer = () =>
+    fakePayer(
+      () =>
+        new Response('{}', {
+          status: 402,
+          headers: { 'payment-required': required, 'x-request-id': 'req-1' },
+        }),
+    )
+  await expect(payHttp(deps({ payer }), grant, input())).rejects.toThrow(
+    'The endpoint answered 402 after the payment was signed: settlement_failed. The call is not counted against your limit. Its request ID is req-1.',
+  )
+  expect(await activity()).toMatchObject([
+    { status: 'failed', httpStatus: 402 },
+  ])
+  expect(await totals()).toEqual({ spent: 0, reserved: 0 })
+})
+
+test('any other error answer after signing fails the call', async () => {
+  const grant = await connectClient(50_000)
+  await enableSigner()
+  const payer = () =>
+    fakePayer(() => new Response('upstream down', { status: 503 }))
+  await expect(payHttp(deps({ payer }), grant, input())).rejects.toThrow(
+    'The endpoint answered 503 after the payment was signed. The call is not counted against your limit.',
+  )
+  expect(await totals()).toEqual({ spent: 0, reserved: 0 })
+})
+
+test('an endpoint that stops asking for payment is served free', async () => {
+  const grant = await connectClient(50_000)
+  await enableSigner()
+  const payer: Payer = async () => new Response('served')
+  const result = await payHttp(deps({ payer: () => payer }), grant, input())
+  expect(result).toMatchObject({ status: 200, body: 'served', payment: null })
+  expect((await activity()).map((a) => a.status)).toEqual(['free'])
+  expect(await totals()).toEqual({ spent: 0, reserved: 0 })
 })
 
 test('concurrent calls cannot reserve more than the remaining limit', async () => {
@@ -553,47 +584,12 @@ async function ageActivity(minutes: number) {
     .where(eq(paymentActivity.privyUserId, user))
 }
 
-for (const [outcome, status, spent] of [
-  [
-    { status: 'paid', signature: SIGNATURE, spentAtomic: 10_000n },
-    'paid',
-    10_000,
-  ],
-  [{ status: 'unpaid' }, 'released', 0],
-  [{ status: 'pending' }, 'uncertain', 0],
-] as const)
-  test(`the next call resolves an ended uncertain payment the chain shows as ${outcome.status}`, async () => {
-    const grant = await connectClient(50_000)
-    await enableSigner()
-    const lost = fakePayer(() => {
-      throw new TypeError('Network connection lost')
-    })
-    await expect(
-      payHttp(deps({ payer: () => lost }), grant, input()),
-    ).rejects.toThrow('Do not repeat')
-    await ageActivity(10)
-
-    const lookup = mock(async () => outcome)
-    await payHttp(deps({ lookup }), grant, input())
-    expect(lookup).toHaveBeenCalledWith(
-      expect.objectContaining({
-        wallet: WALLET,
-        payerSignature: PAYER_SIGNATURE,
-        blockhash: BLOCKHASH,
-      }),
-    )
-    const [first] = await activity().then((rows) =>
-      rows.sort((a, b) => a.createdAt - b.createdAt),
-    )
-    expect(first?.status).toBe(status)
-    expect((await totals()).spent).toBe(spent + 10_000)
-  })
-
-test('the next call releases an ended reservation that was never signed', async () => {
-  const grant = await connectClient(10_000)
-  await enableSigner()
-  // A call that died after reserving, before anything was signed.
-  await reserve(
+async function endedCall(
+  grant: Awaited<ReturnType<typeof connectClient>>,
+  { signed }: { signed: boolean },
+) {
+  // A call whose Worker stopped after reserving, before it could close.
+  const id = await reserve(
     db,
     grant,
     'wallet-1',
@@ -606,42 +602,54 @@ test('the next call releases an ended reservation that was never signed', async 
       network: 'devnet',
     },
   )
-  await expect(payHttp(deps(), grant, input())).rejects.toThrow(
-    'remaining limit of $0.00',
-  )
-  await ageActivity(10)
+  if (signed && id)
+    await recordSigning(db, id, {
+      payerWallet: WALLET,
+      payerSignature: PAYER_SIGNATURE,
+      blockhash: BLOCKHASH,
+    })
+  return id
+}
 
-  const lookup = mock(async () => ({ status: 'pending' }) as const)
-  const result = await payHttp(deps({ lookup }), grant, input())
-  expect(result.payment?.state).toBe('paid')
-  expect(lookup).not.toHaveBeenCalled()
-  expect(await totals()).toEqual({ spent: 10_000, reserved: 0 })
-})
+for (const [signed, error] of [
+  [false, 'ended before anything was signed'],
+  [true, 'may have charged the wallet'],
+] as const)
+  test(`the next call fails an ended reservation, ${signed ? 'signed' : 'never signed'}`, async () => {
+    const grant = await connectClient(10_000)
+    await enableSigner()
+    const ended = await endedCall(grant, { signed })
+    await expect(payHttp(deps(), grant, input())).rejects.toThrow(
+      'remaining limit of $0.00',
+    )
+    await ageActivity(10)
+
+    const result = await payHttp(deps(), grant, input())
+    expect(result.payment?.state).toBe('paid')
+    const row = (await activity()).find((a) => a.id === ended)
+    expect(row?.status).toBe('failed')
+    expect(row?.error).toContain(error)
+    expect(await totals()).toEqual({ spent: 10_000, reserved: 0 })
+  })
 
 test('a reservation of a call still running is left alone', async () => {
   const grant = await connectClient(50_000)
   await enableSigner()
-  const lost = fakePayer(() => {
-    throw new TypeError('Network connection lost')
-  })
-  await payHttp(deps({ payer: () => lost }), grant, input()).catch(() => {})
-  const lookup = mock(async () => ({ status: 'unpaid' }) as const)
-  await payHttp(deps({ lookup }), grant, input())
-  expect(lookup).not.toHaveBeenCalled()
-  expect((await activity()).map((a) => a.status).sort()).toEqual([
-    'paid',
-    'uncertain',
-  ])
+  const running = await endedCall(grant, { signed: true })
+  await payHttp(deps(), grant, input())
+  const row = (await activity()).find((a) => a.id === running)
+  expect(row?.status).toBe('reserved')
+  expect(await totals()).toEqual({ spent: 10_000, reserved: 10_000 })
 })
 
-test('a released reservation can never be signed', async () => {
+test('a closed reservation can never be signed', async () => {
   const grant = await connectClient(50_000)
   await enableSigner()
   let refused: unknown
   const payer: Payer = async ({ onSigned }) => {
     await drizzle(db)
       .update(paymentActivity)
-      .set({ status: 'released' })
+      .set({ status: 'failed' })
       .where(eq(paymentActivity.privyUserId, user))
     refused = await onSigned(PAYER_SIGNATURE, BLOCKHASH).catch((e) => e)
     throw refused
@@ -650,77 +658,20 @@ test('a released reservation can never be signed', async () => {
   expect(String(refused)).toContain('can no longer be signed')
 })
 
-async function stuckUncertainPayment(
-  grant: Awaited<ReturnType<typeof connectClient>>,
-) {
-  const lost = fakePayer(() => {
-    throw new TypeError('Network connection lost')
-  })
-  await payHttp(deps({ payer: () => lost }), grant, input()).catch(() => {})
+test('concurrent calls closing the same ended reservation both go through', async () => {
+  const grant = await connectClient(50_000)
+  await enableSigner()
+  await endedCall(grant, { signed: true })
   await ageActivity(10)
-}
 
-test('reconciliation searches the wallet that signed, after a wallet switch', async () => {
-  const grant = await connectClient(50_000)
-  await enableSigner()
-  await stuckUncertainPayment(grant)
-  await drizzle(db)
-    .update(paymentSigner)
-    .set({ walletId: 'wallet-2', walletAddress: MERCHANT })
-    .where(eq(paymentSigner.privyUserId, user))
-
-  const lookup = mock(async () => ({ status: 'pending' }) as const)
-  await payHttp(deps({ lookup }), grant, input())
-  expect(lookup).toHaveBeenCalledWith(
-    expect.objectContaining({ wallet: WALLET }),
-  )
-})
-
-test('concurrent calls resolving the same reservation both go through', async () => {
-  const grant = await connectClient(50_000)
-  await enableSigner()
-  await stuckUncertainPayment(grant)
-
-  const lookup = mock(async () => ({ status: 'unpaid' }) as const)
   const results = await Promise.all([
-    payHttp(deps({ lookup }), grant, input()),
-    payHttp(deps({ lookup }), grant, input()),
+    payHttp(deps(), grant, input()),
+    payHttp(deps(), grant, input()),
   ])
   expect(results.map((r) => r.payment?.state)).toEqual(['paid', 'paid'])
   expect((await activity()).map((a) => a.status).sort()).toEqual([
+    'failed',
     'paid',
     'paid',
-    'released',
   ])
-})
-
-test('proof of payment wins over a release from a lookup that missed it', async () => {
-  const grant = await connectClient(50_000)
-  await enableSigner()
-  await stuckUncertainPayment(grant)
-
-  // One call's lookup misses the transaction and releases first; the
-  // other's finds it finalized.
-  let release: () => void = () => {}
-  const released = new Promise<void>((resolve) => (release = resolve))
-  const missed = mock(async () => {
-    setTimeout(release, 50)
-    return { status: 'unpaid' } as const
-  })
-  const found = mock(async () => {
-    await released
-    await new Promise((resolve) => setTimeout(resolve, 50))
-    return {
-      status: 'paid',
-      signature: SIGNATURE,
-      spentAtomic: 10_000n,
-    } as const
-  })
-  await Promise.all([
-    payHttp(deps({ lookup: missed }), grant, input()),
-    payHttp(deps({ lookup: found }), grant, input()),
-  ])
-  const [first] = (await activity()).sort((a, b) => a.createdAt - b.createdAt)
-  expect(first?.status).toBe('paid')
-  expect((await totals()).spent).toBe(30_000)
 })

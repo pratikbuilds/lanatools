@@ -41,7 +41,7 @@ The existing `mcp-oauth` project is a protocol and SIWS reference. Its wallet-ad
 - Each connected OAuth client has an independent, user-set cumulative maximum in USD for payments it makes through the shared wallet. The limit does not reset on a timer or reconnection. The user can change it at any time.
 - The app shows the maximum, spent, reserved, and remaining amount for each client. It records the payment token and exact token amount for every call. A client may use a catalog endpoint only when the wallet holds a token accepted by its live challenge.
 - Before signing, LanaTools must know the maximum wallet payment exposure for the call or session. It reserves that amount against the client's remaining limit atomically, including across concurrent requests. If the live terms cannot establish a ceiling within the remaining limit, it does not sign.
-- After a verified settlement or release, LanaTools replaces the reservation with the actual spend. A user lowering a limit below the amount already spent blocks further spending; it does not erase history.
+- When the call ends, LanaTools replaces the reservation with the spend, or frees it. A user lowering a limit below the amount already spent blocks further spending; it does not erase history.
 - The limit governs payments initiated by that OAuth client through LanaTools. It does not claim to cap unrelated transfers the wallet owner makes elsewhere, provider charges outside the wallet, or changes in a token's market value.
 - Privy wallet policies and server signer controls are an additional wallet boundary. LanaTools owns the per-client cumulative limit and ledger; Privy's documented Solana policies do not supply that aggregate per-client counter.
 
@@ -49,9 +49,9 @@ The existing `mcp-oauth` project is a protocol and SIWS reference. Its wallet-ad
 
 The app shows every connected client, its claimed name and redirect destination, when it connected and last called, grant status, limit, spent amount, and remaining amount. The user can change a limit or revoke one client without resetting another client's record. A wallet-wide emergency stop can disable server signing for all clients.
 
-For each call, show the client, catalog provider and endpoint, time, status, quoted or reserved amount, settled amount and token, and the payment transaction or receipt when one exists. Record free calls, denials, provider errors, and failed or uncertain payments too. Keep request and response bodies out of the activity record by default because catalog calls may contain private data.
+For each call, show the client, catalog provider and endpoint, time, status, quoted or reserved amount, settled amount and token, and the payment transaction or receipt when one exists. Record free calls, denials, provider errors, and failed payments too. Keep request and response bodies out of the activity record by default because catalog calls may contain private data.
 
-An uncertain payment stays reserved while LanaTools checks the chain or provider receipt. It must not blindly repeat a charge-bearing request. The user sees that it is unresolved and, once reconciled, whether it was paid, released, or needs intervention.
+Every call ends paid or failed, decided by the endpoint's answer. Once the payment is signed, an endpoint that serves the call was paid; any other answer, or none, fails the call and frees its reservation. A failure after signing tells the agent the wallet may have been charged and gives the endpoint's reason when it names one, so the agent does not blindly repeat it.
 
 ## Initial scope and later work
 
