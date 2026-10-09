@@ -419,173 +419,180 @@ export function WalletFan() {
   }
 
   return (
-    <div ref={ref} className="relative w-full" style={{ height: H * scale }}>
+    // The box is sized in CSS so the prerendered page reserves the same height
+    // as the measured one; the fans switch at 480px, matching useFit.
+    <div className="@container w-full">
       <div
-        className="absolute top-0 left-0 origin-top-left"
-        style={{ width: fan.w, height: H, transform: `scale(${scale})` }}
-        role="img"
-        aria-label="A toolkit of example agent tasks: payments, onchain data, portfolios, transactions, and analytics. One MCP connection, with permissions and one limit for each agent. Calls within an agent's permissions and limit go through; a call over its limit is denied. Every call lands in one log."
-        onPointerMove={onPointerMove}
-        onPointerLeave={() => setHovered(null)}
+        ref={ref}
+        className="relative aspect-[440/470] max-h-[470px] w-full @min-[480px]:aspect-[560/470]"
       >
-        {CARDS.map((c, i) => {
-          const pos = fan.cards[i] ?? fan.cards[2]!
-          const current = active?.play.card === i ? active : null
-          const on = current !== null
-          const denied = current?.play.ok === false
-          return (
-            <motion.div
-              key={c.tool}
-              className="absolute"
-              style={{
-                width: CARD.w,
-                height: CARD.h,
-                left: fan.w / 2 - CARD.w / 2,
-                top: CARD_TOP,
-                zIndex: on ? 15 : 10 + i,
-                transformOrigin: '50% 100%',
-              }}
-              initial={reduced ? false : { x: 0, y: 190, rotate: 0 }}
-              animate={{
-                x: pos.dx * (on ? 1.08 : 1),
-                y: pos.dy + (on ? -64 : 0),
-                rotate: pos.r * (on ? 0.5 : 1),
-              }}
-              transition={{
-                type: 'spring',
-                stiffness: 210,
-                damping: 22,
-                delay: entered ? 0 : 0.25 + i * 0.07,
-              }}
-            >
-              <motion.div
-                className={`flex h-full flex-col rounded-[12px] border-[1.5px] border-ink p-4 text-ink shadow-[5px_5px_0_0_var(--color-ink)] ${on ? 'bg-card' : 'bg-paper'}`}
-                animate={{ x: denied ? [0, -7, 7, -5, 5, 0] : 0 }}
-                transition={{ duration: 0.4, delay: denied ? 0.3 : 0 }}
-              >
-                <span className="flex items-start justify-between">
-                  <span
-                    className={`flex size-9 shrink-0 items-center justify-center rounded-[7px] border-[1.5px] border-ink transition-colors duration-200 ${denied ? 'bg-coral' : on ? 'bg-lime' : 'bg-card'}`}
-                  >
-                    <img src={c.icon} alt="" width={20} height={20} />
-                  </span>
-                  <AnimatePresence>
-                    {current && (
-                      <motion.span
-                        key={current.n}
-                        className="flex size-9 shrink-0 items-center justify-center rounded-full border-[1.5px] border-ink bg-card shadow-[2px_2px_0_0_var(--color-ink)]"
-                        initial={{ opacity: 0, scale: 0.4, rotate: -30 }}
-                        animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                        exit={{ opacity: 0, scale: 0.4 }}
-                        transition={{
-                          type: 'spring',
-                          stiffness: 380,
-                          damping: 18,
-                          delay: 0.12,
-                        }}
-                      >
-                        <Logo id={current.play.agent} size={17} />
-                      </motion.span>
-                    )}
-                  </AnimatePresence>
-                </span>
-                <span className="mt-2.5 text-[15px] leading-none font-bold">
-                  {c.verb}
-                </span>
-                <span className="mt-3.5 block">
-                  <c.Art on={on && !denied} />
-                </span>
-                <span
-                  className={`flex flex-col transition-opacity duration-200 ${on ? 'opacity-100 delay-150' : 'opacity-0'}`}
-                >
-                  <span className="mt-3.5 text-[18px] leading-none font-bold whitespace-nowrap">
-                    {c.value}
-                  </span>
-                  <span className="mt-1.5 text-[11px] text-mute">
-                    {c.detail}
-                  </span>
-                </span>
-              </motion.div>
-
-              <AnimatePresence>
-                {current && (
-                  <motion.span
-                    key={current.n}
-                    className={`absolute -top-11 left-1/2 flex h-8 items-center gap-1.5 rounded-[6px] border-[1.5px] border-ink px-2.5 text-[12px] font-bold whitespace-nowrap text-ink shadow-[3px_3px_0_0_var(--color-ink)] ${denied ? 'bg-coral' : 'bg-lime'}`}
-                    initial={{ opacity: 0, y: 12, x: '-50%', scale: 0.8 }}
-                    animate={{ opacity: 1, y: 0, x: '-50%', scale: 1 }}
-                    exit={{ opacity: 0, y: -10, x: '-50%' }}
-                    transition={{
-                      type: 'spring',
-                      stiffness: 380,
-                      damping: 20,
-                      delay: 0.25,
-                    }}
-                  >
-                    {denied ? '✕' : '✓'} {current.play.result}
-                  </motion.span>
-                )}
-              </AnimatePresence>
-            </motion.div>
-          )
-        })}
-
-        <motion.div
-          className="absolute inset-x-5 bottom-2 z-20 rounded-[14px] border-[1.5px] border-ink bg-lime px-6 pt-7 pb-5 text-ink shadow-[6px_6px_0_0_var(--color-ink)]"
-          style={{ height: 150 }}
-          initial={reduced ? false : { y: 30, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.6, ease: EASE }}
+        <div
+          className="absolute top-0 left-0 origin-top-left"
+          style={{ width: fan.w, height: H, transform: `scale(${scale})` }}
+          role="img"
+          aria-label="A toolkit of example agent tasks: payments, onchain data, portfolios, transactions, and analytics. One MCP connection, with permissions and one limit for each agent. Calls within an agent's permissions and limit go through; a call over its limit is denied. Every call lands in one log."
+          onPointerMove={onPointerMove}
+          onPointerLeave={() => setHovered(null)}
         >
-          <span className="absolute inset-x-5 top-3 h-[5px] rounded-full bg-ink/85" />
-          <div className="flex items-end justify-between gap-4">
-            <div>
-              <p className="text-[12px] font-semibold text-ink/70">
-                one MCP connection
-              </p>
-              <p className="mt-1 text-[24px] leading-none font-bold tracking-tight">
-                your toolkit
-              </p>
-            </div>
-            <span className="rounded-[6px] border-[1.5px] border-ink bg-card px-2 py-1 text-[11.5px] font-bold">
-              {MCP_HOST}
-            </span>
-          </div>
-          <div className="relative mt-4 h-[31px] overflow-hidden border-t-[1.5px] border-dashed border-ink/40 text-[12px] font-semibold whitespace-nowrap">
-            <AnimatePresence initial={false}>
+          {CARDS.map((c, i) => {
+            const pos = fan.cards[i] ?? fan.cards[2]!
+            const current = active?.play.card === i ? active : null
+            const on = current !== null
+            const denied = current?.play.ok === false
+            return (
               <motion.div
-                key={logged ? logged.n : 'idle'}
-                className="absolute inset-x-0 top-3 flex items-center justify-between gap-3"
-                initial={{ opacity: 0, y: 14 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -14 }}
-                transition={{ duration: 0.3, ease: EASE }}
+                key={c.tool}
+                className="absolute"
+                style={{
+                  width: CARD.w,
+                  height: CARD.h,
+                  left: fan.w / 2 - CARD.w / 2,
+                  top: CARD_TOP,
+                  zIndex: on ? 15 : 10 + i,
+                  transformOrigin: '50% 100%',
+                }}
+                initial={{ x: 0, y: 190, rotate: 0 }}
+                animate={{
+                  x: pos.dx * (on ? 1.08 : 1),
+                  y: pos.dy + (on ? -64 : 0),
+                  rotate: pos.r * (on ? 0.5 : 1),
+                }}
+                transition={{
+                  type: 'spring',
+                  stiffness: 210,
+                  damping: 22,
+                  delay: entered ? 0 : 0.25 + i * 0.07,
+                }}
               >
-                {logged ? (
-                  <>
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <Logo id={logged.play.agent} size={13} />
-                      <span className="truncate">
-                        {AGENT_NAME[logged.play.agent]} ·{' '}
-                        {CARDS[logged.play.card]?.verb} ·{' '}
-                        {CARDS[logged.play.card]?.value}
-                      </span>
-                    </span>
+                <motion.div
+                  className={`flex h-full flex-col rounded-[12px] border-[1.5px] border-ink p-4 text-ink shadow-[5px_5px_0_0_var(--color-ink)] ${on ? 'bg-card' : 'bg-paper'}`}
+                  animate={{ x: denied ? [0, -7, 7, -5, 5, 0] : 0 }}
+                  transition={{ duration: 0.4, delay: denied ? 0.3 : 0 }}
+                >
+                  <span className="flex items-start justify-between">
                     <span
-                      className={
-                        logged.play.ok ? 'text-ink/70' : 'text-coral-ink'
-                      }
+                      className={`flex size-9 shrink-0 items-center justify-center rounded-[7px] border-[1.5px] border-ink transition-colors duration-200 ${denied ? 'bg-coral' : on ? 'bg-lime' : 'bg-card'}`}
                     >
-                      {logged.play.ok ? 'allowed' : 'over limit'}
+                      <img src={c.icon} alt="" width={20} height={20} />
                     </span>
-                  </>
-                ) : (
-                  <span>your permissions · your limits · one log</span>
-                )}
+                    <AnimatePresence>
+                      {current && (
+                        <motion.span
+                          key={current.n}
+                          className="flex size-9 shrink-0 items-center justify-center rounded-full border-[1.5px] border-ink bg-card shadow-[2px_2px_0_0_var(--color-ink)]"
+                          initial={{ opacity: 0, scale: 0.4, rotate: -30 }}
+                          animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                          exit={{ opacity: 0, scale: 0.4 }}
+                          transition={{
+                            type: 'spring',
+                            stiffness: 380,
+                            damping: 18,
+                            delay: 0.12,
+                          }}
+                        >
+                          <Logo id={current.play.agent} size={17} />
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+                  </span>
+                  <span className="mt-2.5 text-[15px] leading-none font-bold">
+                    {c.verb}
+                  </span>
+                  <span className="mt-3.5 block">
+                    <c.Art on={on && !denied} />
+                  </span>
+                  <span
+                    className={`flex flex-col transition-opacity duration-200 ${on ? 'opacity-100 delay-150' : 'opacity-0'}`}
+                  >
+                    <span className="mt-3.5 text-[18px] leading-none font-bold whitespace-nowrap">
+                      {c.value}
+                    </span>
+                    <span className="mt-1.5 text-[11px] text-mute">
+                      {c.detail}
+                    </span>
+                  </span>
+                </motion.div>
+
+                <AnimatePresence>
+                  {current && (
+                    <motion.span
+                      key={current.n}
+                      className={`absolute -top-11 left-1/2 flex h-8 items-center gap-1.5 rounded-[6px] border-[1.5px] border-ink px-2.5 text-[12px] font-bold whitespace-nowrap text-ink shadow-[3px_3px_0_0_var(--color-ink)] ${denied ? 'bg-coral' : 'bg-lime'}`}
+                      initial={{ opacity: 0, y: 12, x: '-50%', scale: 0.8 }}
+                      animate={{ opacity: 1, y: 0, x: '-50%', scale: 1 }}
+                      exit={{ opacity: 0, y: -10, x: '-50%' }}
+                      transition={{
+                        type: 'spring',
+                        stiffness: 380,
+                        damping: 20,
+                        delay: 0.25,
+                      }}
+                    >
+                      {denied ? '✕' : '✓'} {current.play.result}
+                    </motion.span>
+                  )}
+                </AnimatePresence>
               </motion.div>
-            </AnimatePresence>
-          </div>
-        </motion.div>
+            )
+          })}
+
+          <motion.div
+            className="absolute inset-x-5 bottom-2 z-20 rounded-[14px] border-[1.5px] border-ink bg-lime px-6 pt-7 pb-5 text-ink shadow-[6px_6px_0_0_var(--color-ink)]"
+            style={{ height: 150 }}
+            initial={{ y: 30, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.6, ease: EASE }}
+          >
+            <span className="absolute inset-x-5 top-3 h-[5px] rounded-full bg-ink/85" />
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <p className="text-[12px] font-semibold text-ink/70">
+                  one MCP connection
+                </p>
+                <p className="mt-1 text-[24px] leading-none font-bold tracking-tight">
+                  your toolkit
+                </p>
+              </div>
+              <span className="rounded-[6px] border-[1.5px] border-ink bg-card px-2 py-1 text-[11.5px] font-bold">
+                {MCP_HOST}
+              </span>
+            </div>
+            <div className="relative mt-4 h-[31px] overflow-hidden border-t-[1.5px] border-dashed border-ink/40 text-[12px] font-semibold whitespace-nowrap">
+              <AnimatePresence initial={false}>
+                <motion.div
+                  key={logged ? logged.n : 'idle'}
+                  className="absolute inset-x-0 top-3 flex items-center justify-between gap-3"
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -14 }}
+                  transition={{ duration: 0.3, ease: EASE }}
+                >
+                  {logged ? (
+                    <>
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <Logo id={logged.play.agent} size={13} />
+                        <span className="truncate">
+                          {AGENT_NAME[logged.play.agent]} ·{' '}
+                          {CARDS[logged.play.card]?.verb} ·{' '}
+                          {CARDS[logged.play.card]?.value}
+                        </span>
+                      </span>
+                      <span
+                        className={
+                          logged.play.ok ? 'text-ink/70' : 'text-coral-ink'
+                        }
+                      >
+                        {logged.play.ok ? 'allowed' : 'over limit'}
+                      </span>
+                    </>
+                  ) : (
+                    <span>your permissions · your limits · one log</span>
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        </div>
       </div>
     </div>
   )
