@@ -440,3 +440,36 @@ test('only the prepared transaction, validly signed, is sent', async () => {
   })
   expect(calls).toEqual([])
 })
+
+test('an order past its expiry slot is never sent: Phoenix would ignore it', async () => {
+  const { sent, signature } = await signedTransaction()
+  const { rpc, calls } = fakeRpc({ getSlot: () => 1_151n })
+  expect(
+    await sendSignedTransaction(
+      rpc,
+      { ...sent, expiresAfterSlot: '1150' },
+      quick,
+    ),
+  ).toEqual({
+    status: 'expired',
+    signature,
+    error:
+      'The order expired at slot 1150 before it was sent (now 1151); nothing was sent. Prepare it again.',
+  })
+  expect(calls.map(([method]) => method)).toEqual(['getSlot'])
+
+  // At its last valid slot it is still sent.
+  const { rpc: onTime, calls: sentCalls } = fakeRpc({
+    getSlot: () => 1_150n,
+    sendTransaction: () => signature,
+    getSignatureStatuses: () => status('confirmed'),
+  })
+  expect(
+    await sendSignedTransaction(
+      onTime,
+      { ...sent, expiresAfterSlot: '1150' },
+      quick,
+    ),
+  ).toEqual({ status: 'confirmed', signature })
+  expect(sentCalls.map(([method]) => method)).toContain('sendTransaction')
+})

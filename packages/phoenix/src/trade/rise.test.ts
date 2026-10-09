@@ -1,3 +1,4 @@
+import { decodeTrader } from '@ellipsis-labs/rise'
 import { AccountRole, address } from '@solana/kit'
 import type { Instruction } from '@solana/kit'
 import { expect, test } from 'bun:test'
@@ -24,6 +25,7 @@ import {
   activationTransaction,
   decodeOrder,
   depositInstructions,
+  positionLots,
   toInstruction,
   traderAccountAddress,
   withdrawInstructions,
@@ -159,4 +161,14 @@ test("activation registers and onboards the wallet's own trader account", async 
       }),
     ).not.toThrow()
   }
+})
+
+test("a position is read from the trader account's own data", () => {
+  const trader = decodeTrader(TRADER_ACCOUNT_DATA)
+  const [first] = trader.positions.entries
+  if (!first) throw new Error('the fixture holds positions')
+  expect(positionLots(TRADER_ACCOUNT_DATA, Number(first.key))).toBe(
+    BigInt(first.value.baseLotPosition),
+  )
+  expect(positionLots(TRADER_ACCOUNT_DATA, 9_999)).toBe(0n)
 })

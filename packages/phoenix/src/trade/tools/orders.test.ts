@@ -74,7 +74,7 @@ test('a market buy is limited above the best ask, expires, and may fill partly',
     priceInTicks: 11573n,
     numBaseLots: 10n,
     minBaseLotsToFill: 1n,
-    lastValidSlot: 1_016n,
+    lastValidSlot: 1_150n,
     reduceOnly: false,
     slide: false,
     cancelExisting: false,
@@ -82,6 +82,8 @@ test('a market buy is limited above the best ask, expires, and may fill partly',
   expect(outcome).toMatchObject({
     ok: true,
     result: {
+      expiresAfterSlot: '1150',
+      position: { symbol: 'SOL', assetId: 0, baseLotsDecimals: 2 },
       summary:
         'Market buy (long): 0.1 SOL perp now, paying at most $115.73 each; any part that cannot fill at that price is cancelled',
       details: {
@@ -90,10 +92,10 @@ test('a market buy is limited above the best ask, expires, and may fill partly',
         estimatedNotionalUsd: '11.52',
         // 11.516 × 0.00035
         estimatedTakerFeeUsd: '0.004031',
-        expiresAfterSlot: '1016',
+        expiresAfterSlot: '1150',
       },
       warnings: [
-        'This order expires about 6 seconds after it was prepared (slot 1016); sign and send it right away, or prepare it again.',
+        'This order expires about a minute after it was prepared (slot 1150); after that it is not sent, and must be prepared again.',
       ],
     },
   })
@@ -120,7 +122,7 @@ test('a market sell with a limit rounds up and warns when out of reach', async (
       summary:
         'Market sell to reduce a long position: 0.1 SOL perp now, receiving at least $116.01 each; any part that cannot fill at that price is cancelled',
       warnings: [
-        'This order expires about 6 seconds after it was prepared (slot 1016); sign and send it right away, or prepare it again.',
+        'This order expires about a minute after it was prepared (slot 1150); after that it is not sent, and must be prepared again.',
         'The limit is above the best bid (115.15), so this order will not fill now.',
       ],
     },
@@ -149,7 +151,7 @@ test("a noisy float in Phoenix's book still prices at its own tick", async () =>
   ).toMatchObject({
     result: {
       warnings: [
-        'This order expires about 6 seconds after it was prepared (slot 1016); sign and send it right away, or prepare it again.',
+        'This order expires about a minute after it was prepared (slot 1150); after that it is not sent, and must be prepared again.',
       ],
     },
   })

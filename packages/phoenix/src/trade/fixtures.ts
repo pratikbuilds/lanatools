@@ -262,6 +262,7 @@ export const ONBOARD_DATA = Uint8Array.from(
 /** GET /v1/view/exchange/market/SOL on 2026-10-08, trimmed. */
 export const SOL_MARKET = {
   symbol: 'SOL',
+  assetId: 0,
   marketStatus: 'active',
   marketPubkey: '71Si24E4uc3oCaPbPZTozC1ptSNNqygjjebxSmErSsC2',
   splinePubkey: 'EVhkquLbfm5rDRXtZu9FoyDSXX5mYq2EYU6yD8zfKEqM',

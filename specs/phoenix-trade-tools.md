@@ -343,11 +343,12 @@ the login: it moves no funds and works either way.
 | **Input** | `wallet`, `symbol`, `side` (`buy`/`sell`), `size` (tokens), exactly one of `maxSlippageBps` (integer, 0–9999) or `limitPrice`, with no default (**D1**), `reduceOnly` (default false) |
 | **Reads** | The market config (`/v1/view/exchange/market/{symbol}`: market and spline accounts, tick size, lot decimals, taker fee, status, isolated-only), the book, exchange keys, the current slot, and activation on chain |
 | **Refuses** | Markets not `active`, isolated-only markets (9 today, e.g. GOLD; these tools trade cross margin only), an empty side of the book, and sizes off the lot grid |
-| **Builds** | Rise `buildPlaceMarketOrderIxResolved` with our own packet. The price limit is set from the best opposite price plus slippage, or from `limitPrice`, with buy rounding down and sell rounding up. It expires at the observed slot + 16 (**D2**), self-trades abort, and `cancelExisting` is false. |
+| **Builds** | Rise `buildPlaceMarketOrderIxResolved` with our own packet. The price limit is set from the best opposite price plus slippage, or from `limitPrice`, with buy rounding down and sell rounding up. It expires at the observed slot + 150, about a minute (**D2**), self-trades abort, and `cancelExisting` is false. |
 | **Fill rule** | **D4**: partial fills allowed (`minBaseLotsToFill: 1`). Rise's own packet builder defaults to all-or-nothing, so we set it. If nothing fills, Phoenix fails the transaction ("IOC order does not meet minimum requirements"), which the simulation shows. |
 | **Details** | Limit price, best price, estimated notional and taker fee at the best price, expiry slot, reduce-only |
+| **Also returns** | `expiresAfterSlot`, which `submitSignedTransaction` checks just before sending (past it, nothing is sent), and `position` (market symbol, asset ID, lot decimals), from which `positionSize` reads the position on chain to report what filled. |
 | **Summary** | Says long or short: "Market buy (long): 0.1 SOL perp now, paying at most $115.73 each; …". A reduce-only order says "sell to reduce a long position" (or the buy equivalent). |
-| **Warnings** | Always: "This order expires about 6 seconds after it was prepared (slot …); sign and send it right away, or prepare it again." A limit beyond the best opposite price: "this order will not fill now". |
+| **Warnings** | Always: "This order expires about a minute after it was prepared (slot …); after that it is not sent, and must be prepared again." A limit beyond the best opposite price: "this order will not fill now". |
 | **Fee** | The estimated taker fee is shown to six decimals (a $11.52 order's fee is $0.004031, not "0.00"). |
 
 ### 5.4 `phoenix_limit_order`
@@ -376,7 +377,7 @@ the login: it moves no funds and works either way.
 |---|---|
 | **Input** | `wallet`, `symbol`, `fraction` (more than 0, at most 1, default 1), exactly one of `maxSlippageBps` or `limitPrice` |
 | **Reads** | The tradable market, activation on chain, and Phoenix's trader state for the cross account's position in that market |
-| **Builds** | The same immediate-or-cancel order as `phoenix_market_order` (`immediateOrder`): the opposite side, `floor(position lots × fraction)` lots, `ReduceOnly` always set, expiry 16 slots after the observed slot |
+| **Builds** | The same immediate-or-cancel order as `phoenix_market_order` (`immediateOrder`): the opposite side, `floor(position lots × fraction)` lots, `ReduceOnly` always set, expiry 150 slots after the observed slot |
 | **Checks** | A position exists (`not_found` otherwise), and the share is at least one lot. `checkOrder` checks the order exactly. |
 | **Summary** | "Close 0.12 of the 0.25 SOL long: market sell now, receiving at least $114.58 each; reduce-only, so it can never open a short" |
 
@@ -635,7 +636,22 @@ Only when you say go. Each step needs your typed `yes` in the script.
 7. `close SOL --slippage-bps <D1>`, then `state`.
 8. `withdraw <remaining>`, then `state`.
 
-- **Record:** signatures and results go in the spec's "Checks" section. No screenshots.
+- **Record:** signatures and results go here. No screenshots.
+
+**Run log (2026-10-09, Helius mainnet RPC, CLI wallet `Du3X…V9mu`):**
+
+| Step | Result | Signature |
+|---|---|---|
+| Fund | 0.1416 SOL, 10.07 USDC | — |
+| Activate | Confirmed. Two signers: the wallet and Phoenix's onboarder `EzkM…P4Z`. The trader account `AmNf…W153` holds 0.02788 SOL rent; fee 0.00001 SOL; flags 62 (activated). | `4PQSZv71…QKbt` |
+| Deposit 10 USDC | Confirmed; collateral 10 USDC | `5givaF53…PS66` |
+| Market buy 0.1 SOL, 50 bps | Confirmed, but **nothing filled**. The order expired at slot 454,781,680; the transaction landed at 454,781,719, after the 6-second window, since a person typed `yes`. Phoenix treats an expired order as a no-op that still succeeds. | `4QjhkWs1…4g4y` |
+| Post-only limit buy 0.01 SOL at $50 | Confirmed; resting, ID `18446744073632731858` | `5bfuVvyc…re4N` |
+
+**Fixes from that run:**
+- D2 is now 150 slots.
+- An expired order is never sent.
+- The script reads the position on chain before and after, and prints what filled ("Nothing filled" when it did not).
 - **Exit:** the spec is marked "built", and the single PR is opened with every phase's results (**D8**).
 
 ## 8. Decisions
@@ -643,7 +659,7 @@ Only when you say go. Each step needs your typed `yes` in the script.
 | # | Question | Options | My suggestion |
 |---|---|---|---|
 | D1 | Market and close slippage | **Decided:** every market and close order needs `maxSlippageBps` or `limitPrice`, with no default. Same as solOS, which requires a limit price. | — |
-| D2 | Order expiry | **Decided:** IOC orders (market, close) expire at observed slot + 16, as in solOS. Limit orders have no expiry. | — |
+| D2 | Order expiry | **Decided, revised 2026-10-09:** IOC orders (market, close) expire at the observed slot + 150, about a minute and the life of the transaction's blockhash, so a person can approve them; the price limit still bounds the fill. An order past its expiry is never sent. Limit orders have no expiry. The first choice, slot + 16 as in solOS, was too short for a person to approve (see Phase 6). | — |
 | D3 | Size unit | **Decided:** token amounts. A USD-notional input and a leverage cap come later. | — |
 | D4 | Market fill rule | **Decided:** partial fills allowed, minimum 1 lot, as in solOS. Results report the actual fill. | — |
 | D5 | Compute and priority fee | **Decided:** measure compute by simulating; never use a fixed limit like solOS's 500k, which would have failed the 507k order in our spike. **Approved 2026-10-08:** a 20% compute margin and no priority fee for now; revisit if the mainnet run lands slowly. Both are settings the caller passes (`FeeSettings`); there are no defaults in code. | — |

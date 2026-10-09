@@ -1,6 +1,9 @@
 import { getBase64Encoder, getU64Decoder } from '@solana/kit'
 import type { Address } from '@solana/kit'
+import { fromLots } from '../units'
 import { TOKEN_PROGRAM } from './checks'
+import { positionLots, traderAccountAddress } from './rise'
+import type { PositionRef } from './tool'
 import { rpcTimeout } from './transaction'
 import type { TradeRpc } from './transaction'
 
@@ -42,4 +45,19 @@ export function tokenBalance(account: ChainAccount | null) {
   )
     return 0n
   return getU64Decoder().decode(account.data, AMOUNT_OFFSET)
+}
+
+/**
+ * The wallet's cross-margin position in one market, in tokens (negative for
+ * a short), read from the chain: what an order actually filled is the
+ * difference before and after it.
+ */
+export async function positionSize(
+  rpc: TradeRpc,
+  wallet: Address,
+  position: PositionRef,
+) {
+  const trader = await fetchAccount(rpc, await traderAccountAddress(wallet))
+  const lots = trader ? positionLots(trader.data, position.assetId) : 0n
+  return fromLots(lots.toString(), position.baseLotsDecimals)
 }

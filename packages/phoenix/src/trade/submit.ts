@@ -31,6 +31,7 @@ export async function submitSignedTransaction(
     /** The unsigned transaction the tool returned. */
     transaction: string
     lastValidBlockHeight: string
+    expiresAfterSlot?: string | undefined
     submit: Submit
   },
   signed: SignedTrade,
@@ -45,6 +46,7 @@ export async function submitSignedTransaction(
         prepared: prepared.transaction,
         transaction: signed.transaction,
         lastValidBlockHeight: prepared.lastValidBlockHeight,
+        expiresAfterSlot: prepared.expiresAfterSlot,
       },
       { intervalMs },
     )

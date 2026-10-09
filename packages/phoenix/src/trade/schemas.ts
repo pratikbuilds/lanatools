@@ -51,6 +51,7 @@ export const ActivationResponse = z.object({
 /** GET /v1/view/exchange/market/{symbol}: what an order needs. */
 export const OrderMarket = z.object({
   symbol: z.string(),
+  assetId: z.number().int().nonnegative(),
   marketStatus: z.string(),
   marketPubkey: Address,
   splinePubkey: Address,

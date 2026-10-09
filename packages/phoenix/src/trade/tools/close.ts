@@ -88,6 +88,8 @@ export const closePosition = defineTradeTool({
       kind: 'instructions',
       wallet,
       instructions: [order.instruction],
+      expiresAfterSlot: order.expiresAfterSlot,
+      position: order.position,
       summary: `Close ${size} of the ${fromLots(positionLots.toString(), decimals)} ${market.symbol} ${direction}: ${action}; reduce-only, so it can never open a ${long ? 'short' : 'long'}`,
       details: {
         ...order.details,

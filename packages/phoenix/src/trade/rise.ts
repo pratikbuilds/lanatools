@@ -223,16 +223,31 @@ export type Activation = 'missing' | 'registered' | 'activated'
  */
 export function activationOf(data: Uint8Array | null): Activation {
   if (!data || data.length === 0) return 'missing'
-  let flags
+  return hasReferralActivationCapabilities(readTrader(data).state.flags)
+    ? 'activated'
+    : 'registered'
+}
+
+function readTrader(data: Uint8Array) {
   try {
-    flags = decodeTrader(data).state.flags
+    return decodeTrader(data)
   } catch {
     throw new PhoenixError(
       'upstream_error',
       'Could not read the Phoenix trader account',
     )
   }
-  return hasReferralActivationCapabilities(flags) ? 'activated' : 'registered'
+}
+
+/**
+ * A trader account's position in one market, in base lots (negative for a
+ * short), read from its on-chain data.
+ */
+export function positionLots(data: Uint8Array, assetId: number) {
+  const entry = readTrader(data).positions.entries.find(
+    (position) => position.key === BigInt(assetId),
+  )
+  return entry ? BigInt(entry.value.baseLotPosition) : 0n
 }
 
 function exchangeAccounts(keys: ExchangeKeys) {

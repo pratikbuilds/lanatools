@@ -66,6 +66,7 @@ export { defineTradeTool, runTradeTool } from './tool'
 export type {
   NothingToDo,
   Prepared,
+  PositionRef,
   PreparedTransaction,
   SimulationFailed,
   Submit,
@@ -74,6 +75,7 @@ export type {
   TradeOutcome,
   TradeTool,
 } from './tool'
+export { positionSize } from './chain'
 export { submitSignedTransaction } from './submit'
 export type { SignedTrade, SubmitOpts } from './submit'
 export { MAX_COMPUTE_UNITS } from './transaction'

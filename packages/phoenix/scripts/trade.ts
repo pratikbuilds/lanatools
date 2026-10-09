@@ -5,7 +5,11 @@ import {
   createSolanaRpc,
 } from '@solana/kit'
 import { runPhoenixTool } from '../src/index'
-import { runPhoenixTrade, submitSignedTransaction } from '../src/trade/index'
+import {
+  positionSize,
+  runPhoenixTrade,
+  submitSignedTransaction,
+} from '../src/trade/index'
 import type { PreparedTransaction, TradeRpc } from '../src/trade/index'
 import { USAGE, UsageError, parseCli } from './args'
 import { sign } from './sign'
@@ -120,11 +124,12 @@ async function main() {
   const answer = prompt('\nType yes to sign and send on mainnet:')
   if (answer?.trim() !== 'yes') fail('Not sent.')
 
-  const sent = await submitSignedTransaction(
-    result,
-    await sign(result, signer),
-    { rpc },
-  )
+  const signed = await sign(result, signer)
+  // Read the position just before sending, to report what actually filled.
+  const before = result.position
+    ? await positionSize(rpc, wallet, result.position)
+    : null
+  const sent = await submitSignedTransaction(result, signed, { rpc })
   console.log(`\nResult: ${sent.status}`)
   console.log(`Signature: ${sent.signature}`)
   console.log(`Explorer: https://explorer.solana.com/tx/${sent.signature}`)
@@ -133,6 +138,15 @@ async function main() {
     console.log(
       'It may still land. Check the signature before trying again; do not resend blindly.',
     )
+  if (sent.status === 'confirmed' && result.position && before !== null) {
+    const after = await positionSize(rpc, wallet, result.position)
+    const { symbol } = result.position
+    console.log(`\nPosition ${symbol}: ${before} → ${after}`)
+    if (after === before)
+      console.log(
+        'Nothing filled: the transaction landed, but no part of the order traded.',
+      )
+  }
   console.log('\nPhoenix account now:')
   await printState(wallet)
   if (sent.status !== 'confirmed') process.exit(1)

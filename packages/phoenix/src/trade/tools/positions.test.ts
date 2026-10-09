@@ -194,10 +194,12 @@ test('closing part of a long is a reduce-only sell of that share', async () => {
     numBaseLots: 12n,
     priceInTicks: 11458n,
     reduceOnly: true,
-    lastValidSlot: 1_016n,
+    lastValidSlot: 1_150n,
   })
   expect(outcome).toMatchObject({
     result: {
+      expiresAfterSlot: '1150',
+      position: { symbol: 'SOL', assetId: 0, baseLotsDecimals: 2 },
       summary:
         'Close 0.12 of the 0.25 SOL long: market sell now, receiving at least $114.58 each; reduce-only, so it can never open a short',
       details: { position: 'long 0.25', closing: '0.12' },

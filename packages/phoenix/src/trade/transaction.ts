@@ -203,8 +203,8 @@ export type SendResult =
   | { status: 'confirmed'; signature: Signature }
   /** It landed and failed, or the RPC refused it before sending. */
   | { status: 'failed'; signature: Signature; error: string }
-  /** Its blockhash expired before it landed: it never will. */
-  | { status: 'expired'; signature: Signature }
+  /** Its blockhash or order expired before it landed: it never will. */
+  | { status: 'expired'; signature: Signature; error?: string }
   /** It may have landed. Check the signature before trying again. */
   | { status: 'unknown'; signature: Signature; error?: string }
 
@@ -290,12 +290,32 @@ export async function sendSignedTransaction(
     prepared,
     transaction,
     lastValidBlockHeight,
-  }: { prepared: string; transaction: string; lastValidBlockHeight: string },
+    expiresAfterSlot,
+  }: {
+    prepared: string
+    transaction: string
+    lastValidBlockHeight: string
+    /** An order's expiry: past it, Phoenix would ignore the order. */
+    expiresAfterSlot?: string | undefined
+  },
   { intervalMs = 2_000 } = {},
 ): Promise<SendResult> {
   const { wire, signature, blockhash } = await readSigned(transaction, {
     prepared,
   })
+  if (expiresAfterSlot !== undefined) {
+    const slot = await rpc
+      .getSlot({ commitment: 'processed' })
+      .send(rpcTimeout())
+    // Phoenix treats an expired order as a no-op that still succeeds: the
+    // fee would buy nothing.
+    if (slot > BigInt(expiresAfterSlot))
+      return {
+        status: 'expired',
+        signature,
+        error: `The order expired at slot ${expiresAfterSlot} before it was sent (now ${slot}); nothing was sent. Prepare it again.`,
+      }
+  }
   const watch = () =>
     waitForConfirmation(rpc, {
       signature,

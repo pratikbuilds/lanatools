@@ -34,8 +34,12 @@ import {
   usd,
 } from './shared'
 
-/** An immediate-or-cancel order expires this many slots after it is built (D2). */
-export const ORDER_EXPIRY_SLOTS = 16n
+/**
+ * An immediate-or-cancel order expires this many slots after it is built
+ * (D2): about a minute, the life of its transaction's blockhash, so a person
+ * has time to approve it. Its price limit still bounds the fill.
+ */
+export const ORDER_EXPIRY_SLOTS = 150n
 
 /**
  * The building blocks of an immediate-or-cancel order, shared with
@@ -95,6 +99,12 @@ export async function immediateOrder(
   return {
     instruction,
     limitPrice,
+    expiresAfterSlot: String(spec.lastValidSlot),
+    position: {
+      symbol: market.symbol,
+      assetId: market.assetId,
+      baseLotsDecimals: market.baseLotsDecimals,
+    },
     details: {
       side,
       size,
@@ -106,8 +116,8 @@ export async function immediateOrder(
       reduceOnly: String(reduceOnly),
     },
     warnings: [
-      // D2: about 16 slots of 400 ms.
-      `This order expires about 6 seconds after it was prepared (slot ${spec.lastValidSlot}); sign and send it right away, or prepare it again.`,
+      // D2: 150 slots of about 400 ms.
+      `This order expires about a minute after it was prepared (slot ${spec.lastValidSlot}); after that it is not sent, and must be prepared again.`,
       ...(outOfReach
         ? [
             `The ${side === 'buy' ? 'limit is below the best ask' : 'limit is above the best bid'} (${bestPrice}), so this order will not fill now.`,
@@ -184,6 +194,8 @@ export const marketOrder = defineTradeTool({
       kind: 'instructions',
       wallet,
       instructions: [order.instruction],
+      expiresAfterSlot: order.expiresAfterSlot,
+      position: order.position,
       summary: `Market ${verb}: ${input.size} ${market.symbol} perp now, ${bound} $${order.limitPrice} each; any part that cannot fill at that price is cancelled`,
       details: order.details,
       warnings: order.warnings,

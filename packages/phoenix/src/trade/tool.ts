@@ -41,6 +41,13 @@ export type Submit =
       login: { message: string; nonceId: string }
     }
 
+/** The market whose position an order changes, to report what filled. */
+export type PositionRef = {
+  symbol: string
+  assetId: number
+  baseLotsDecimals: number
+}
+
 type Described = {
   /** The wallet that signs and pays. */
   wallet: Address
@@ -48,6 +55,13 @@ type Described = {
   summary: string
   details: Record<string, string>
   warnings: string[]
+  /**
+   * Market and close orders: Phoenix ignores the order after this slot (and
+   * still reports success), so it is never sent later.
+   */
+  expiresAfterSlot?: string
+  /** Market and close orders: the position the order changes. */
+  position?: PositionRef
 }
 
 /** What a tool's `prepare` returns. */
