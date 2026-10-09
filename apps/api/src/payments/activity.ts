@@ -18,8 +18,8 @@ const DAY_MS = 86_400_000
 
 type PaymentOutcome = PaymentActivityItem['outcome']
 
-// A payment still in progress, or one that was started and released, is
-// bookkeeping for the client's limit rather than a completed call.
+// A payment still in progress is a hold on the client's limit, not a
+// completed call.
 const LISTED: PaymentOutcome[] = ['paid', 'free', 'refused', 'failed']
 
 function isPaymentOutcome(status: string): status is PaymentOutcome {

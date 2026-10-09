@@ -1,9 +1,4 @@
-import {
-  address,
-  blockhash as toBlockhash,
-  createSolanaRpc,
-  signature as toSignature,
-} from '@solana/kit'
+import { address, blockhash as toBlockhash, createSolanaRpc } from '@solana/kit'
 import type { Signature } from '@solana/kit'
 import { Receipt } from 'mppx'
 import type { FixedCharge } from './challenge'
@@ -15,7 +10,7 @@ const SIGNATURE = /^[1-9A-HJ-NP-Za-km-z]{64,88}$/
  * The transaction signature a paid response names, or null. MPP returns a
  * `Payment-Receipt`. Standard x402 returns base64 JSON in `Payment-Response`;
  * pay's gateway puts the raw signature there instead, so both are accepted.
- * Either way the signature is only trusted after it is checked on chain.
+ * It is recorded as the payment's reference; it is not checked on chain.
  */
 export function receiptSignature(
   response: Response,
@@ -47,72 +42,35 @@ export function receiptSignature(
   }
 }
 
+/**
+ * Why an endpoint refused a signed payment, from what its answer names. An
+ * x402 v2 endpoint puts the reason in the `error` of its `Payment-Required`
+ * header; many also send a request ID for their support.
+ */
+export function refusalDetails(response: Response) {
+  let reason: string | null = null
+  try {
+    const header = response.headers.get('payment-required')
+    if (header) {
+      const required = JSON.parse(
+        new TextDecoder().decode(
+          Uint8Array.from(atob(header), (c) => c.charCodeAt(0)),
+        ),
+      ) as { error?: unknown }
+      if (typeof required.error === 'string')
+        reason = required.error.slice(0, 200)
+    }
+  } catch {
+    // An unreadable header names no reason.
+  }
+  const requestId = response.headers.get('x-request-id')?.slice(0, 100) ?? null
+  return { reason, requestId }
+}
+
 type TokenBalance = {
   owner?: string
   mint: string
   uiTokenAmount: { amount: string }
-}
-
-export type Settlement =
-  { status: 'paid' } | { status: 'unconfirmed'; reason: string }
-
-/**
- * Waits for the transaction to finalize, then checks that it moved exactly
- * the charged USDC from the payer to the recipient. Anything short of that
- * leaves the payment unconfirmed, so its reservation stays held.
- */
-export async function verifySettlement(
-  rpcUrl: string,
-  signature: string,
-  charge: FixedCharge,
-  payer: string,
-  { timeoutMs = 60_000, intervalMs = 2_000 } = {},
-): Promise<Settlement> {
-  const rpc = createSolanaRpc(rpcUrl)
-  const id = toSignature(signature)
-  const deadline = Date.now() + timeoutMs
-  for (;;) {
-    const status = await rpc
-      .getSignatureStatuses([id], { searchTransactionHistory: true })
-      .send({ abortSignal: AbortSignal.timeout(RPC_TIMEOUT_MS) })
-      .then(({ value }) => value[0])
-      .catch(() => null)
-    if (status?.err)
-      return {
-        status: 'unconfirmed',
-        reason: 'The transaction failed on chain',
-      }
-    if (status?.confirmationStatus === 'finalized') break
-    if (Date.now() >= deadline)
-      return {
-        status: 'unconfirmed',
-        reason: 'The transaction did not finalize in time',
-      }
-    await new Promise((resolve) => setTimeout(resolve, intervalMs))
-  }
-
-  const transaction = await rpc
-    .getTransaction(id, {
-      encoding: 'jsonParsed',
-      commitment: 'finalized',
-      maxSupportedTransactionVersion: 0,
-    })
-    .send({ abortSignal: AbortSignal.timeout(RPC_TIMEOUT_MS) })
-    .catch(() => null)
-  if (!transaction?.meta || transaction.meta.err)
-    return { status: 'unconfirmed', reason: 'Could not read the transaction' }
-  const change = (owner: string) =>
-    balance(transaction.meta?.postTokenBalances, owner, charge.mint) -
-    balance(transaction.meta?.preTokenBalances, owner, charge.mint)
-  if (
-    change(payer) !== -charge.amount ||
-    change(charge.recipient) !== charge.amount
-  )
-    return {
-      status: 'unconfirmed',
-      reason: 'The transaction does not match the charged payment',
-    }
-  return { status: 'paid' }
 }
 
 export type ChainOutcome =

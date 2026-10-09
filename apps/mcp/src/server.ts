@@ -333,7 +333,7 @@ export function createServer(
           "Calls an https endpoint the user gave you. If it answers HTTP 402 with a fixed MPP or x402 charge, pays it in USDC from the user's LanaTools wallet and returns the endpoint's response.",
           "The charge must not exceed max_usd or this client's remaining spending limit.",
           'A response that is not UTF-8 text, such as an image, comes back base64-encoded with bodyEncoding "base64".',
-          'Never repeat a call whose payment is reported as uncertain: it may already have been paid.',
+          'If the endpoint does not serve a call after the payment was signed, the error says whether the wallet was charged; do not repeat a call that was charged or whose payment is not known yet.',
         ].join(' '),
         inputSchema: z.object({
           url: z.url().describe('The https endpoint to call'),

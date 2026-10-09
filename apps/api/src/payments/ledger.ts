@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
 import { formatUsd } from '@lanatools/contracts'
@@ -12,10 +12,14 @@ export type CallTarget = { method: string; origin: string; path: string }
 /** The payment row was already resolved, by this call or another. */
 export class NoLongerOpenError extends Error {
   override readonly name = 'NoLongerOpenError'
-  constructor(id: string, from: string[]) {
-    super(`Payment ${id} is no longer ${from.join(' or ')}`)
+  constructor(id: string) {
+    super(`Payment ${id} is no longer open`)
   }
 }
+
+// Workers from before migration 0011 could still write `uncertain` while a
+// deploy rolled out; such a row is held and closed like an ended reservation.
+const OPEN = ['reserved', 'uncertain'] as const
 
 type ClosedStatus = 'free' | 'refused' | 'failed'
 
@@ -67,7 +71,8 @@ export async function enabledSigner(database: D1Database, userId: string) {
   )
 }
 
-// What the grant's client has committed: settled spend plus held reservations.
+// What the grant's client has committed: settled spend plus the holds of
+// calls not yet closed.
 const COMMITTED = sql`(
   select coalesce(sum(case when a.status = 'paid' then a.settled_atomic else a.reserved_atomic end), 0)
   from payment_activity a
@@ -170,7 +175,7 @@ export async function recordSigning(
   if (!row) throw new Error(`Payment ${id} can no longer be signed`)
 }
 
-/** The client's reserved or uncertain rows opened before `before`. */
+/** The client's open reservations: any `uncertain`, or reserved before `before`. */
 export async function openReservations(
   database: D1Database,
   identity: GrantIdentity,
@@ -183,82 +188,72 @@ export async function openReservations(
       and(
         eq(paymentActivity.privyUserId, identity.userId),
         eq(paymentActivity.clientId, identity.clientId),
-        inArray(paymentActivity.status, ['reserved', 'uncertain']),
-        lt(paymentActivity.createdAt, before),
+        or(
+          eq(paymentActivity.status, 'uncertain'),
+          and(
+            eq(paymentActivity.status, 'reserved'),
+            lt(paymentActivity.createdAt, before),
+          ),
+        ),
       ),
     )
 }
 
 /**
- * Replaces a reservation with the verified spend. Only called with proof
- * from the chain, which wins over a release made on weaker evidence, such
- * as a concurrent reconciliation whose lookup missed the transaction.
+ * Replaces a reservation with spend: the endpoint served the call, or the
+ * chain shows its payment landed. Chain proof also wins over a failure
+ * recorded from a lookup that missed the transaction.
  */
 export async function settle(
   database: D1Database,
   id: string,
   settledAtomic: bigint,
-  signature: string,
+  signature: string | null,
   httpStatus?: number,
   now = Date.now(),
 ) {
-  await transition(database, id, ['reserved', 'uncertain', 'released'], {
+  await transition(database, id, [...OPEN, 'failed'], {
     status: 'paid',
     settledAtomic: Number(settledAtomic),
     signature,
     httpStatus,
-    error: null,
     completedAt: now,
   })
 }
 
 /**
- * Frees a reservation. Only call this when nothing was signed, the signer
- * provably refused, or the signed transaction provably never landed: any
- * other failure may have paid.
+ * Frees a reservation and closes its row: `free` when the endpoint served
+ * the call without payment, `failed` otherwise. Only call this when nothing
+ * was signed or the chain shows the signed payment never landed.
  */
 export async function release(
   database: D1Database,
   id: string,
-  error: string,
-  httpStatus?: number,
+  outcome: {
+    status: 'free' | 'failed'
+    error?: string
+    httpStatus?: number | undefined
+  },
   now = Date.now(),
 ) {
-  await transition(database, id, ['reserved', 'uncertain'], {
-    status: 'released',
-    error,
-    httpStatus,
-    completedAt: now,
-  })
-}
-
-/** Keeps the reservation held for a payment whose outcome is unknown. */
-export async function markUncertain(
-  database: D1Database,
-  id: string,
-  error: string,
-  details: { signature?: string | null; httpStatus?: number } = {},
-) {
-  await transition(database, id, ['reserved'], {
-    status: 'uncertain',
-    error,
-    signature: details.signature ?? null,
-    httpStatus: details.httpStatus,
-  })
+  await transition(database, id, OPEN, { ...outcome, completedAt: now })
 }
 
 async function transition(
   database: D1Database,
   id: string,
-  from: Array<'reserved' | 'uncertain' | 'released'>,
+  from: ReadonlyArray<(typeof OPEN)[number] | 'failed'>,
   set: Partial<typeof paymentActivity.$inferInsert>,
 ) {
   const [row] = await drizzle(database)
     .update(paymentActivity)
     .set(set)
     .where(
-      and(eq(paymentActivity.id, id), inArray(paymentActivity.status, from)),
+      and(
+        eq(paymentActivity.id, id),
+        inArray(paymentActivity.status, [...from]),
+      ),
     )
     .returning({ id: paymentActivity.id })
-  if (!row) throw new NoLongerOpenError(id, from)
+  if (!row) throw new NoLongerOpenError(id)
 }
