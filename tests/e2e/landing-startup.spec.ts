@@ -25,9 +25,7 @@ for (const width of [1280, 390]) {
     try {
       await page.goto('/', { waitUntil: 'commit' })
       const heading = page.getByRole('heading', { level: 1 })
-      await expect(heading).toHaveText(
-        'Connect your agentto everything on Solana.',
-      )
+      await expect(heading).toHaveText('Connect your agentto Solana.')
       await expect(heading).toBeVisible()
       const original = await heading.elementHandle()
       await expect(
