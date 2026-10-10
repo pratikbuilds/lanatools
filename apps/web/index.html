@@ -52,10 +52,11 @@
       href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&display=swap"
     />
     <!--
-      Boot screen for the app pages. Sign-in and the dashboard wait on a
-      large bundle; until React renders, this paints the same frame they use
-      (header, page, status bar) in the visitor's theme, so the page opens
-      onto the app instead of the landing page's blue. React replaces it.
+      Boot screen for the app pages: every path except the landing page.
+      Sign-in, the dashboard and the transaction page wait on a large bundle;
+      until React renders, this paints the same frame they use (header, page,
+      status bar) in the visitor's theme, so the page opens onto the app
+      instead of the prerendered landing page. React replaces it.
     -->
     <style>
       /* The HTML holds the prerendered landing page. On an app page it stays
@@ -257,15 +258,9 @@
     </style>
     <script>
       // Runs before the body paints, so an app page never shows the
-      // prerendered landing page first.
+      // prerendered landing page first. Only / is the landing page.
       ;(function () {
-        var path = location.pathname
-        var app =
-          path === '/sign-in' ||
-          path.indexOf('/sign-in/') === 0 ||
-          path === '/dashboard' ||
-          path.indexOf('/dashboard/') === 0
-        if (!app) return
+        if (location.pathname === '/') return
 
         // The dashboard's theme: the visitor's pick, else the system's.
         var theme
@@ -294,9 +289,18 @@
       ;(function () {
         // The script in the head marked app pages.
         if (!document.documentElement.hasAttribute('data-boot')) return
-        var signIn =
-          location.pathname === '/sign-in' ||
-          location.pathname.indexOf('/sign-in/') === 0
+        var path = location.pathname
+        function at(prefix) {
+          return path === prefix || path.indexOf(prefix + '/') === 0
+        }
+        // What the page says while it loads, and its status bar's first cell.
+        var words = at('/sign-in')
+          ? ['Preparing sign-in', 'Securing access']
+          : at('/dashboard')
+            ? ['Opening your dashboard', 'Checking your account']
+            : at('/tx')
+              ? ['Opening transaction', 'Public transaction link']
+              : ['Loading', 'lanatools.sh']
 
         function mark(size, className) {
           return (
@@ -322,10 +326,10 @@
           mark(64, 'boot-logo') +
           '<div class="boot-track" aria-hidden="true"></div>' +
           '<p class="boot-label">' +
-          (signIn ? 'Preparing sign-in' : 'Opening your dashboard') +
+          words[0] +
           '</p></main>' +
           '<footer class="boot-bar"><span><i aria-hidden="true"></i>' +
-          (signIn ? 'Securing access' : 'Checking your account') +
+          words[1] +
           '</span></footer></div>'
         document.documentElement.removeAttribute('data-boot-pending')
       })()
