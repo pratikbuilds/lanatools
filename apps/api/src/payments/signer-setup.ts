@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
 import type {
@@ -8,6 +8,7 @@ import type {
 import type { PrivyClient } from '@privy-io/node'
 import { paymentSigner } from '../db/schema'
 import type { PaymentNetwork } from '../solana/network'
+import { transactionPrograms } from '../transactions/tools'
 
 const COMPUTE_BUDGET = 'ComputeBudget111111111111111111111111111111'
 const MEMO = 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'
@@ -36,6 +37,55 @@ async function policyAllowsMint(
   )
 }
 
+/** Whether a stored transaction policy allows exactly the current programs. */
+async function policyAllowsPrograms(
+  privy: PrivyClient,
+  policyId: string,
+  programs: readonly string[],
+) {
+  const policy = await privy.policies().get(policyId)
+  return policy.rules.some((rule) =>
+    rule.conditions.some(
+      (condition) =>
+        'field' in condition &&
+        condition.field === 'programId' &&
+        Array.isArray(condition.value) &&
+        condition.value.length === programs.length &&
+        programs.every((program) => condition.value.includes(program)),
+    ),
+  )
+}
+
+/**
+ * The transaction signer's policy: the programs LanaTools transaction tools
+ * call, and nothing else. It has no amount or address rules. Swaps load
+ * accounts from lookup tables, which Privy cannot read, while program IDs
+ * are always in a transaction's static keys.
+ */
+function createTransactionPolicy(privy: PrivyClient, userId: string) {
+  return privy.policies().create({
+    name: 'LanaTools agent transactions',
+    version: '1.0',
+    chain_type: 'solana',
+    owner: { user_id: userId },
+    rules: [
+      {
+        name: 'Allow LanaTools transaction programs',
+        method: 'signTransaction',
+        action: 'ALLOW',
+        conditions: [
+          {
+            field_source: 'solana_program_instruction',
+            field: 'programId',
+            operator: 'in',
+            value: transactionPrograms(),
+          },
+        ],
+      },
+    ],
+  })
+}
+
 /**
  * The Privy wallet ID of `walletAddress` if it is one of the user's own
  * Solana wallets, else undefined. Privy's word, not the browser's.
@@ -52,27 +102,38 @@ export async function findUserWallet(
   return undefined
 }
 
+/**
+ * The saved setup. With a transaction signer configured, a setup made before
+ * it existed reads as pending, so the dashboard sets it up again.
+ */
 export async function signerStatus(
   database: D1Database,
   userId: string,
+  transactionSigner = false,
 ): Promise<PaymentSignerStatus> {
   const row = await drizzle(database)
     .select()
     .from(paymentSigner)
     .where(eq(paymentSigner.privyUserId, userId))
     .get()
-  return row
-    ? { status: row.status, walletAddress: row.walletAddress }
-    : { status: 'none', walletAddress: null }
+  if (!row) return { status: 'none', walletAddress: null }
+  const outdated =
+    transactionSigner && row.status === 'enabled' && !row.transactionPolicyId
+  return {
+    status: outdated ? 'pending' : row.status,
+    walletAddress: row.walletAddress,
+  }
 }
 
 /**
- * Prepares the LanaTools server signer for the user's embedded wallet: finds
- * the wallet among the user's own Privy wallets and creates a user-owned
- * policy that allows only USDC transfers plus Compute Budget and Memo
- * instructions. How much may be paid is enforced by each client's limit in
- * D1, not by this policy. The browser then adds the signer with Privy, as
- * only the wallet's owner can.
+ * Prepares the LanaTools server signers for the user's embedded wallet: finds
+ * the wallet among the user's own Privy wallets and creates user-owned
+ * policies. The payment signer may sign only USDC transfers plus Compute
+ * Budget and Memo instructions; how much may be paid is enforced by each
+ * client's limit in D1, not by this policy. The transaction signer, when the
+ * deployment has one, may sign only the programs LanaTools transaction tools
+ * call. The browser then adds the signers with Privy, as only the wallet's
+ * owner can.
  */
 export async function prepareSigner(
   database: D1Database,
@@ -81,12 +142,15 @@ export async function prepareSigner(
     userId,
     walletAddress,
     signerId,
+    transactionSignerId,
     network,
     restore,
   }: {
     userId: string
     walletAddress: string
     signerId: string
+    /** The transaction signer's key quorum; absent when not configured. */
+    transactionSignerId?: string | undefined
     network: PaymentNetwork
     /** The user asked to set up again after removing LanaTools access. */
     restore: boolean
@@ -109,13 +173,41 @@ export async function prepareSigner(
     throw new SignerSetupError(
       'You removed LanaTools access. Set it up again in Settings.',
     )
-  // Setup for the same wallet keeps its policy, whether it is unfinished,
+  // Setup for the same wallet keeps its policies, whether it is unfinished,
   // already on (say, from another tab), or set up again after a removal. A
   // signer left on the wallet then still matches, so setup can always finish.
-  // A policy for another network's USDC is replaced instead.
-  if (
-    existing?.walletId === walletId &&
+  // A policy for another network's USDC, or for programs the transaction
+  // tools no longer match, is replaced instead.
+  const sameWallet = existing?.walletId === walletId
+  const paymentPolicyId =
+    existing &&
+    sameWallet &&
     (await policyAllowsMint(privy, existing.policyId, network.usdcMint))
+      ? existing.policyId
+      : (await createPaymentPolicy(privy, userId, network)).id
+  const transactionPolicyId = !transactionSignerId
+    ? null
+    : existing?.transactionPolicyId &&
+        sameWallet &&
+        (await policyAllowsPrograms(
+          privy,
+          existing.transactionPolicyId,
+          transactionPrograms(),
+        ))
+      ? existing.transactionPolicyId
+      : (await createTransactionPolicy(privy, userId)).id
+  const grant: PaymentSignerGrant = {
+    signers: [
+      { signerId, policyIds: [paymentPolicyId] },
+      ...(transactionSignerId && transactionPolicyId
+        ? [{ signerId: transactionSignerId, policyIds: [transactionPolicyId] }]
+        : []),
+    ],
+  }
+  if (
+    existing &&
+    existing.policyId === paymentPolicyId &&
+    existing.transactionPolicyId === transactionPolicyId
   ) {
     if (existing.status === 'disabled')
       await db
@@ -127,10 +219,50 @@ export async function prepareSigner(
             eq(paymentSigner.status, 'disabled'),
           ),
         )
-    return { signerId, policyIds: [existing.policyId] }
+    return grant
   }
 
-  const policy = await privy.policies().create({
+  const row = {
+    walletId,
+    walletAddress,
+    policyId: paymentPolicyId,
+    transactionPolicyId,
+    status: 'pending' as const,
+    updatedAt: now,
+  }
+  // Only the row read above is replaced: a removal or another setup during
+  // the Privy calls wins, so a stale tab cannot undo it.
+  const saved = existing
+    ? await db
+        .update(paymentSigner)
+        .set(row)
+        .where(
+          and(
+            eq(paymentSigner.privyUserId, userId),
+            eq(paymentSigner.policyId, existing.policyId),
+            eq(paymentSigner.status, existing.status),
+          ),
+        )
+        .returning({ userId: paymentSigner.privyUserId })
+    : await db
+        .insert(paymentSigner)
+        .values({ privyUserId: userId, ...row })
+        .onConflictDoNothing()
+        .returning({ userId: paymentSigner.privyUserId })
+  if (saved.length === 0)
+    throw new SignerSetupError(
+      'LanaTools access was removed or set up again meanwhile. Try again.',
+    )
+  return grant
+}
+
+/** The payment signer's policy: USDC transfers, Compute Budget and Memo. */
+function createPaymentPolicy(
+  privy: PrivyClient,
+  userId: string,
+  network: PaymentNetwork,
+) {
+  return privy.policies().create({
     name: 'LanaTools agent payments',
     version: '1.0',
     chain_type: 'solana',
@@ -164,48 +296,18 @@ export async function prepareSigner(
       },
     ],
   })
-  const row = {
-    walletId,
-    walletAddress,
-    policyId: policy.id,
-    status: 'pending' as const,
-    updatedAt: now,
-  }
-  // Only the row read above is replaced: a removal or another setup during
-  // the Privy calls wins, so a stale tab cannot undo it.
-  const saved = existing
-    ? await db
-        .update(paymentSigner)
-        .set(row)
-        .where(
-          and(
-            eq(paymentSigner.privyUserId, userId),
-            eq(paymentSigner.policyId, existing.policyId),
-            eq(paymentSigner.status, existing.status),
-          ),
-        )
-        .returning({ userId: paymentSigner.privyUserId })
-    : await db
-        .insert(paymentSigner)
-        .values({ privyUserId: userId, ...row })
-        .onConflictDoNothing()
-        .returning({ userId: paymentSigner.privyUserId })
-  if (saved.length === 0)
-    throw new SignerSetupError(
-      'LanaTools access was removed or set up again meanwhile. Try again.',
-    )
-  return { signerId, policyIds: [policy.id] }
 }
 
 /**
- * Turns payments on once Privy reports the server signer on the wallet with
- * exactly the LanaTools policy. The browser's word is not enough.
+ * Turns payments on once Privy reports each server signer on the wallet with
+ * exactly its LanaTools policy. The browser's word is not enough.
  */
 export async function confirmSigner(
   database: D1Database,
   privy: PrivyClient,
   userId: string,
   signerId: string,
+  transactionSignerId?: string,
   now = Date.now(),
 ): Promise<PaymentSignerStatus> {
   const db = drizzle(database)
@@ -220,12 +322,18 @@ export async function confirmSigner(
       'You removed LanaTools access. Set it up again in Settings.',
     )
   const wallet = await privy.wallets().get(row.walletId)
-  const attached = wallet.additional_signers.some(
-    (signer) =>
-      signer.signer_id === signerId &&
-      signer.override_policy_ids?.length === 1 &&
-      signer.override_policy_ids[0] === row.policyId,
-  )
+  const has = (id: string, policyId: string) =>
+    wallet.additional_signers.some(
+      (signer) =>
+        signer.signer_id === id &&
+        signer.override_policy_ids?.length === 1 &&
+        signer.override_policy_ids[0] === policyId,
+    )
+  const attached =
+    has(signerId, row.policyId) &&
+    (!transactionSignerId ||
+      (row.transactionPolicyId !== null &&
+        has(transactionSignerId, row.transactionPolicyId)))
   if (!attached)
     throw new SignerNotAttachedError(
       'Privy does not show the LanaTools signer on this wallet yet',
@@ -239,6 +347,9 @@ export async function confirmSigner(
       and(
         eq(paymentSigner.privyUserId, userId),
         eq(paymentSigner.policyId, row.policyId),
+        row.transactionPolicyId === null
+          ? isNull(paymentSigner.transactionPolicyId)
+          : eq(paymentSigner.transactionPolicyId, row.transactionPolicyId),
         inArray(paymentSigner.status, ['pending', 'enabled']),
       ),
     )

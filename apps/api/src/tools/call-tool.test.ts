@@ -523,10 +523,6 @@ test('all ten Jupiter tools run through the API grant boundary and revocation bl
       tool: 'jupiter_quote_swap',
       input: { inputMint: sol, outputMint: usdc, amount: '1' },
     },
-    {
-      tool: 'jupiter_build_swap',
-      input: { inputMint: sol, outputMint: usdc, amount: '1', wallet: sol },
-    },
     { tool: 'jupiter_get_swap_venues', input: {} },
   ]
   let calls = 0
@@ -562,7 +558,7 @@ test('all ten Jupiter tools run through the API grant boundary and revocation bl
       await callTool(served(fetcher), grant, call.tool, call.input),
     ).toMatchObject({ ok: true, result: { source: 'jupiter' } })
   const successfulCalls = calls
-  expect(successfulCalls).toBe(12)
+  expect(successfulCalls).toBe(10)
   await revokeGrant(db, grant.userId, grant.grantId)
   for (const call of requests)
     expect(

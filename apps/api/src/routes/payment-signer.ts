@@ -31,6 +31,7 @@ export const paymentSignerRoutes = new Hono<{
       (await signerStatus(
         c.env.DB,
         c.get('userId'),
+        Boolean(c.env.PRIVY_TRANSACTION_SIGNER_ID),
       )) satisfies PaymentSignerStatus,
     ),
   )
@@ -43,6 +44,7 @@ export const paymentSignerRoutes = new Hono<{
         userId: c.get('userId'),
         walletAddress: body.walletAddress,
         signerId: c.env.PRIVY_PAYMENT_SIGNER_ID,
+        transactionSignerId: c.env.PRIVY_TRANSACTION_SIGNER_ID || undefined,
         network,
         restore: body.restore ?? false,
       })
@@ -60,6 +62,7 @@ export const paymentSignerRoutes = new Hono<{
         privyClient(c.env),
         c.get('userId'),
         c.env.PRIVY_PAYMENT_SIGNER_ID,
+        c.env.PRIVY_TRANSACTION_SIGNER_ID || undefined,
       )
       return c.json(status satisfies PaymentSignerStatus)
     } catch (error) {

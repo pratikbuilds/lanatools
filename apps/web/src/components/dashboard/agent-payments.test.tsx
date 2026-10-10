@@ -106,5 +106,8 @@ test('a failed setup shows why', () => {
 test('the signing rules name the wallet they apply to', () => {
   const html = render({ status: 'enabled', walletAddress: wallet })
   expect(html).toContain('USDC only')
+  expect(html).toContain('API payments')
+  expect(html).toContain('no further approval')
+  expect(html).toContain('no amount limit')
   expect(html).toContain(wallet)
 })

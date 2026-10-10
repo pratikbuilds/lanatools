@@ -64,6 +64,9 @@ export const paymentSigner = sqliteTable('payment_signer', {
   walletAddress: text('wallet_address').notNull(),
   // User-owned Privy policy that bounds what the server signer may sign.
   policyId: text('policy_id').notNull(),
+  // User-owned Privy policy for the transaction signer, which signs embedded
+  // transactions. Null when this deployment has no transaction signer.
+  transactionPolicyId: text('transaction_policy_id'),
   status: text('status', { enum: ['pending', 'enabled', 'disabled'] })
     .notNull()
     .default('pending'),
@@ -163,9 +166,9 @@ export const agentFeedback = sqliteTable('agent_feedback', {
   createdAt: integer('created_at').notNull(),
 })
 
-/** One public intent and its single transaction; signed bytes are never stored. */
-export const transactionLink = sqliteTable(
-  'transaction_link',
+/** One transaction intent and its single transaction; signed bytes are never stored. */
+export const transactionRequest = sqliteTable(
+  'transaction_request',
   {
     id: text('id').primaryKey(),
     toolName: text('tool_name').notNull(),
@@ -175,6 +178,9 @@ export const transactionLink = sqliteTable(
     creatorClientId: text('creator_client_id').notNull(),
     creatorGrantId: text('creator_grant_id').notNull(),
     idempotencyKey: text('idempotency_key').notNull(),
+    delivery: text('delivery', { enum: ['link', 'local', 'embedded'] })
+      .notNull()
+      .default('link'),
     status: text('status', {
       enum: [
         'open',
@@ -192,6 +198,9 @@ export const transactionLink = sqliteTable(
       .default('open'),
     revision: integer('revision').notNull().default(0),
     account: text('account'),
+    // The review shown before a transaction is built, with any looked-up
+    // names, so page reads do not call providers again.
+    reviewJson: text('review_json'),
     candidateJson: text('candidate_json'),
     signature: text('signature'),
     receiptJson: text('receipt_json'),
@@ -201,7 +210,7 @@ export const transactionLink = sqliteTable(
     expiresAt: integer('expires_at').notNull(),
   },
   (table) => [
-    uniqueIndex('transaction_link_creator_request').on(
+    uniqueIndex('transaction_request_creator_request').on(
       table.creatorUserId,
       table.creatorClientId,
       table.idempotencyKey,

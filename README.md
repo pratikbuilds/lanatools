@@ -32,6 +32,8 @@ Mainnet transactions use real funds.
 1. Copy `.env.example` to `.env` and fill it in. Use a Privy app made for
    local development, never the production one, and create its payment signer
    once with `bun --env-file=.env apps/api/scripts/create-payment-signer.ts`.
+   For embedded transactions, also create its transaction signer with
+   `bun --env-file=.env apps/api/scripts/create-transaction-signer.ts`.
 2. Install and start:
 
    ```sh

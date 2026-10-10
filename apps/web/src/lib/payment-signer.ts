@@ -74,7 +74,8 @@ export async function attachPaymentSigner(
     PaymentSignerStatus.assert(
       await call(getAccessToken, '/confirm', { method: 'POST' }),
     )
-  const add = () => addSigners({ address: walletAddress, signers: [grant] })
+  const add = () =>
+    addSigners({ address: walletAddress, signers: grant.signers })
   try {
     await add()
   } catch {
@@ -82,8 +83,9 @@ export async function attachPaymentSigner(
     // setup's policy, as after another tab or an attempt that stopped early,
     // the server's check turns payments on. With another policy, as from an
     // earlier setup or another LanaTools deployment on the same Privy app,
-    // the old signer is replaced. LanaTools adds no other signer to the
-    // wallet, so removing all of them removes only its own. Any other
+    // the old signers are replaced. Every signer on the wallet is a LanaTools
+    // signer (payments and transactions), so removing all of them removes
+    // only its own. Any other
     // refusal, such as access removed meanwhile, leaves the wallet alone.
     try {
       return await confirm()

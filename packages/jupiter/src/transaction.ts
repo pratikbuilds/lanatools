@@ -1,8 +1,9 @@
 import { defineTransactionOperation } from '@lanatools/toolkit/transactions'
 import type { TransactionContext } from '@lanatools/toolkit/transactions'
 import { SOLANA_NETWORKS } from '@lanatools/contracts/networks'
+import type { TransactionReview } from '@lanatools/contracts'
 import type { JupiterClientOptions } from './client'
-import { BuildSwapInput, SwapArguments } from './inputs'
+import { SwapArguments } from './inputs'
 import { JupiterClient } from './jupiter-client'
 import {
   address,
@@ -21,34 +22,92 @@ const argumentsSchema = SwapArguments.safeExtend({
   maxSlippageBps: SwapArguments.shape.maxSlippageBps.unwrap(),
 })
 
-function token(mint: string) {
-  if (mint === 'So11111111111111111111111111111111111111112') return 'SOL'
-  if (mint === 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v') return 'USDC'
-  return mint
+const KNOWN: Readonly<Record<string, string>> = {
+  So11111111111111111111111111111111111111112: 'SOL',
+  EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: 'USDC',
 }
 
-const swapOperation = defineTransactionOperation({
-  supportedNetworks: [SOLANA_NETWORKS.mainnet.name],
-  arguments: argumentsSchema,
-  describe: (input) => ({
-    title: `Swap ${token(input.inputMint)} for ${token(input.outputMint)}`,
+/** What the review shows for a token: its symbol and, when known, its logo. */
+type TokenLabel = { symbol: string; icon?: string }
+type Labels = (mint: string) => TokenLabel
+
+/** Without Jupiter: known symbols, else a shortened mint. */
+const fallbackLabel: Labels = (mint) => ({
+  symbol: KNOWN[mint] ?? `${mint.slice(0, 4)}…${mint.slice(-4)}`,
+})
+
+/** Symbols and logos from Jupiter's token list; only https logos are kept. */
+async function tokenLabels(
+  context: JupiterTransactionContext,
+  mints: string[],
+): Promise<Labels> {
+  const outcome = await new JupiterClient(context).read({
+    tool: 'jupiter_search_tokens',
+    input: { mints },
+  })
+  if (!outcome.ok || !('tokens' in outcome.result.data)) return fallbackLabel
+  const tokens: readonly unknown[] = outcome.result.data.tokens
+  const text = (value: unknown) =>
+    typeof value === 'string' && value.trim() ? value.trim() : undefined
+  return (mint) => {
+    const token = tokens.find(
+      (each): each is Record<string, unknown> =>
+        typeof each === 'object' &&
+        each !== null &&
+        'id' in each &&
+        each.id === mint,
+    )
+    const icon = text(token?.icon)
+    return {
+      symbol: text(token?.symbol) ?? fallbackLabel(mint).symbol,
+      ...(icon?.startsWith('https://') ? { icon } : {}),
+    }
+  }
+}
+
+type SwapIntent = z.infer<typeof argumentsSchema>
+
+function describeSwap(input: SwapIntent, label: Labels = fallbackLabel) {
+  const pay = label(input.inputMint)
+  const receive = label(input.outputMint)
+  return {
+    title: `Swap ${pay.symbol} for ${receive.symbol}`,
     description:
       'Swap from your connected wallet through Jupiter. The quote is fetched when you sign. Network fees are paid in SOL.',
     actionLabel: 'Swap tokens',
     fields: [
-      { label: 'You pay', value: `${input.amount} ${token(input.inputMint)}` },
-      { label: 'You receive', value: token(input.outputMint) },
+      {
+        label: 'You pay',
+        value: `${input.amount} ${pay.symbol}`,
+        ...(pay.icon ? { icon: pay.icon } : {}),
+      },
+      {
+        label: 'You receive',
+        value: receive.symbol,
+        ...(receive.icon ? { icon: receive.icon } : {}),
+      },
       { label: 'Maximum slippage', value: `${input.maxSlippageBps / 100}%` },
       ...(input.minOutputAmount === undefined
         ? []
         : [
             {
               label: 'Minimum receive',
-              value: `${input.minOutputAmount} ${token(input.outputMint)}`,
+              value: `${input.minOutputAmount} ${receive.symbol}`,
             },
           ]),
     ],
-  }),
+  }
+}
+
+const swapOperation = defineTransactionOperation({
+  supportedNetworks: [SOLANA_NETWORKS.mainnet.name],
+  arguments: argumentsSchema,
+  describe: (input) => describeSwap(input),
+  review: async (input, context: JupiterTransactionContext) =>
+    describeSwap(
+      input,
+      await tokenLabels(context, [input.inputMint, input.outputMint]),
+    ),
   async build(input, account, context: JupiterTransactionContext, review) {
     const outcome = await new JupiterClient(context).prepareSwap({
       ...input,
@@ -85,24 +144,7 @@ const swapOperation = defineTransactionOperation({
       network: context.network,
       blockhash: message.lifetimeToken,
       lastValidBlockHeight: swap.lastValidBlockHeight,
-      review: {
-        ...review,
-        fields: [
-          ...review.fields.filter(
-            (field) =>
-              field.label !== 'You receive' &&
-              field.label !== 'Minimum receive',
-          ),
-          {
-            label: 'Estimated receive',
-            value: `${swap.expectedOutput.decimal} ${token(input.outputMint)}`,
-          },
-          {
-            label: 'Minimum receive',
-            value: `${swap.minimumOutput.decimal} ${token(input.outputMint)}`,
-          },
-        ],
-      },
+      review: withQuote(review, swap),
       execution: { requestId: swap.requestId },
     }
   },
@@ -121,11 +163,64 @@ const swapOperation = defineTransactionOperation({
   },
 })
 
-export const jupiterBuildSwapTool = {
-  name: 'jupiter_build_swap',
-  title: 'Prepare a Jupiter swap transaction',
+/**
+ * Programs a wallet-funded Jupiter swap calls directly, read from live
+ * `/swap/v2/order` transactions: Compute Budget, System and Token (wrapping
+ * SOL), Associated Token and Token-2022 for new or 2022 token accounts, and
+ * the Jupiter aggregator. Routed AMMs are called through Jupiter, not here.
+ */
+export const JUPITER_SWAP_PROGRAMS = [
+  'ComputeBudget111111111111111111111111111111',
+  '11111111111111111111111111111111',
+  'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+  'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb',
+  'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
+  'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4',
+] as const
+
+/**
+ * The prepared review: the receive line becomes the quote's estimate, keeping
+ * the symbol and logo the review already resolved.
+ */
+function withQuote(
+  review: TransactionReview,
+  swap: {
+    expectedOutput: { decimal: string }
+    minimumOutput: { decimal: string } | null
+  },
+): TransactionReview {
+  const receive = review.fields.find((field) => field.label === 'You receive')
+  const symbol = receive?.value ?? ''
+  return {
+    ...review,
+    fields: [
+      ...review.fields.filter(
+        (field) =>
+          field.label !== 'You receive' && field.label !== 'Minimum receive',
+      ),
+      {
+        label: 'Estimated receive',
+        value: `${swap.expectedOutput.decimal} ${symbol}`,
+        ...(receive?.icon ? { icon: receive.icon } : {}),
+      },
+      ...(swap.minimumOutput
+        ? [
+            {
+              label: 'Minimum receive',
+              value: `${swap.minimumOutput.decimal} ${symbol}`,
+            },
+          ]
+        : []),
+    ],
+  }
+}
+
+/** A wallet-funded Jupiter swap; network fees are paid in SOL by the signer. */
+export const jupiterSwapTool = {
+  name: 'jupiter_swap',
+  title: 'Swap tokens with Jupiter',
   description:
-    'Prepare an ExactIn swap for a public wallet using decimal token units. Returns a base64 transaction awaiting wallet signature, quote, fees, request ID and expiry. Never signs or submits. Preserve router/request metadata for downstream execution; JupiterZ needs Jupiter execution.',
-  input: BuildSwapInput,
+    'Swap an exact input amount through Jupiter, in decimal token units (1 means one USDC, not one base unit). The quote is fetched when the transaction is prepared for signing. The signing wallet pays network fees in SOL.',
   transaction: swapOperation,
+  programs: JUPITER_SWAP_PROGRAMS,
 } as const

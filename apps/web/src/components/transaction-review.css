@@ -4,6 +4,7 @@
   text-align: center;
 }
 .tx-sheet {
+  --tx-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   width: 100%;
   max-width: 38rem;
   overflow: hidden;
@@ -18,6 +19,7 @@
   margin-top: 12px;
   font: 600 30px/1.2 var(--font-mono);
   letter-spacing: -1.5px;
+  overflow-wrap: anywhere;
 }
 .tx-fields {
   margin-top: 24px;
@@ -34,8 +36,19 @@
   font-size: 12px;
 }
 .tx-fields dd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
   font: 500 13px/1.6 var(--font-mono);
   overflow-wrap: anywhere;
+}
+.tx-field-icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
 }
 .tx-record {
   margin-top: 16px;
@@ -68,6 +81,8 @@
 .tx-primary {
   display: inline-flex;
   width: fit-content;
+  /* Fits every label (Sign & send … Check your wallet…) so it never resizes. */
+  min-width: 22ch;
   max-width: 100%;
   min-height: 46px;
   align-items: center;
@@ -80,14 +95,16 @@
   font: 600 16px/1.4 var(--font-mono);
   cursor: pointer;
   transition:
-    background-color 120ms,
-    transform 120ms;
+    background-color 120ms ease,
+    transform 160ms var(--tx-ease-out);
 }
-.tx-primary:not(:disabled):hover {
-  background: color-mix(in srgb, var(--d-accent) 90%, var(--d-bg));
+@media (hover: hover) and (pointer: fine) {
+  .tx-primary:not(:disabled):hover {
+    background: color-mix(in srgb, var(--d-accent) 90%, var(--d-bg));
+  }
 }
 .tx-primary:not(:disabled):active {
-  transform: translateY(1px);
+  transform: scale(0.97);
 }
 .tx-primary:focus-visible {
   outline: 2px solid var(--d-accent);
@@ -105,9 +122,11 @@
   font: 500 11px/1.5 var(--font-mono);
   cursor: pointer;
 }
-.tx-text-button:not(:disabled):hover {
-  border-color: currentColor;
-  color: var(--d-text);
+@media (hover: hover) and (pointer: fine) {
+  .tx-text-button:not(:disabled):hover {
+    border-color: currentColor;
+    color: var(--d-text);
+  }
 }
 .tx-text-button:disabled {
   opacity: 0.5;
@@ -148,6 +167,16 @@
   padding: 24px 32px;
   border-top: 1px solid var(--d-line);
   background: var(--d-bg);
+  /* The outcome arrives instead of swapping in. */
+  transition:
+    opacity 200ms var(--tx-ease-out),
+    transform 200ms var(--tx-ease-out);
+}
+@starting-style {
+  .tx-result {
+    opacity: 0;
+    transform: translateY(4px);
+  }
 }
 .tx-result h2 {
   margin-top: 9px;
@@ -171,9 +200,12 @@
   text-decoration-color: var(--d-line);
   text-underline-offset: 6px;
   text-decoration-thickness: 1px;
+  transition: text-decoration-color 150ms ease;
 }
-.tx-explorer:hover > span:first-child {
-  text-decoration-color: currentColor;
+@media (hover: hover) and (pointer: fine) {
+  .tx-explorer:hover > span:first-child {
+    text-decoration-color: currentColor;
+  }
 }
 .tx-explorer > span:last-child {
   font-size: 18px;
@@ -216,10 +248,16 @@
   background: transparent;
   color: var(--d-text);
   cursor: pointer;
-  transition: background 120ms;
+  transition: background-color 120ms ease;
 }
-.tx-wallet-option:not(:disabled):hover {
+@media (hover: hover) and (pointer: fine) {
+  .tx-wallet-option:not(:disabled):hover {
+    background: var(--d-panel-2);
+  }
+}
+.tx-wallet-option:not(:disabled):active {
   background: var(--d-panel-2);
+  transition-duration: 0ms;
 }
 .tx-wallet-option:disabled {
   cursor: wait;
@@ -276,5 +314,17 @@
   .tx-primary,
   .tx-wallet-option {
     transition: none;
+  }
+  .tx-primary:not(:disabled):active {
+    transform: none;
+  }
+  /* Keep the fade that explains the change; drop the movement. */
+  .tx-result {
+    transition: opacity 200ms ease;
+  }
+  @starting-style {
+    .tx-result {
+      transform: none;
+    }
   }
 }

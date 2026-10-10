@@ -1,10 +1,12 @@
 import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { bodyLimit } from 'hono/body-limit'
+import { createMiddleware } from 'hono/factory'
 import type { RateLimit } from '@cloudflare/workers-types'
 import {
   observeTransactionLink,
   prepareTransactionLink,
+  requestDelivery,
   sendTransactionLink,
 } from '../transactions/requests'
 import type {
@@ -29,6 +31,14 @@ function errorStatus(code: string) {
   return 503
 }
 
+const notFound = {
+  error: {
+    code: 'not_found',
+    message: 'Transaction link not found.',
+    retryable: false,
+  },
+}
+
 const invalidInput = {
   error: {
     code: 'invalid_input',
@@ -36,6 +46,21 @@ const invalidInput = {
     retryable: false,
   },
 }
+
+// Only link requests are public. Local and embedded requests belong to the
+// agent that created them, so a visitor cannot read, prepare or send them.
+const onlyLinks = createMiddleware<{ Bindings: TransactionLinksEnv }>(
+  async (c, next) => {
+    const id = c.req.param('id') ?? ''
+    const delivery = await requestDelivery(c.env.DB, id).catch(() => {
+      throw new HTTPException(503, {
+        message: 'Could not read transaction link',
+      })
+    })
+    if (delivery !== 'link') return c.json(notFound, 404)
+    return next()
+  },
+)
 
 export const createTransactionLinks = (options: ExecutionOptions = {}) =>
   new Hono<{ Bindings: TransactionLinksEnv }>()
@@ -63,6 +88,8 @@ export const createTransactionLinks = (options: ExecutionOptions = {}) =>
       '*',
       bodyLimit({ maxSize: 4096, onError: (c) => c.json(invalidInput, 413) }),
     )
+    .use('/:id', onlyLinks)
+    .use('/:id/*', onlyLinks)
     .get('/:id', async (c) => {
       const link = await observeTransactionLink(
         c.env,

@@ -109,6 +109,17 @@ function TransactionPage({
   const [busy, setBusy] = useState<'prepare' | 'sign' | 'send' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [canRetry, setCanRetry] = useState(false)
+  // Only a refresh the user asked for shows as one; background checks while
+  // a transaction is pending stay silent instead of flickering the button.
+  const [refreshing, setRefreshing] = useState(false)
+  async function refresh() {
+    setRefreshing(true)
+    try {
+      await query.refetch()
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const link = query.data
   const canPrepare =
@@ -383,10 +394,10 @@ function TransactionPage({
               className={
                 link && !statusRefreshPrimary ? 'tx-text-button' : 'tx-primary'
               }
-              disabled={query.isFetching || !!busy}
-              onClick={() => void query.refetch()}
+              disabled={refreshing || !!busy}
+              onClick={() => void refresh()}
             >
-              {query.isFetching
+              {refreshing
                 ? 'Refreshing…'
                 : link
                   ? 'Refresh status'
@@ -404,6 +415,24 @@ function TransactionPage({
   )
 }
 
+/** A token logo from a third-party host; hidden if it fails to load. */
+function FieldIcon({ src }: { src: string }) {
+  const [failed, setFailed] = useState(false)
+  if (failed) return null
+  return (
+    <img
+      src={src}
+      alt=""
+      width="20"
+      height="20"
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      className="tx-field-icon"
+      onError={() => setFailed(true)}
+    />
+  )
+}
+
 function Review({ link }: { link: TransactionLink }) {
   return (
     <>
@@ -413,7 +442,10 @@ function Review({ link }: { link: TransactionLink }) {
         {link.review.fields.map((field, index) => (
           <div key={`${field.label}-${index}`}>
             <dt>{field.label}</dt>
-            <dd>{field.value}</dd>
+            <dd>
+              {field.icon && <FieldIcon key={field.icon} src={field.icon} />}
+              <span>{field.value}</span>
+            </dd>
           </div>
         ))}
         <div>

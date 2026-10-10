@@ -963,7 +963,7 @@ test('Jupiter uses the shared mainnet connect, sign and Explorer flow', async ({
   }
   const swap = {
     ...link,
-    tool: 'jupiter_build_swap',
+    tool: 'jupiter_swap',
     network: 'mainnet',
     review,
   }
@@ -1030,7 +1030,7 @@ test('Jupiter uses the shared mainnet connect, sign and Explorer flow', async ({
   expect(preparations).toBe(0)
   await page.getByRole('button', { name: 'Sign & send', exact: true }).click()
   await expect(
-    page.getByRole('status').filter({ hasText: 'Transaction confirmed' }),
+    page.getByRole('heading', { name: 'Transaction confirmed', exact: true }),
   ).toBeVisible()
   await expect(
     page.getByRole('link', { name: 'View on Solana Explorer', exact: true }),

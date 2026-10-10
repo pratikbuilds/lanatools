@@ -21,5 +21,5 @@ export { readJupiter } from './read'
 
 export { JupiterClient } from './jupiter-client'
 
-export { jupiterBuildSwapTool } from './transaction'
+export { JUPITER_SWAP_PROGRAMS, jupiterSwapTool } from './transaction'
 export type { JupiterTransactionContext } from './transaction'

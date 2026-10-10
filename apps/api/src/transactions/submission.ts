@@ -2,11 +2,13 @@ import {
   address,
   createClient,
   getBase58Decoder,
+  getBase58Encoder,
   getBase64Encoder,
   getBase64EncodedWireTransaction,
   getPublicKeyFromAddress,
   getTransactionDecoder,
   signature,
+  signatureBytes,
   verifySignature,
 } from '@solana/kit'
 import type { Blockhash } from '@solana/kit'
@@ -119,6 +121,25 @@ export async function verifySignedTransaction(
   return getBase58Decoder().decode(
     signed.signatures[address(candidate.account)]!,
   )
+}
+
+/** Restore the accepted signature without changing or signing the message. */
+export function restoreSignedTransaction(
+  candidate: PreparedTransaction,
+  acceptedSignature: string,
+) {
+  const transaction = getTransactionDecoder().decode(
+    getBase64Encoder().encode(candidate.transaction),
+  )
+  return getBase64EncodedWireTransaction({
+    ...transaction,
+    signatures: {
+      ...transaction.signatures,
+      [address(candidate.account)]: signatureBytes(
+        getBase58Encoder().encode(acceptedSignature),
+      ),
+    },
+  })
 }
 
 export type ChainObservation =
