@@ -8,6 +8,7 @@ import { WalletAddressText } from './wallet-address'
 // Navigation holds destinations only. Wallet data lives on the pages.
 const DESTINATIONS = [
   { to: '/dashboard', label: 'Wallet', exact: true },
+  { to: '/dashboard/payments', label: 'Payments', exact: false },
   { to: '/dashboard/activity', label: 'Activity', exact: false },
   { to: '/dashboard/settings', label: 'Settings', exact: false },
 ] as const
@@ -34,7 +35,7 @@ export function DashboardShell({
       nav={
         <nav
           aria-label="Main"
-          className="order-last flex h-11 w-full self-stretch sm:order-none sm:h-auto sm:w-auto sm:gap-1.5"
+          className="order-last flex h-11 w-full self-stretch sm:order-none sm:h-auto sm:w-auto md:gap-1.5"
         >
           {DESTINATIONS.map(({ to, label, exact }) => (
             <Link
@@ -42,7 +43,7 @@ export function DashboardShell({
               to={to}
               // A filtered Activity page is still the Activity page.
               activeOptions={{ exact, includeSearch: false }}
-              className="relative flex flex-1 items-center justify-center px-2 font-mono text-[13px] font-medium text-hdr-dim transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-[3px] after:scale-x-0 after:rounded-t-[3px] after:bg-paper after:transition-transform hover:text-paper focus-visible:outline-lime aria-[current=page]:font-semibold aria-[current=page]:text-paper aria-[current=page]:after:scale-x-100 sm:px-3 sm:after:inset-x-3"
+              className="relative flex flex-1 items-center justify-center px-2 font-mono text-[13px] font-medium text-hdr-dim transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-[3px] after:scale-x-0 after:rounded-t-[3px] after:bg-paper after:transition-transform hover:text-paper focus-visible:outline-lime aria-[current=page]:font-semibold aria-[current=page]:text-paper aria-[current=page]:after:scale-x-100 md:px-3 md:after:inset-x-3"
             >
               {label}
             </Link>

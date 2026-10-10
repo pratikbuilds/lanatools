@@ -9,10 +9,17 @@ import { walletBalances } from './routes/wallet-balances'
 import { walletWithdrawals } from './routes/wallet-withdrawals'
 import { earlyAccess } from './routes/early-access'
 import type { EarlyAccessEnv } from './routes/early-access'
+import { catalog } from './routes/catalog'
+import type { CatalogEnv } from './routes/catalog'
+import { privyAuth } from './routes/privy-auth'
 
 export { McpAccessService } from './mcp-service'
 
-const app = createApp<McpDashboardEnv & EarlyAccessEnv & TransactionLinksEnv>()
+const app = createApp<
+  McpDashboardEnv & EarlyAccessEnv & TransactionLinksEnv & CatalogEnv
+>()
+app.use('/api/catalog/*', privyAuth)
+app.route('/api/catalog', catalog)
 app.route('/api/transaction-links', transactionLinks)
 app.route('/api/activity', activity)
 app.route('/api/early-access', earlyAccess)
