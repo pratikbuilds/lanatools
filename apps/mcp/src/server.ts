@@ -231,7 +231,7 @@ export function createServer(
     'whoami',
     {
       description:
-        "Show which LanaTools account and client this connection uses, and the user's payment wallet address (null until the user sets one up)",
+        "Show the user's LanaTools payment wallet address (null until the user sets one up)",
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -239,7 +239,7 @@ export function createServer(
       },
     },
     () =>
-      withGrant('account:read', async ({ userId, clientId }) => {
+      withGrant('account:read', async ({ userId }) => {
         let walletAddress: string | null
         try {
           walletAddress = await dependencies.api.walletAddress(userId)
@@ -250,7 +250,7 @@ export function createServer(
           content: [
             {
               type: 'text',
-              text: JSON.stringify({ userId, clientId, walletAddress }),
+              text: JSON.stringify({ walletAddress }),
             },
           ],
         }
