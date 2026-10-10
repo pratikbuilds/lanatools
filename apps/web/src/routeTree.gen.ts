@@ -16,6 +16,7 @@ import { Route as AccountSignInRouteImport } from './routes/_account/sign-in'
 import { Route as TxLinkIdRouteImport } from './routes/tx.$linkId'
 import { Route as AccountDashboardIndexRouteImport } from './routes/_account/dashboard/index'
 import { Route as AccountDashboardActivityRouteImport } from './routes/_account/dashboard/activity'
+import { Route as AccountDashboardPaymentsRouteImport } from './routes/_account/dashboard/payments'
 import { Route as AccountDashboardSettingsRouteImport } from './routes/_account/dashboard/settings'
 import { Route as AccountDashboardTransactionsRouteImport } from './routes/_account/dashboard/transactions'
 
@@ -54,6 +55,12 @@ const AccountDashboardActivityRoute =
     path: '/activity',
     getParentRoute: () => AccountDashboardRoute,
   } as any)
+const AccountDashboardPaymentsRoute =
+  AccountDashboardPaymentsRouteImport.update({
+    id: '/payments',
+    path: '/payments',
+    getParentRoute: () => AccountDashboardRoute,
+  } as any)
 const AccountDashboardSettingsRoute =
   AccountDashboardSettingsRouteImport.update({
     id: '/settings',
@@ -73,6 +80,7 @@ export interface FileRoutesByFullPath {
   '/sign-in': typeof AccountSignInRoute
   '/tx/$linkId': typeof TxLinkIdRoute
   '/dashboard/activity': typeof AccountDashboardActivityRoute
+  '/dashboard/payments': typeof AccountDashboardPaymentsRoute
   '/dashboard/settings': typeof AccountDashboardSettingsRoute
   '/dashboard/transactions': typeof AccountDashboardTransactionsRoute
   '/dashboard/': typeof AccountDashboardIndexRoute
@@ -82,6 +90,7 @@ export interface FileRoutesByTo {
   '/sign-in': typeof AccountSignInRoute
   '/tx/$linkId': typeof TxLinkIdRoute
   '/dashboard/activity': typeof AccountDashboardActivityRoute
+  '/dashboard/payments': typeof AccountDashboardPaymentsRoute
   '/dashboard/settings': typeof AccountDashboardSettingsRoute
   '/dashboard/transactions': typeof AccountDashboardTransactionsRoute
   '/dashboard': typeof AccountDashboardIndexRoute
@@ -94,6 +103,7 @@ export interface FileRoutesById {
   '/_account/sign-in': typeof AccountSignInRoute
   '/tx/$linkId': typeof TxLinkIdRoute
   '/_account/dashboard/activity': typeof AccountDashboardActivityRoute
+  '/_account/dashboard/payments': typeof AccountDashboardPaymentsRoute
   '/_account/dashboard/settings': typeof AccountDashboardSettingsRoute
   '/_account/dashboard/transactions': typeof AccountDashboardTransactionsRoute
   '/_account/dashboard/': typeof AccountDashboardIndexRoute
@@ -106,6 +116,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/tx/$linkId'
     | '/dashboard/activity'
+    | '/dashboard/payments'
     | '/dashboard/settings'
     | '/dashboard/transactions'
     | '/dashboard/'
@@ -115,6 +126,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/tx/$linkId'
     | '/dashboard/activity'
+    | '/dashboard/payments'
     | '/dashboard/settings'
     | '/dashboard/transactions'
     | '/dashboard'
@@ -126,6 +138,7 @@ export interface FileRouteTypes {
     | '/_account/sign-in'
     | '/tx/$linkId'
     | '/_account/dashboard/activity'
+    | '/_account/dashboard/payments'
     | '/_account/dashboard/settings'
     | '/_account/dashboard/transactions'
     | '/_account/dashboard/'
@@ -188,6 +201,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AccountDashboardActivityRouteImport
       parentRoute: typeof AccountDashboardRoute
     }
+    '/_account/dashboard/payments': {
+      id: '/_account/dashboard/payments'
+      path: '/payments'
+      fullPath: '/dashboard/payments'
+      preLoaderRoute: typeof AccountDashboardPaymentsRouteImport
+      parentRoute: typeof AccountDashboardRoute
+    }
     '/_account/dashboard/settings': {
       id: '/_account/dashboard/settings'
       path: '/settings'
@@ -207,6 +227,7 @@ declare module '@tanstack/react-router' {
 
 interface AccountDashboardRouteChildren {
   AccountDashboardActivityRoute: typeof AccountDashboardActivityRoute
+  AccountDashboardPaymentsRoute: typeof AccountDashboardPaymentsRoute
   AccountDashboardSettingsRoute: typeof AccountDashboardSettingsRoute
   AccountDashboardTransactionsRoute: typeof AccountDashboardTransactionsRoute
   AccountDashboardIndexRoute: typeof AccountDashboardIndexRoute
@@ -214,6 +235,7 @@ interface AccountDashboardRouteChildren {
 
 const AccountDashboardRouteChildren: AccountDashboardRouteChildren = {
   AccountDashboardActivityRoute: AccountDashboardActivityRoute,
+  AccountDashboardPaymentsRoute: AccountDashboardPaymentsRoute,
   AccountDashboardSettingsRoute: AccountDashboardSettingsRoute,
   AccountDashboardTransactionsRoute: AccountDashboardTransactionsRoute,
   AccountDashboardIndexRoute: AccountDashboardIndexRoute,

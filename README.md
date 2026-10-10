@@ -56,6 +56,12 @@ app, an RPC that does not match `SOLANA_NETWORK`, Solana's public devnet RPC (Wo
 cannot use it), a remote Cloudflare binding, or a busy port. If one service
 stops, the others stop too. The dashboard proxies `/api` to the API.
 
+The dashboard's Payments tab browses the same pay.sh catalog as the MCP tools.
+Task searches use Jev when `TYPESAFE_API_KEY` is set, with keyword fallback.
+For hosted deployments, set this secret on both the API and MCP Workers; the
+browser never receives it. Dashboard searches are limited to 20 per minute per
+user and do not call paid endpoints. Listed prices are catalog estimates.
+
 Other commands:
 
 - `bun run dev:reset` clears the database and OAuth state for the network
