@@ -169,7 +169,7 @@ export function WalletPanelView({
             </div>
             <p className="mt-3 text-[12.5px] text-fg-3">
               Send USDC on {NETWORK.label}, plus a little SOL for withdrawal
-              fees. Other tokens or networks won’t show up.
+              fees. You can withdraw other tokens held on this network.
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
               <button

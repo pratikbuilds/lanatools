@@ -6,6 +6,7 @@ import {
   address,
   appendTransactionMessageInstruction,
   compileTransaction,
+  createNoopSigner,
   createTransactionMessage,
   decompileTransactionMessage,
   generateKeyPairSigner,
@@ -26,18 +27,22 @@ import {
   AccountState,
   TOKEN_PROGRAM_ADDRESS,
   TokenInstruction,
+  getCreateAssociatedTokenIdempotentInstruction,
+  getTransferCheckedInstruction,
   findAssociatedTokenPda,
   getTokenEncoder,
+  getMintEncoder,
   identifyTokenInstruction,
   parseTransferCheckedInstruction,
 } from '@solana-program/token'
 import {
   TransferError,
-  prepareUsdcTransfer,
+  TOKEN_2022_PROGRAM,
+  prepareTokenTransfer,
   readSignedWithdrawal,
-  sendUsdcTransfer,
-} from './usdc-transfer'
-import type { UsdcRpc } from './usdc-transfer'
+  sendWithdrawal,
+} from './token-transfer'
+import type { WithdrawalRpc } from './token-transfer'
 
 const MINT = address('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU')
 const OTHER_MINT = address('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')
@@ -71,6 +76,10 @@ function tokenAccount(owner: Address, amount: bigint, mint: Address = MINT) {
 /** An RPC that answers from memory; `calls` records what was asked. */
 function fakeRpc(
   answers: Partial<Record<string, (...args: unknown[]) => unknown>>,
+  {
+    decimals = 6,
+    program: tokenProgram = TOKEN_PROGRAM_ADDRESS,
+  }: { decimals?: number; program?: Address } = {},
 ) {
   const calls: Array<[string, unknown[]]> = []
   const rpc = new Proxy(
@@ -81,13 +90,31 @@ function fakeRpc(
         (...args: unknown[]) => ({
           send: async () => {
             calls.push([method, args])
+            if (method === 'simulateTransaction' && !answers[method])
+              return { value: { err: null } }
             const answer = answers[method]
             if (!answer) throw new Error(`unexpected RPC call ${method}`)
+            if (method === 'getAccountInfo' && args[0] === MINT) {
+              const data = getMintEncoder().encode({
+                mintAuthority: null,
+                supply: 1_000_000_000n,
+                decimals,
+                isInitialized: true,
+                freezeAuthority: null,
+              })
+              return {
+                value: {
+                  ...tokenAccount(OWNER, 0n),
+                  data: [getBase64Decoder().decode(data), 'base64'],
+                  owner: tokenProgram,
+                },
+              }
+            }
             return answer(...args)
           },
         }),
     },
-  ) as UsdcRpc
+  ) as WithdrawalRpc
   return { rpc, calls }
 }
 
@@ -138,7 +165,7 @@ test('prepares a transfer the owner pays for, creating the recipient account', a
     getAccountInfo: accounts(OWNER, 5_000_000n),
     getLatestBlockhash: lifetime,
   })
-  const wire = await prepareUsdcTransfer(rpc, {
+  const wire = await prepareTokenTransfer(rpc, {
     owner: OWNER,
     to: TO,
     amount: 1_500_000n,
@@ -179,7 +206,7 @@ test('a USDC token account as the destination is paid directly', async () => {
     }),
     getLatestBlockhash: lifetime,
   })
-  const wire = await prepareUsdcTransfer(rpc, {
+  const wire = await prepareTokenTransfer(rpc, {
     owner: OWNER,
     to: exchangeDeposit,
     amount: 1n,
@@ -194,21 +221,21 @@ test('refuses what cannot be withdrawn before touching the chain', async () => {
   const { rpc: noChain } = fakeRpc({})
   const request = { owner: OWNER, to: TO, amount: 1n, mint: MINT }
   await expect(
-    prepareUsdcTransfer(noChain, { ...request, amount: 0n }),
-  ).rejects.toThrow('Enter an amount')
+    prepareTokenTransfer(noChain, { ...request, amount: 0n }),
+  ).rejects.toThrow('Enter a valid amount')
   await expect(
-    prepareUsdcTransfer(noChain, { ...request, to: OWNER }),
+    prepareTokenTransfer(noChain, { ...request, to: OWNER }),
   ).rejects.toThrow('other than this wallet')
 
   const { rpc: empty } = fakeRpc({ getAccountInfo: () => ({ value: null }) })
-  await expect(prepareUsdcTransfer(empty, request)).rejects.toThrow(
-    'Not enough USDC',
+  await expect(prepareTokenTransfer(empty, request)).rejects.toThrow(
+    'does not belong',
   )
   const { rpc: short } = fakeRpc({
     getAccountInfo: accounts(OWNER, 999_999n),
   })
   await expect(
-    prepareUsdcTransfer(short, { ...request, amount: 1_000_000n }),
+    prepareTokenTransfer(short, { ...request, amount: 1_000_000n }),
   ).rejects.toThrow(TransferError)
 
   // The wallet's own token account is still the wallet.
@@ -216,7 +243,7 @@ test('refuses what cannot be withdrawn before touching the chain', async () => {
     getAccountInfo: accounts(OWNER, 5_000_000n),
   })
   await expect(
-    prepareUsdcTransfer(own, { ...request, to: await ata(OWNER) }),
+    prepareTokenTransfer(own, { ...request, to: await ata(OWNER) }),
   ).rejects.toThrow('other than this wallet')
 
   const { rpc: otherToken } = fakeRpc({
@@ -227,7 +254,7 @@ test('refuses what cannot be withdrawn before touching the chain', async () => {
           : tokenAccount(OWNER, 5_000_000n),
     }),
   })
-  await expect(prepareUsdcTransfer(otherToken, request)).rejects.toThrow(
+  await expect(prepareTokenTransfer(otherToken, request)).rejects.toThrow(
     'another token',
   )
 })
@@ -238,7 +265,7 @@ async function signedWithdrawal(signer: KeyPairSigner) {
     getAccountInfo: accounts(signer.address, 5_000_000n),
     getLatestBlockhash: lifetime,
   })
-  const wire = await prepareUsdcTransfer(rpc, {
+  const wire = await prepareTokenTransfer(rpc, {
     owner: signer.address,
     to: TO,
     amount: 1n,
@@ -263,12 +290,12 @@ async function sign(signer: KeyPairSigner, wire: string) {
 test('only a withdrawal signed by its own wallet is read', async () => {
   const owner = await generateKeyPairSigner()
   const { wire, signature } = await signedWithdrawal(owner)
-  const withdrawal = await readSignedWithdrawal(wire, MINT)
+  const withdrawal = await readSignedWithdrawal(wire)
   expect(withdrawal.payer).toBe(owner.address)
   expect(withdrawal.signature).toBe(signature)
   expect(String(withdrawal.blockhash)).toBe(BLOCKHASH)
 
-  await expect(readSignedWithdrawal('not a transaction', MINT)).rejects.toThrow(
+  await expect(readSignedWithdrawal('not a transaction')).rejects.toThrow(
     'could not be read',
   )
   // Prepared but never signed.
@@ -276,19 +303,13 @@ test('only a withdrawal signed by its own wallet is read', async () => {
     getAccountInfo: accounts(owner.address, 5_000_000n),
     getLatestBlockhash: lifetime,
   })
-  const unsigned = await prepareUsdcTransfer(rpc, {
+  const unsigned = await prepareTokenTransfer(rpc, {
     owner: owner.address,
     to: TO,
     amount: 1n,
     mint: MINT,
   })
-  await expect(readSignedWithdrawal(unsigned, MINT)).rejects.toThrow(
-    'not signed',
-  )
-  // The same transfer for another mint is not a USDC withdrawal.
-  await expect(readSignedWithdrawal(wire, OTHER_MINT)).rejects.toThrow(
-    'not a USDC withdrawal',
-  )
+  await expect(readSignedWithdrawal(unsigned)).rejects.toThrow('not signed')
   // A signed transaction that is not a withdrawal is refused as well.
   const memo = pipe(
     createTransactionMessage({ version: 0 }),
@@ -305,15 +326,15 @@ test('only a withdrawal signed by its own wallet is read', async () => {
     owner,
     getBase64EncodedWireTransaction(compileTransaction(memo)),
   )
-  await expect(readSignedWithdrawal(other.wire, MINT)).rejects.toThrow(
-    'not a USDC withdrawal',
+  await expect(readSignedWithdrawal(other.wire)).rejects.toThrow(
+    'not a token withdrawal',
   )
 })
 
 test('sends a signed transfer and waits for the cluster to confirm it', async () => {
   const owner = await generateKeyPairSigner()
   const { wire, signature } = await signedWithdrawal(owner)
-  const withdrawal = await readSignedWithdrawal(wire, MINT)
+  const withdrawal = await readSignedWithdrawal(wire)
   let polls = 0
   const { rpc, calls } = fakeRpc({
     sendTransaction: () => signature,
@@ -324,7 +345,7 @@ test('sends a signed transfer and waits for the cluster to confirm it', async ()
     }),
     isBlockhashValid: () => ({ value: true }),
   })
-  expect(await sendUsdcTransfer(rpc, withdrawal, { intervalMs: 0 })).toEqual({
+  expect(await sendWithdrawal(rpc, withdrawal, { intervalMs: 0 })).toEqual({
     signature,
     confirmed: true,
   })
@@ -338,7 +359,7 @@ test('sends a signed transfer and waits for the cluster to confirm it', async ()
 test('a transfer that fails, expires or cannot be sent is reported', async () => {
   const owner = await generateKeyPairSigner()
   const { wire } = await signedWithdrawal(owner)
-  const withdrawal = await readSignedWithdrawal(wire, MINT)
+  const withdrawal = await readSignedWithdrawal(wire)
 
   const { rpc: failed } = fakeRpc({
     sendTransaction: () => 'sig',
@@ -346,7 +367,7 @@ test('a transfer that fails, expires or cannot be sent is reported', async () =>
       value: [{ confirmationStatus: 'processed', err: { Custom: 1 } }],
     }),
   })
-  await expect(sendUsdcTransfer(failed, withdrawal)).rejects.toThrow(
+  await expect(sendWithdrawal(failed, withdrawal)).rejects.toThrow(
     'failed on chain',
   )
 
@@ -355,7 +376,7 @@ test('a transfer that fails, expires or cannot be sent is reported', async () =>
     getSignatureStatuses: () => ({ value: [null] }),
     isBlockhashValid: () => ({ value: false }),
   })
-  await expect(sendUsdcTransfer(expired, withdrawal)).rejects.toThrow('expired')
+  await expect(sendWithdrawal(expired, withdrawal)).rejects.toThrow('expired')
 
   const { rpc: noSol } = fakeRpc({
     sendTransaction: () => {
@@ -364,27 +385,30 @@ test('a transfer that fails, expires or cannot be sent is reported', async () =>
       )
     },
   })
-  await expect(sendUsdcTransfer(noSol, withdrawal)).rejects.toThrow('needs SOL')
+  await expect(sendWithdrawal(noSol, withdrawal)).rejects.toThrow('needs SOL')
 
   const { rpc: down } = fakeRpc({
     sendTransaction: () => {
       throw new Error('https://rpc.example/?api-key=secret')
     },
   })
-  await expect(sendUsdcTransfer(down, withdrawal)).rejects.toThrow('api-key')
+  expect(await sendWithdrawal(down, withdrawal)).toEqual({
+    signature: withdrawal.signature,
+    confirmed: false,
+  })
 })
 
 test('a sent transfer whose status cannot be read is returned unconfirmed, never as failed', async () => {
   const owner = await generateKeyPairSigner()
   const { wire, signature } = await signedWithdrawal(owner)
-  const withdrawal = await readSignedWithdrawal(wire, MINT)
+  const withdrawal = await readSignedWithdrawal(wire)
   const { rpc } = fakeRpc({
     sendTransaction: () => signature,
     getSignatureStatuses: () => {
       throw new Error('timed out')
     },
   })
-  expect(await sendUsdcTransfer(rpc, withdrawal)).toEqual({
+  expect(await sendWithdrawal(rpc, withdrawal)).toEqual({
     signature,
     confirmed: false,
   })
@@ -400,3 +424,157 @@ function preflightFailure(cause: SolanaError) {
   >[1]
   return new SolanaError(PREFLIGHT, context)
 }
+
+test('withdraws a Token-2022 mint at its on-chain precision from a non-associated account', async () => {
+  const owner = await generateKeyPairSigner()
+  const source = OWNER
+  const { rpc } = fakeRpc(
+    {
+      getAccountInfo: (requested) => ({
+        value:
+          requested === source
+            ? {
+                ...tokenAccount(owner.address, 100n),
+                owner: TOKEN_2022_PROGRAM,
+              }
+            : null,
+      }),
+      getLatestBlockhash: lifetime,
+    },
+    { decimals: 2, program: TOKEN_2022_PROGRAM },
+  )
+  const wire = await prepareTokenTransfer(rpc, {
+    owner: owner.address,
+    to: TO,
+    amount: 25n,
+    mint: MINT,
+    source,
+  })
+  const { instructions } = decodeWire(wire)
+  expect(instructions[1]?.programAddress).toBe(TOKEN_2022_PROGRAM)
+  const transfer = parseTransferCheckedInstruction(
+    instructions[1] as Parameters<typeof parseTransferCheckedInstruction>[0],
+  )
+  expect(transfer.data.decimals).toBe(2)
+  expect(transfer.accounts.source.address).toBe(source)
+  const expected = await findAssociatedTokenPda({
+    owner: TO,
+    mint: MINT,
+    tokenProgram: TOKEN_2022_PROGRAM,
+  })
+  expect(transfer.accounts.destination.address).toBe(expected[0])
+  const signed = await sign(owner, wire)
+  expect((await readSignedWithdrawal(signed.wire)).payer).toBe(owner.address)
+})
+
+test('cannot spend another wallet account, the wrong mint or frozen tokens', async () => {
+  for (const data of [
+    tokenAccount(TO, 100n),
+    tokenAccount(OWNER, 100n, OTHER_MINT),
+    {
+      ...tokenAccount(OWNER, 100n),
+      data: [
+        getBase64Decoder().decode(
+          getTokenEncoder().encode({
+            mint: MINT,
+            owner: OWNER,
+            amount: 100n,
+            delegate: null,
+            state: AccountState.Frozen,
+            isNative: null,
+            delegatedAmount: 0n,
+            closeAuthority: null,
+          }),
+        ),
+        'base64',
+      ],
+    },
+  ]) {
+    const { rpc } = fakeRpc({
+      getAccountInfo: (requested) => ({
+        value: requested === OWNER ? data : null,
+      }),
+    })
+    await expect(
+      prepareTokenTransfer(rpc, {
+        owner: OWNER,
+        to: TO,
+        source: OWNER,
+        mint: MINT,
+        amount: 1n,
+      }),
+    ).rejects.toThrow(TransferError)
+  }
+})
+
+test('SOL withdrawals reserve the actual fee and are checked after signing', async () => {
+  const owner = await generateKeyPairSigner()
+  const { rpc } = fakeRpc({
+    getAccountInfo: () => ({ value: null }),
+    getLatestBlockhash: lifetime,
+    getBalance: () => ({ value: 100_000n }),
+    getFeeForMessage: () => ({ value: 5_000n }),
+  })
+  const wire = await prepareTokenTransfer(rpc, {
+    owner: owner.address,
+    to: TO,
+    mint: 'native',
+    amount: 95_000n,
+  })
+  const signed = await sign(owner, wire)
+  expect((await readSignedWithdrawal(signed.wire)).payer).toBe(owner.address)
+  await expect(
+    prepareTokenTransfer(rpc, {
+      owner: owner.address,
+      to: TO,
+      mint: 'native',
+      amount: 100_000n,
+    }),
+  ).rejects.toThrow('network fee')
+})
+
+test('rejects a signed account creation unrelated to the withdrawal', async () => {
+  const owner = await generateKeyPairSigner()
+  const create = getCreateAssociatedTokenIdempotentInstruction({
+    payer: createNoopSigner(owner.address),
+    ata: await ata(TO),
+    owner: TO,
+    mint: MINT,
+  })
+  const transfer = getTransferCheckedInstruction({
+    source: await ata(owner.address),
+    mint: MINT,
+    destination: OTHER_MINT,
+    authority: owner.address,
+    amount: 1n,
+    decimals: 6,
+  })
+  const message = pipe(
+    createTransactionMessage({ version: 0 }),
+    (m) => setTransactionMessageFeePayer(owner.address, m),
+    (m) =>
+      setTransactionMessageLifetimeUsingBlockhash(lifetime().value as never, m),
+    (m) => appendTransactionMessageInstruction(create, m),
+    (m) => appendTransactionMessageInstruction(transfer, m),
+  )
+  const signed = await sign(
+    owner,
+    getBase64EncodedWireTransaction(compileTransaction(message)),
+  )
+  await expect(readSignedWithdrawal(signed.wire)).rejects.toThrow(
+    'not a token withdrawal',
+  )
+})
+
+test('a restricted token is refused before the user signs or pays a fee', async () => {
+  const { rpc } = fakeRpc({
+    getAccountInfo: accounts(OWNER, 100n),
+    getLatestBlockhash: lifetime,
+    simulateTransaction: () => ({
+      value: { err: { InstructionError: [0, { Custom: 1 }] } },
+    }),
+  })
+  await expect(
+    prepareTokenTransfer(rpc, { owner: OWNER, to: TO, mint: MINT, amount: 1n }),
+  ).rejects.toThrow('token transfer restrictions')
+})

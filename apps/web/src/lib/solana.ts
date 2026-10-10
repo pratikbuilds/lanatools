@@ -39,7 +39,11 @@ export async function getWalletBalances(
     throw new Error(
       `The server reads Solana ${balances.network}, but this page shows ${NETWORK.label}.`,
     )
-  return { sol: BigInt(balances.sol), usdc: BigInt(balances.usdc) }
+  return {
+    sol: BigInt(balances.sol),
+    usdc: BigInt(balances.usdc),
+    tokens: balances.tokens,
+  }
 }
 
 /**

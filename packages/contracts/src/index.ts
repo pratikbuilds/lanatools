@@ -201,14 +201,28 @@ export const ActivityDays = type({
 })
 export type ActivityDays = typeof ActivityDays.infer
 
+/** A token account and optional display metadata; amounts remain exact. */
+export const WalletToken = type({
+  account: 'string',
+  mint: 'string',
+  program: 'string',
+  amount: 'string.integer',
+  decimals: 'number.integer >= 0 & number <= 255',
+  name: 'string | null',
+  symbol: 'string | null',
+  image: 'string | null',
+})
+export type WalletToken = typeof WalletToken.infer
+
 /**
  * A wallet's balances on the API's network, in base units as decimal strings
- * (lamports and USDC's six decimals).
+ * (lamports and each token's on-chain decimals).
  */
 export const WalletBalances = type({
   network: "'devnet' | 'mainnet'",
   sol: 'string.integer',
   usdc: 'string.integer',
+  tokens: WalletToken.array(),
 })
 export type WalletBalances = typeof WalletBalances.infer
 
@@ -247,14 +261,16 @@ export const PaymentSignerGrant = type({
 export type PaymentSignerGrant = typeof PaymentSignerGrant.infer
 
 /**
- * A USDC withdrawal from the user's payment wallet to another address, in
- * base units (six decimals). The API builds the transfer, the user's own
+ * A token withdrawal from the user's payment wallet to another address, in
+ * base units. Use mint "native" for SOL. The API builds the transfer, the user's own
  * wallet signs it in the browser, and the API sends it.
  */
 export const WithdrawalRequest = type({
   owner: 'string',
   to: 'string',
   amount: 'string.integer',
+  mint: 'string',
+  'source?': 'string',
 })
 export type WithdrawalRequest = typeof WithdrawalRequest.infer
 
@@ -263,8 +279,9 @@ export const WithdrawalTransaction = type({ transaction: 'string' })
 export type WithdrawalTransaction = typeof WithdrawalTransaction.infer
 
 /**
- * The sent withdrawal. `confirmed` is false only when the network accepted
- * it but its status could not be read in time; the balance shows the rest.
+ * The submitted withdrawal. `confirmed` is false when the network accepted
+ * it but its status could not be read in time, or the broadcast response was
+ * lost. Reconcile this signature before making another transfer.
  */
 export const WithdrawalReceipt = type({
   signature: 'string',

@@ -26,7 +26,13 @@ Dashboard balances come from `/api/wallet/balances`,
 which reads them with the API's server-side `SOLANA_RPC_URL`, so the provider
 key never reaches the page. The API reports its network, and the page refuses
 to show balances from a network other than the one it names. The public
-transaction page uses the wallet adapter for signing and the API for submission.
+withdrawal dialog lists SPL and Token-2022 account balances and SOL, with
+best-effort Helius metadata. Unnamed tokens display their mint addresses.
+Withdrawals use on-chain decimals, simulate before signing, and reserve SOL for
+fees. Tokens with transfer hooks requiring additional accounts are currently
+unsupported; frozen or restricted transfers are refused. A lost send response
+preserves the signature for reconciliation instead of offering another transfer.
+The public transaction page uses the wallet adapter for signing and the API for submission.
 
 ## Tool activity and estimated credits
 

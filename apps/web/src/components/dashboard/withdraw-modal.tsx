@@ -1,15 +1,17 @@
 import { useSignTransaction, useWallets } from '@privy-io/react-auth/solana'
 import { isAddress } from '@solana/kit'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import type { WalletToken } from '@lanatools/contracts'
 import { useState } from 'react'
-import { NETWORK, USDC_DECIMALS, formatUnits } from '#/lib/solana'
+import { NETWORK } from '#/lib/solana'
 import {
-  formatUsdcAmount,
-  parseUsdcAmount,
-  withdrawUsdc,
+  formatTokenAmount,
+  parseTokenAmount,
+  withdrawToken,
 } from '#/lib/withdrawals'
 import type { SignTransaction } from '#/lib/withdrawals'
 import { Modal } from './modal'
+import { SolanaMark } from './solana-mark'
 import { useDashboardSession } from './session'
 
 /**
@@ -35,7 +37,7 @@ function useWalletSigner(walletAddress: string): SignTransaction | null {
     ).signedTransaction
 }
 
-export type Balances = { usdc: bigint; sol: bigint }
+export type Balances = { usdc: bigint; sol: bigint; tokens: WalletToken[] }
 
 /**
  * What is wrong with the form, or null when it can be sent. Nothing can be
@@ -46,13 +48,15 @@ export function checkForm(
   { to, amount }: { to: string; amount: string },
   walletAddress: string,
   balances: Balances | null,
+  token: WalletToken | null,
 ) {
-  if (!to || !amount || !balances) return 'incomplete'
+  if (!to || !amount || !balances || !token) return 'incomplete'
   if (!isAddress(to)) return 'Enter a valid Solana address.'
   if (to === walletAddress) return 'Enter an address other than this wallet.'
-  const units = parseUsdcAmount(amount)
-  if (units === null) return 'Enter an amount in USDC, up to six decimals.'
-  if (units > balances.usdc) return 'That is more than the wallet holds.'
+  const units = parseTokenAmount(amount, token.decimals)
+  if (units === null)
+    return `Enter an amount in ${token.symbol ?? 'tokens'}, up to ${token.decimals} decimals.`
+  if (units > BigInt(token.amount)) return 'That is more than the wallet holds.'
   return null
 }
 
@@ -81,7 +85,7 @@ export function feeNote(balances: Balances | null, loadFailed: boolean) {
 }
 
 /**
- * Withdraws USDC to another address, in a centred modal. The transfer is
+ * Withdraws the selected token to another address, in a centred modal. The transfer is
  * built by the API, signed by the user's wallet here and sent by the API.
  * Mount it to open it; unmounting clears the form and the last result.
  */
@@ -101,16 +105,45 @@ export function WithdrawModal({
   const { getAccessToken } = useDashboardSession()
   const sign = useWalletSigner(walletAddress)
   const queryClient = useQueryClient()
+  const tokens: WalletToken[] = balances
+    ? [
+        ...balances.tokens,
+        {
+          account: 'native',
+          mint: 'native',
+          program: '11111111111111111111111111111111',
+          amount: String(balances.sol),
+          decimals: 9,
+          name: 'Solana',
+          symbol: 'SOL',
+          image: null,
+        },
+      ]
+    : []
+  const [selected, setSelected] = useState(
+    balances?.tokens.find((item) => item.mint === NETWORK.usdcMint)?.account ??
+      balances?.tokens[0]?.account ??
+      'native',
+  )
+  const token = tokens.find((item) => item.account === selected) ?? null
   const [form, setForm] = useState({ to: '', amount: '' })
   const withdraw = useMutation({
-    mutationFn: (request: { to: string; amount: bigint }) => {
+    mutationFn: (request: {
+      to: string
+      amount: bigint
+      token: WalletToken
+    }) => {
       if (!sign) throw new Error('Your wallet is still connecting. Try again.')
-      return withdrawUsdc(
+      return withdrawToken(
         getAccessToken,
         {
           owner: walletAddress,
           to: request.to,
           amount: String(request.amount),
+          mint: request.token.mint,
+          ...(request.token.mint === 'native'
+            ? {}
+            : { source: request.token.account }),
         },
         sign,
       )
@@ -119,10 +152,19 @@ export function WithdrawModal({
       queryClient.invalidateQueries({ queryKey: ['balances', NETWORK.id] }),
   })
 
-  const problem = checkForm(form, walletAddress, balances)
+  const problem = checkForm(form, walletAddress, balances, token)
   const fee = feeNote(balances, loadFailed)
   const canSubmit = problem === null && !fee.blocked && !withdraw.isPending
-  const available = balances?.usdc ?? null
+  const available = token ? BigInt(token.amount) : null
+  // shortcut: one plain SOL transfer costs 5000 lamports; prepare verifies the actual fee.
+  const maximum =
+    available === null
+      ? null
+      : token?.mint === 'native'
+        ? available > 5_000n
+          ? available - 5_000n
+          : 0n
+        : available
 
   return (
     <Modal
@@ -131,12 +173,13 @@ export function WithdrawModal({
       // Closing midway would lose the withdrawal's state while it still
       // completes, and a reopened form would let the same one be sent twice.
       closable={!withdraw.isPending}
-      title="Withdraw USDC"
+      title="Withdraw"
       detail={`From your wallet on ${NETWORK.label}`}
     >
       {withdraw.isSuccess ? (
         <Sent
           amount={withdraw.variables.amount}
+          token={withdraw.variables.token}
           to={withdraw.variables.to}
           signature={withdraw.data.signature}
           confirmed={withdraw.data.confirmed}
@@ -147,11 +190,54 @@ export function WithdrawModal({
           className="grid gap-4"
           onSubmit={(event) => {
             event.preventDefault()
-            const amount = parseUsdcAmount(form.amount)
-            if (canSubmit && amount !== null)
-              withdraw.mutate({ to: form.to, amount })
+            const amount =
+              token && parseTokenAmount(form.amount, token.decimals)
+            if (canSubmit && token && amount !== null)
+              withdraw.mutate({ to: form.to, amount, token })
           }}
         >
+          <fieldset disabled={withdraw.isPending} className="min-w-0">
+            <legend className="d-label mb-2">Token</legend>
+            <div className="grid max-h-40 gap-1 overflow-y-auto rounded-lg border border-line p-1">
+              {tokens.map((item) => (
+                <label
+                  key={item.account}
+                  className={`flex min-w-0 cursor-pointer items-center gap-2 rounded-md p-2 ${item.account === token?.account ? 'bg-panel-2' : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="token"
+                    value={item.account}
+                    checked={item.account === token?.account}
+                    onChange={() => {
+                      setSelected(item.account)
+                      setForm({ ...form, amount: '' })
+                      withdraw.reset()
+                    }}
+                  />
+                  <TokenImage token={item} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px]">
+                      {item.name ??
+                        `${item.mint.slice(0, 6)}…${item.mint.slice(-4)}`}
+                    </span>
+                    <span className="block truncate font-mono text-[11px] text-fg-3">
+                      {item.symbol ??
+                        `${item.mint.slice(0, 6)}…${item.mint.slice(-4)}`}
+                    </span>
+                  </span>
+                  <span className="max-w-[45%] break-all text-right font-mono text-[12px]">
+                    {formatTokenAmount(BigInt(item.amount), item.decimals)}
+                  </span>
+                </label>
+              ))}
+            </div>
+            {token && token.mint !== 'native' && (
+              <p className="mt-2 break-all font-mono text-[10px] text-fg-3">
+                Mint: {token.mint}
+              </p>
+            )}
+          </fieldset>
           <label className="grid gap-1.5">
             <span className="d-label">To address</span>
             <input
@@ -169,10 +255,10 @@ export function WithdrawModal({
           <label className="grid gap-1.5">
             <span className="flex items-baseline justify-between">
               <span className="d-label">Amount</span>
-              <span className="font-mono text-[12px] text-fg-3">
+              <span className="min-w-0 flex-1 break-all text-right font-mono text-[12px] text-fg-3">
                 {available === null
                   ? '—'
-                  : `$${formatUnits(available, USDC_DECIMALS, { maxFraction: 2, minFraction: 2 })} available`}
+                  : `${formatTokenAmount(available, token?.decimals ?? 6)} ${token?.symbol ?? 'tokens'} available`}
               </span>
             </span>
             <span className="flex gap-2">
@@ -189,10 +275,13 @@ export function WithdrawModal({
               <button
                 type="button"
                 className="d-btn h-10"
-                disabled={!available || withdraw.isPending}
+                disabled={!maximum || withdraw.isPending}
                 onClick={() =>
-                  available &&
-                  setForm({ ...form, amount: formatUsdcAmount(available) })
+                  maximum &&
+                  setForm({
+                    ...form,
+                    amount: formatTokenAmount(maximum, token?.decimals ?? 6),
+                  })
                 }
               >
                 Max
@@ -230,12 +319,14 @@ export function WithdrawModal({
 /** The sent transfer, with its signature for the explorer. */
 function Sent({
   amount,
+  token,
   to,
   signature,
   confirmed,
   onDone,
 }: {
   amount: bigint
+  token: WalletToken
   to: string
   signature: string
   confirmed: boolean
@@ -245,11 +336,11 @@ function Sent({
   return (
     <div className="grid gap-4">
       <div>
-        <p className="d-label">Sent</p>
+        <p className="d-label">{confirmed ? 'Sent' : 'Confirmation pending'}</p>
         <p className="mt-2 font-mono text-[1.6rem] font-semibold tracking-[-0.03em]">
-          ${formatUsdcAmount(amount)}{' '}
+          {formatTokenAmount(amount, token.decimals)}{' '}
           <small className="text-[14px] font-medium tracking-normal text-fg-3">
-            USDC
+            {token.symbol ?? 'tokens'}
           </small>
         </p>
         <p className="mt-2 text-[13px] text-fg-2">To</p>
@@ -258,7 +349,7 @@ function Sent({
       <p className="text-[12.5px] text-fg-3">
         {confirmed
           ? 'Confirmed by the network.'
-          : 'Accepted by the network; the balance updates once it confirms.'}{' '}
+          : 'Confirmation is pending. Check the transaction before sending again.'}{' '}
         <a
           href={explorer}
           target="_blank"
@@ -276,5 +367,30 @@ function Sent({
         Done
       </button>
     </div>
+  )
+}
+
+/** Metadata is optional; broken images retain a readable token mark. */
+function TokenImage({ token }: { token: WalletToken }) {
+  const [failed, setFailed] = useState(false)
+  return token.image && !failed ? (
+    <img
+      src={token.image}
+      alt=""
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+      className="size-8 shrink-0 rounded-full object-cover"
+    />
+  ) : (
+    <span
+      aria-hidden="true"
+      className="flex size-8 shrink-0 items-center justify-center rounded-full bg-panel-2 text-[12px]"
+    >
+      {token.mint === 'native' ? (
+        <SolanaMark size={18} />
+      ) : (
+        (token.symbol ?? token.mint).slice(0, 2)
+      )}
+    </span>
   )
 }
