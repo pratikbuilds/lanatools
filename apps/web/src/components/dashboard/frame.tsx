@@ -34,7 +34,7 @@ export function Frame({
     <div data-theme={theme} className="dash flex min-h-dvh flex-col sm:pb-9">
       <SideField column={artColumn} />
       <header className="relative z-[2] border-b border-hdr-line bg-hdr text-paper">
-        <div className="d-col flex flex-wrap items-center gap-x-3 px-4 sm:flex-nowrap sm:gap-4 sm:px-8">
+        <div className="d-col flex flex-wrap items-center gap-x-3 px-4 md:flex-nowrap sm:gap-4 sm:px-8">
           <a
             href="/"
             aria-label="lanatools home"
