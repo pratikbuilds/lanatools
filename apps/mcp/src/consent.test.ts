@@ -69,6 +69,16 @@ test('every tool family has a checkbox, and the catalog is always included', () 
   expect(html).toContain('pay.sh catalog')
 })
 
+test('transaction permissions disclose execution without approval or amount limits', () => {
+  const html = access(['jupiter:read', 'solana:transfer'])
+  expect(html).toContain(
+    'Swap tokens from your LanaTools wallet without further approval or an amount limit.',
+  )
+  expect(html).toContain(
+    'Send SOL from your LanaTools wallet without further approval or an amount limit.',
+  )
+})
+
 test('the spending limit only shows while Pay is ticked', () => {
   expect(access(['payments:pay'])).toContain('LIMIT FIELD')
   expect(access(['helius:read'])).not.toContain('LIMIT FIELD')

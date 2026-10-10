@@ -16,11 +16,17 @@ export const TOOL_FAMILIES: Record<
   },
   'jupiter:read': {
     title: 'Jupiter',
-    detail: 'Read token prices, swap quotes and lending data',
+    detail:
+      'Read token prices, swap quotes and lending data. Swap tokens from your LanaTools wallet without further approval or an amount limit.',
   },
   'phoenix:read': {
     title: 'Phoenix',
     detail: 'Read perps markets, order books and candles',
+  },
+  'solana:transfer': {
+    title: 'SOL transfers',
+    detail:
+      'Send SOL from your LanaTools wallet without further approval or an amount limit.',
   },
 }
 

@@ -18,7 +18,7 @@ async function checkTransactionLinks() {
       db
         .prepare(
           `
-      INSERT INTO transaction_link
+      INSERT INTO transaction_request
         (id, tool_name, arguments_json, network, creator_user_id, creator_client_id,
          creator_grant_id, idempotency_key, created_at, updated_at, expires_at)
       VALUES (?, 'smoke', '{}', 'devnet', ?, ?, ?, ?, ?, ?, ?)
@@ -33,7 +33,7 @@ async function checkTransactionLinks() {
     const reserved = await db
       .prepare(
         `
-      UPDATE transaction_link SET status = 'preparing', revision = 1, account = 'smoke-wallet'
+      UPDATE transaction_request SET status = 'preparing', revision = 1, account = 'smoke-wallet'
       WHERE id = ? AND status = 'open' AND revision = 0 AND candidate_json IS NULL
     `,
       )
@@ -42,7 +42,7 @@ async function checkTransactionLinks() {
     const published = await db
       .prepare(
         `
-      UPDATE transaction_link SET status = 'ready', revision = 2, candidate_json = '{}'
+      UPDATE transaction_request SET status = 'ready', revision = 2, candidate_json = '{}'
       WHERE id = ? AND status = 'preparing' AND revision = 1
     `,
       )
@@ -51,7 +51,7 @@ async function checkTransactionLinks() {
     const stale = await db
       .prepare(
         `
-      UPDATE transaction_link SET status = 'open', account = NULL
+      UPDATE transaction_request SET status = 'open', account = NULL
       WHERE id = ? AND revision = 1 AND candidate_json IS NULL
     `,
       )
@@ -60,7 +60,7 @@ async function checkTransactionLinks() {
     const accepted = await db
       .prepare(
         `
-      UPDATE transaction_link SET status = 'submitting', revision = 3, signature = 'smoke-signature'
+      UPDATE transaction_request SET status = 'submitting', revision = 3, signature = 'smoke-signature'
       WHERE id = ? AND status = 'ready' AND revision = 2 AND signature IS NULL
     `,
       )
@@ -69,27 +69,29 @@ async function checkTransactionLinks() {
     const competing = await db
       .prepare(
         `
-      UPDATE transaction_link SET signature = 'replacement-signature'
+      UPDATE transaction_request SET signature = 'replacement-signature'
       WHERE id = ? AND status = 'ready' AND revision = 2 AND signature IS NULL
     `,
       )
       .bind(id)
       .run()
     await db
-      .prepare(`UPDATE transaction_link SET status = 'confirmed' WHERE id = ?`)
+      .prepare(
+        `UPDATE transaction_request SET status = 'confirmed' WHERE id = ?`,
+      )
       .bind(id)
       .run()
     const downgrade = await db
       .prepare(
         `
-      UPDATE transaction_link SET status = 'unknown'
+      UPDATE transaction_request SET status = 'unknown'
       WHERE id = ? AND signature = 'smoke-signature' AND status IN ('submitting', 'unknown')
     `,
       )
       .bind(id)
       .run()
     const row = await db
-      .prepare('SELECT status, signature FROM transaction_link WHERE id = ?')
+      .prepare('SELECT status, signature FROM transaction_request WHERE id = ?')
       .bind(id)
       .first<{ status: string; signature: string }>()
     if (
@@ -109,7 +111,7 @@ async function checkTransactionLinks() {
   } finally {
     try {
       await db
-        .prepare('DELETE FROM transaction_link WHERE id = ?')
+        .prepare('DELETE FROM transaction_request WHERE id = ?')
         .bind(id)
         .run()
     } finally {

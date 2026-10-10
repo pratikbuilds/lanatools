@@ -92,6 +92,34 @@
       "when": 1791542478826,
       "tag": "0012_transaction_links",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1791550856229,
+      "tag": "0013_transaction_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1791555322345,
+      "tag": "0014_transaction_signer",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1791607124743,
+      "tag": "0015_transaction_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1791612803220,
+      "tag": "0016_remove_unsupported_transactions",
+      "breakpoints": true
     }
   ]
 }

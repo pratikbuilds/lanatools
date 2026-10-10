@@ -29,7 +29,7 @@ import { createTransactionLinks } from '../routes/transaction-links'
 import type { TransactionLinksEnv } from '../routes/transaction-links'
 import { PAYMENT_NETWORKS } from '../solana/network'
 import { testDatabase } from '../test-database'
-import { createTransactionLink } from './requests'
+import { createTransactionRequest } from './requests'
 import type { BuilderContext } from './adapter'
 import { verifySignedTransaction } from './submission'
 import type { TransactionRpc } from './submission'
@@ -50,7 +50,7 @@ async function buildMemo(
     (value) => setTransactionMessageLifetimeUsingBlockhash(lifetime, value),
     (value) =>
       appendTransactionMessageInstructions(
-        [getAddMemoInstruction({ memo: `${context.linkId}:${memo}` })],
+        [getAddMemoInstruction({ memo: `${context.requestId}:${memo}` })],
         value,
       ),
   )
@@ -145,6 +145,7 @@ test.each(cases)(
       grantId: crypto.randomUUID(),
     }
     await drizzle(db).insert(mcpGrant).values({
+      scope: 'account:read jupiter:read solana:transfer',
       id: identity.grantId,
       privyUserId: identity.userId,
       clientId: identity.clientId,
@@ -157,20 +158,26 @@ test.each(cases)(
       SOLANA_RPC_URL: 'https://unused.example',
       WEB_ORIGIN: 'http://localhost:5173',
     }
-    const input = { ...fixture.args, idempotencyKey: crypto.randomUUID() }
-    const created = await createTransactionLink(
+    const input = {
+      ...fixture.args,
+      delivery: 'link',
+      idempotencyKey: crypto.randomUUID(),
+    }
+    const created = await createTransactionRequest(
       env,
       identity,
       fixture.name,
       input,
-      Date.now(),
-      tools,
+      { tools },
     )
     if (!created.ok) throw new Error(created.error.message)
-    const id = created.result.linkId
+    const id = created.result.id
     expect(created.result.review.fields).toEqual(fixture.fields)
     const persisted = () =>
-      db.prepare('select * from transaction_link where id = ?').bind(id).first()
+      db
+        .prepare('select * from transaction_request where id = ?')
+        .bind(id)
+        .first()
     expect(await persisted()).toMatchObject({
       tool_name: fixture.name,
       arguments_json: JSON.stringify(fixture.args),
@@ -178,15 +185,10 @@ test.each(cases)(
       signature: null,
     })
     expect(
-      await createTransactionLink(
-        env,
-        identity,
-        fixture.name,
-        input,
-        Date.now(),
+      await createTransactionRequest(env, identity, fixture.name, input, {
         tools,
-      ),
-    ).toMatchObject({ ok: true, result: { linkId: id } })
+      }),
+    ).toMatchObject({ ok: true, result: { id } })
 
     const broadcasts: string[] = []
     const rpc: TransactionRpc = {

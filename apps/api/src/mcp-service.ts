@@ -16,8 +16,9 @@ import {
 } from './mcp-grants'
 import type { ConsentInput, GrantIdentity } from './mcp-grants'
 import {
-  createTransactionLink,
-  transactionLinkStatus,
+  createTransactionRequest,
+  sendTransaction,
+  transactionStatus,
 } from './transactions/requests'
 import type { TransactionLinkEnv } from './transactions/requests'
 import { paymentConfig } from './solana/network'
@@ -42,6 +43,12 @@ export type McpEnv = ProviderEnv &
     PRIVY_PAYMENT_SIGNER_ID: string
     /** That quorum's P-256 authorization key. Never leaves this Worker. */
     PRIVY_PAYMENT_SIGNER_KEY: string
+    /**
+     * Key quorum and key of the LanaTools transaction signer, which signs
+     * embedded transactions. Optional: without them, embedded delivery is off.
+     */
+    PRIVY_TRANSACTION_SIGNER_ID?: string
+    PRIVY_TRANSACTION_SIGNER_KEY?: string
   }
 
 export type McpDashboardEnv = McpEnv & { MCP: McpTokenRevoker }
@@ -145,16 +152,20 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
     return saveFeedback(this.env.DB, identity, feedback)
   }
 
-  async createTransactionLink(
+  async createTransactionRequest(
     identity: GrantIdentity,
     name: string,
     input: unknown,
   ) {
-    return createTransactionLink(this.env, identity, name, input)
+    return createTransactionRequest(this.env, identity, name, input)
   }
 
-  async transactionLinkStatus(identity: GrantIdentity, id: string) {
-    return transactionLinkStatus(this.env, identity, id)
+  async transactionStatus(identity: GrantIdentity, id: string) {
+    return transactionStatus(this.env, identity, id)
+  }
+
+  async sendTransaction(identity: GrantIdentity, id: string, input: unknown) {
+    return sendTransaction(this.env, identity, id, input)
   }
 
   /** Runs any provider tool, recording it in the client's activity. */

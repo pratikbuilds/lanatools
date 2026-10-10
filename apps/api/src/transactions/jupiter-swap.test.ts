@@ -24,11 +24,11 @@ import {
 import type { KeyPairSigner } from '@solana/kit'
 import { eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
-import { mcpGrant, transactionLink } from '../db/schema'
+import { mcpGrant, transactionRequest } from '../db/schema'
 import { PAYMENT_NETWORKS } from '../solana/network'
 import { testDatabase } from '../test-database'
 import {
-  createTransactionLink,
+  createTransactionRequest,
   observeTransactionLink,
   prepareTransactionLink,
   readTransactionLink,
@@ -50,11 +50,34 @@ let db: D1Database
 let dispose: () => Promise<void>
 let wallet: KeyPairSigner
 
+// Token names for reviews; tests never reach the real Jupiter API.
+const tokenSearch = spyOn(JupiterClient.prototype, 'read')
 beforeAll(async () => {
   ;({ db, dispose } = await testDatabase())
   wallet = await generateKeyPairSigner()
+  tokenSearch.mockImplementation(async () => ({
+    ok: true,
+    result: {
+      source: 'jupiter',
+      network: 'mainnet-beta',
+      fetchedAt: new Date(0).toISOString(),
+      data: {
+        tokens: [
+          { id: usdc, symbol: 'USDC', icon: 'https://example.com/usdc.png' },
+          { id: sol, symbol: 'SOL' },
+        ],
+        missingMints: [],
+        verificationEligibility: null,
+        eligibilityError: null,
+      },
+      warnings: [],
+    },
+  }))
 }, 60_000)
-afterAll(() => dispose())
+afterAll(async () => {
+  tokenSearch.mockRestore()
+  await dispose()
+})
 
 const env = () => ({
   DB: db,
@@ -66,8 +89,8 @@ const env = () => ({
 const row = (id: string) =>
   drizzle(db)
     .select()
-    .from(transactionLink)
-    .where(eq(transactionLink.id, id))
+    .from(transactionRequest)
+    .where(eq(transactionRequest.id, id))
     .get()
 
 async function identity() {
@@ -77,6 +100,7 @@ async function identity() {
     grantId: crypto.randomUUID(),
   }
   await drizzle(db).insert(mcpGrant).values({
+    scope: 'account:read jupiter:read solana:transfer',
     id: result.grantId,
     privyUserId: result.userId,
     clientId: result.clientId,
@@ -86,17 +110,18 @@ async function identity() {
 }
 
 async function create() {
-  const result = await createTransactionLink(
+  const result = await createTransactionRequest(
     env(),
     await identity(),
-    'jupiter_build_swap',
+    'jupiter_swap',
     {
       ...args,
+      delivery: 'link',
       idempotencyKey: crypto.randomUUID(),
     },
   )
   if (!result.ok) throw new Error(result.error.message)
-  return result.result.linkId
+  return result.result.id
 }
 
 // A locally encoded v0 transaction exercises ALT/signature handling without a real swap.
@@ -221,7 +246,11 @@ async function signed(candidate: PreparedTransaction) {
 
 test('Jupiter links enforce deployment mainnet and explicit slippage without choosing a wallet', async () => {
   const creator = await identity()
-  const input = { ...args, idempotencyKey: crypto.randomUUID() }
+  const input = {
+    ...args,
+    delivery: 'link',
+    idempotencyKey: crypto.randomUUID(),
+  }
   const { maxSlippageBps: _slippage, ...withoutSlippage } = input
   for (const invalid of [
     withoutSlippage,
@@ -231,26 +260,21 @@ test('Jupiter links enforce deployment mainnet and explicit slippage without cho
     { ...input, outputMint: usdc },
   ]) {
     expect(
-      await createTransactionLink(
-        env(),
-        creator,
-        'jupiter_build_swap',
-        invalid,
-      ),
+      await createTransactionRequest(env(), creator, 'jupiter_swap', invalid),
     ).toMatchObject({ ok: false, error: { code: 'invalid_input' } })
   }
   expect(
-    await createTransactionLink(
+    await createTransactionRequest(
       { ...env(), SOLANA_NETWORK: 'devnet' },
       creator,
-      'jupiter_build_swap',
+      'jupiter_swap',
       input,
     ),
   ).toMatchObject({ ok: false, error: { code: 'invalid_input' } })
-  const created = await createTransactionLink(
+  const created = await createTransactionRequest(
     env(),
     creator,
-    'jupiter_build_swap',
+    'jupiter_swap',
     input,
   )
   expect(created).toMatchObject({
@@ -268,7 +292,7 @@ test('Jupiter links enforce deployment mainnet and explicit slippage without cho
     },
   })
   if (!created.ok) throw new Error(created.error.message)
-  expect(await row(created.result.linkId)).toMatchObject({
+  expect(await row(created.result.id)).toMatchObject({
     account: null,
     signature: null,
     candidateJson: null,
@@ -368,14 +392,14 @@ test('Jupiter rejects a corrupted request ID before accepting a valid signed tra
     const candidate = await prepared(id, fake.rpc)
     const transaction = await signed(candidate)
     await drizzle(db)
-      .update(transactionLink)
+      .update(transactionRequest)
       .set({
         candidateJson: JSON.stringify({
           ...candidate,
           execution: { requestId: ' \t\n ' },
         }),
       })
-      .where(eq(transactionLink.id, id))
+      .where(eq(transactionRequest.id, id))
 
     expect(
       await sendTransactionLink(
@@ -509,3 +533,24 @@ test.each([
     }
   },
 )
+
+test('a swap link stores its named review once and pages read it without Jupiter', async () => {
+  const before = tokenSearch.mock.calls.length
+  const id = await create()
+  expect(tokenSearch.mock.calls.length).toBe(before + 1)
+  const link = await readTransactionLink(db, id)
+  expect(link?.review).toMatchObject({
+    title: 'Swap USDC for SOL',
+    fields: expect.arrayContaining([
+      {
+        label: 'You pay',
+        value: '1 USDC',
+        icon: 'https://example.com/usdc.png',
+      },
+    ]),
+  })
+  expect(JSON.parse((await row(id))?.reviewJson ?? 'null')).toEqual(
+    link?.review,
+  )
+  expect(tokenSearch.mock.calls.length).toBe(before + 1)
+})

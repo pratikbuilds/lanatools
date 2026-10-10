@@ -170,7 +170,6 @@ export const JupiterRequest = z.discriminatedUnion('tool', [
     input: TriggerOrdersInput,
   }),
   z.object({ tool: z.literal('jupiter_quote_swap'), input: QuoteSwapInput }),
-  z.object({ tool: z.literal('jupiter_build_swap'), input: BuildSwapInput }),
   z.object({
     tool: z.literal('jupiter_get_swap_venues'),
     input: SwapVenuesInput,

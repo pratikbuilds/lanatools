@@ -229,5 +229,4 @@ export type JupiterData =
   | LendingPositionsData
   | TriggerOrdersData
   | QuoteSwapData
-  | BuildSwapData
   | SwapVenuesData
