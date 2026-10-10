@@ -2,18 +2,27 @@ import { type } from 'arktype'
 import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { address, createSolanaRpc, isAddress } from '@solana/kit'
+import { fetchMaybeToken } from '@solana-program/token'
 import { WithdrawalRequest, WithdrawalTransaction } from '@lanatools/contracts'
 import type { WithdrawalReceipt } from '@lanatools/contracts'
 import { privyClient } from '../mcp-service'
 import type { McpEnv } from '../mcp-service'
 import { findUserWallet } from '../payments/signer-setup'
-import { paymentConfig } from '../solana/network'
+import { RPC_TIMEOUT_MS, paymentConfig } from '../solana/network'
 import {
   TransferError,
   prepareTokenTransfer,
   readSignedWithdrawal,
   sendWithdrawal,
 } from '../solana/token-transfer'
+import type {
+  WithdrawalRpc,
+  WithdrawalTransfer,
+} from '../solana/token-transfer'
+import {
+  recordWithdrawal,
+  settleWalletTransfer,
+} from '../transactions/wallet-transfers'
 import { privyAuth } from './privy-auth'
 
 /**
@@ -55,18 +64,68 @@ export const walletWithdrawals = new Hono<{
   .post('/send', async (c) => {
     const body = WithdrawalTransaction(await c.req.json().catch(() => null))
     if (body instanceof type.errors) throw new HTTPException(400)
-    const { rpcUrl } = await paymentConfig(c.env)
+    const { network, rpcUrl } = await paymentConfig(c.env)
     return withUserErrors(async () => {
       const withdrawal = await readSignedWithdrawal(body.transaction)
-      await assertOwnWallet(c.env, c.get('userId'), withdrawal.payer)
-      return c.json(
-        (await sendWithdrawal(
-          createSolanaRpc(rpcUrl),
-          withdrawal,
-        )) satisfies WithdrawalReceipt,
-      )
+      const userId = c.get('userId')
+      await assertOwnWallet(c.env, userId, withdrawal.payer)
+      const rpc = createSolanaRpc(rpcUrl)
+      // The ledger row is written before the relay so the Transactions tab
+      // lists the withdrawal at once. Recording must never block the send.
+      const recorded = await recordWithdrawal(c.env.DB, {
+        userId,
+        wallet: withdrawal.payer,
+        network: network.name,
+        mint: withdrawal.transfer.mint,
+        decimals: withdrawal.transfer.decimals,
+        amount: withdrawal.transfer.amount,
+        counterparty: await recipientOf(rpc, withdrawal.transfer),
+        signature: withdrawal.signature,
+      })
+        .then(() => true)
+        .catch(() => {
+          // D1 may include bound values in its errors. Log a fixed line.
+          console.error('Could not record withdrawal')
+          return false
+        })
+      const settle = (status: 'confirmed' | 'failed') =>
+        recorded
+          ? settleWalletTransfer(c.env.DB, {
+              userId,
+              signature: withdrawal.signature,
+              status,
+            }).catch(() => console.error('Could not settle withdrawal'))
+          : Promise.resolve()
+      let receipt: WithdrawalReceipt
+      try {
+        receipt = await sendWithdrawal(rpc, withdrawal)
+      } catch (error) {
+        // Only a refusal the cluster gave is final; anything else may land.
+        if (error instanceof TransferError) await settle('failed')
+        throw error
+      }
+      if (receipt.confirmed) await settle('confirmed')
+      return c.json(receipt satisfies WithdrawalReceipt)
     })
   })
+
+/**
+ * The wallet a withdrawal pays. A token goes to a token account; when the
+ * transaction did not create it, its owner is read from the chain, and the
+ * account itself stands in if that read fails.
+ */
+async function recipientOf(rpc: WithdrawalRpc, transfer: WithdrawalTransfer) {
+  if (transfer.recipient) return transfer.recipient
+  try {
+    const account = await fetchMaybeToken(rpc, transfer.destination, {
+      abortSignal: AbortSignal.timeout(RPC_TIMEOUT_MS),
+      commitment: 'confirmed',
+    })
+    return account.exists ? account.data.owner : transfer.destination
+  } catch {
+    return transfer.destination
+  }
+}
 
 /** Refuses a wallet that Privy does not list as the user's own. */
 async function assertOwnWallet(env: McpEnv, userId: string, wallet: string) {

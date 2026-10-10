@@ -2,9 +2,9 @@
 
 Status, October 10, 2026: P0 mockup at
 [mockups/dashboard-transactions.html](mockups/dashboard-transactions.html)
-approved (card surface). P1 built and checked against a mocked API; its
-devnet gate (a real swap and transfer in each delivery mode) is not yet run.
-P2 and P3 not started. Builds on
+approved (card surface). P1, P2 and P3 built and checked with unit tests,
+fakes and a mocked browser run; the devnet gates (real swaps, transfers,
+withdrawals and deposits) are not yet run. Builds on
 [dashboard-activity.md](dashboard-activity.md) and
 [transaction-delivery.md](transaction-delivery.md).
 
@@ -132,10 +132,12 @@ rows are merged in memory, and the cursor carries the kind as a tie-breaker.
 
 ### 4.2 `POST /api/transactions/sync`
 
-Privy auth. Runs the deposit sync in §5.3 for the signed-in user's wallet and
-returns `{ inserted: number }`. The web calls it when the tab mounts and when
-the tab regains focus, then refetches the list. Idempotent; concurrent calls
-are safe because inserts are keyed on signature.
+Privy auth. Runs the chain sync in §5.3 for the signed-in user's wallet and
+returns `{ inserted, settled }`. The web calls it when the tab mounts and
+whenever the window regains focus, and refetches the list when either count
+is above zero. Idempotent; concurrent calls are safe because inserts are
+keyed on signature, mint and direction. An RPC failure is a 502 without the
+provider's message.
 
 ### 4.3 `GET /api/transactions/:id`
 
@@ -191,39 +193,48 @@ token). Each asset movement is its own row.
 
 ### 5.2 Withdrawal recording
 
-In `/send`, after `readSignedWithdrawal` and the own-wallet check and before
-`sendWithdrawal`: insert a `wallet_transfer` row with `direction: 'out'`,
-`source: 'withdrawal'`, `status: 'pending'`, the signature from the signed
-bytes, and the mint, amount and recipient decoded from the transfer
-instruction. After `sendWithdrawal` returns, update the row to `confirmed`
-when `confirmed` is true; otherwise leave it pending for the chain sync to
-settle. If the insert fails, the send still goes ahead and a fixed
-diagnostic is logged, as `callTool` does: a recording failure must not block
+Built. `readSignedWithdrawal` now returns the transfer it checked: mint (or
+`native`), amount, decimals, the destination account, and the recipient
+wallet when the transaction names it (always for SOL; for a token only when
+the transaction creates the recipient's token account). In `/send`, after
+the own-wallet check and before `sendWithdrawal`, a `wallet_transfer` row is
+inserted with `direction: 'out'`, `source: 'withdrawal'` and
+`status: 'pending'`. A token recipient the transaction does not name is read
+from the destination token account's owner, and the account itself stands in
+if that read fails. After `sendWithdrawal` returns confirmed, the row is
+settled; a refusal the cluster gave (`TransferError`) settles it failed; any
+other outcome leaves it pending for the chain sync, or for its drawer, which
+asks the chain once when opened. If the insert fails, the send still goes
+ahead and a fixed diagnostic is logged: a recording failure must not block
 the user's money.
-
-`readSignedWithdrawal` must expose mint, amount and recipient; today its
-return type is checked against the schema but the route only uses `payer`.
-Verify what it returns before Phase 2 and extend it if needed.
 
 ### 5.3 Chain sync (deposits, and settling pending rows)
 
-For the user's embedded wallet:
+Built in `apps/api/src/transactions/wallet-transfers.ts`, for the wallet in
+`payment_signer`:
 
-1. Read the newest stored `wallet_transfer` signature with
-   `source: 'chain_sync'` for this wallet.
-2. Call `getSignaturesForAddress(wallet, { until: thatSignature })`, paging
-   with `before` until `until` is reached or history ends. The first sync for
-   a wallet has no `until` and walks its full history.
-3. For each signature not already present in `wallet_transfer`,
-   `transaction_request` or `payment_activity`: fetch the transaction with
-   `jsonParsed` and `maxSupportedTransactionVersion: 0`, compute the wallet's
-   net SOL and token balance changes (reuse the helius package's
-   `netBalanceChanges` by exporting it, or move it to `packages/toolkit`),
-   and insert one `in` or `out` row per asset with a non-zero change. The
-   counterparty is the other owner in the matching transfer instruction when
-   there is exactly one, otherwise the transaction's fee payer.
-4. For stored rows still `pending` whose signature appears in the fetched
-   page, set `confirmed` or `failed` from the signature's `err` field.
+1. Read the newest stored `wallet_transfer` row for this wallet that is not
+   pending; its signature is the bookmark. (A pending withdrawal may never
+   land, so it cannot be the bookmark: the RPC would walk the whole history
+   looking for it.)
+2. Call `getSignaturesForAddress(wallet, { until: bookmark })`, paging with
+   `before` in pages of 1000, the RPC's own maximum, until `until` is reached
+   or history ends. The first sync for a wallet has no `until` and walks its
+   full history.
+3. Oldest first: a signature already in `wallet_transfer` settles any pending
+   row (confirmed, or failed from the entry's `err`) and is otherwise left
+   alone; one in `transaction_request` or `payment_activity` for this user is
+   skipped; a failed transaction is skipped. The rest are fetched with
+   `jsonParsed` and `maxSupportedTransactionVersion: 0`, and the wallet's net
+   SOL and per-mint token changes become one `in` or `out` row per asset. The
+   fee is added back for a wallet that paid it, so an amount is what reached
+   the other party. The parser is the API's own; the helius package's
+   `netBalanceChanges` stays where it is.
+4. The counterparty is the one other account that moved the other way when
+   there is exactly one, otherwise the fee payer; the wallet is never its own
+   counterparty. Symbols are known for SOL and the network's USDC only; other
+   mints show shortened. A row's `createdAt` is the block time, so it sorts
+   with everything else by when it happened.
 
 The sync runs inside the request and returns when done. Nothing runs in the
 background.
@@ -320,25 +331,32 @@ run over a mocked API (`tests/e2e/transactions.spec.ts`). Gate: a devnet
 swap and a transfer, in each delivery mode, appear with the right status and
 signature.
 
-**P2: Withdrawals.** Recording in `/send`, `withdrawal` rows in the list and
-drawer, kind filter. Tests: a sent withdrawal is listed as pending then
-confirmed; a failed insert does not block the send. Gate: a devnet USDC and
-a SOL withdrawal appear.
+**P2: Withdrawals.** Built October 10: recording in `/send` and settlement
+after the relay. Tests: the decoder returns the transfer for SOL and token
+withdrawals; a withdrawal is recorded pending once and settled
+(`wallet-transfers.test.ts`). The route itself is not unit tested, as it
+needs Privy for the own-wallet check. Gate: a devnet USDC and a SOL
+withdrawal appear.
 
-**P3: Deposits.** Chain sync route, deposit rows, settling of pending
-withdrawal rows, dedup against agent and payment signatures. Tests against a
-fake RPC: a transfer in, a token transfer in, a swap signature already in
-`transaction_request` is skipped, a paid call's signature is skipped, a
-second sync inserts nothing. Gate: a devnet airdrop and a USDC transfer into
-the wallet appear after opening the tab.
+**P3: Deposits.** Built October 10: the sync route, deposit rows, settling
+of pending withdrawal rows, dedup against agent and payment signatures, and
+the page's sync on open and focus. Tests against a fake chain: a SOL and a
+USDC deposit are inserted with block time and counterparty, a swap and a
+paid call's signatures are skipped, a failed transaction is skipped, a
+pending withdrawal is settled, a second sync walks only to the bookmark and
+inserts nothing, a later deposit is picked up. Gate: a devnet airdrop and a
+USDC transfer into the wallet appear after opening the tab.
 
 **P4: Verification.** `bun run check`, then the full flow on devnet with a
 signed-in user, including the address filter against a known recipient.
 
 ## 8. Open questions
 
-1. How much history may one sync read per call: a number of signatures, a
-   time window, or unbounded with the first sync allowed to be slow?
+1. How much history may one sync read per call? As built there is no cap:
+   a sync pages in 1000s until it reaches its bookmark or the start of the
+   wallet's history, and fetches each unknown transaction one by one. A
+   wallet with a long history before LanaTools will make its first sync
+   slow. No number was chosen; one should be before launch.
 2. Should `transaction_request` rows older than the index migration, which
    have no `counterparty`, be backfilled from `arguments_json` in the
    migration, or left null?

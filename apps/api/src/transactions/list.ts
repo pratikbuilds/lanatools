@@ -23,6 +23,12 @@ import type {
   TransactionLinkEnv,
   TransactionRequestRow,
 } from './requests'
+import {
+  observeSubmission,
+  transactionRpc,
+  verifyRpcNetwork,
+} from './submission'
+import { settleWalletTransfer } from './wallet-transfers'
 
 /** Transactions fetched per request; the dashboard asks for older ones on scroll. */
 export const TRANSACTIONS_PAGE_SIZE = 50
@@ -336,12 +342,38 @@ export async function readTransaction(
       ? agentItem(fresh, configuration(env).webOrigin, now, options.tools)
       : null
   }
-  const transfer = await drizzle(env.DB)
-    .select()
-    .from(walletTransfer)
-    .where(
-      and(eq(walletTransfer.id, id), eq(walletTransfer.privyUserId, userId)),
-    )
-    .get()
-  return transfer ? walletItem(transfer) : null
+  const transfers = () =>
+    drizzle(env.DB)
+      .select()
+      .from(walletTransfer)
+      .where(
+        and(eq(walletTransfer.id, id), eq(walletTransfer.privyUserId, userId)),
+      )
+      .get()
+  const transfer = await transfers()
+  if (!transfer) return null
+  if (transfer.status === 'pending') {
+    // A withdrawal that was sent may have landed since; ask the chain once.
+    try {
+      const rpc = options.rpc ?? transactionRpc(env.SOLANA_RPC_URL)
+      await verifyRpcNetwork(rpc, transfer.network)
+      const observed = await observeSubmission(rpc, transfer.signature, {
+        attempts: 1,
+        intervalMs: 0,
+        ...options.observation,
+      })
+      if (observed.status !== 'unknown')
+        await settleWalletTransfer(env.DB, {
+          userId,
+          signature: transfer.signature,
+          status: observed.status,
+          slot: observed.receipt?.slot,
+          now,
+        })
+    } catch {
+      // A failing provider leaves the stored row as it is.
+    }
+    return walletItem((await transfers()) ?? transfer)
+  }
+  return walletItem(transfer)
 }

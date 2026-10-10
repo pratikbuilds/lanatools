@@ -421,3 +421,54 @@ test('a sent request is checked against the chain when it is read', async () => 
     receipt: { signature: SIGNATURE, slot: '42', commitment: 'finalized' },
   })
 })
+
+test('a pending withdrawal asks the chain once when it is read', async () => {
+  const id = await transfer({
+    direction: 'out',
+    status: 'pending',
+    signature: SIGNATURE,
+    source: 'withdrawal',
+  })
+  const landed: TransactionRpc = {
+    genesisHash: async () => SOLANA_NETWORKS.devnet.genesisHash,
+    latestBlockhash: () => Promise.reject(new Error('unused')),
+    blockHeight: async () => 1n,
+    send: async () => SIGNATURE,
+    status: async () => ({
+      err: null,
+      slot: 77n,
+      confirmationStatus: 'confirmed',
+    }),
+  }
+  expect(
+    await readTransaction(env(), user, id, { now: NOON, rpc: landed }),
+  ).toMatchObject({ kind: 'withdrawal', status: 'confirmed', slot: '77' })
+  const rejected = await transfer({
+    direction: 'out',
+    status: 'pending',
+    signature: '6'.repeat(87),
+    source: 'withdrawal',
+  })
+  const failed: TransactionRpc = {
+    ...landed,
+    status: async () => ({
+      err: { Custom: 1 },
+      slot: 78n,
+      confirmationStatus: 'finalized',
+    }),
+  }
+  expect(
+    await readTransaction(env(), user, rejected, { now: NOON, rpc: failed }),
+  ).toMatchObject({ kind: 'withdrawal', status: 'failed' })
+  // A provider that cannot say leaves the row pending.
+  const silent = await transfer({
+    direction: 'out',
+    status: 'pending',
+    signature: '7'.repeat(87),
+    source: 'withdrawal',
+  })
+  const unknown: TransactionRpc = { ...landed, status: async () => null }
+  expect(
+    await readTransaction(env(), user, silent, { now: NOON, rpc: unknown }),
+  ).toMatchObject({ kind: 'withdrawal', status: 'pending' })
+})

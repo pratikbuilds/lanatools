@@ -26,6 +26,7 @@ import {
   listTransactions,
   shortAddress,
   statusGroup,
+  syncTransactions,
   transactionAmounts,
   transactionDetail,
   transactionTitle,
@@ -63,6 +64,20 @@ export function TransactionsPage({
       (query.state.data?.pages.length ?? 0) > 1 ? false : 15_000,
     placeholderData: keepPreviousData,
   })
+  const queryClient = useQueryClient()
+  // Deposits are found on chain, not recorded, so the page asks for a sync
+  // when it opens and when it comes back into focus.
+  const sync = useQuery({
+    queryKey: ['transactions-sync', userId],
+    queryFn: () => syncTransactions(getAccessToken),
+    staleTime: 0,
+    refetchOnWindowFocus: 'always',
+    retry: false,
+  })
+  useEffect(() => {
+    if (sync.data && sync.data.inserted + sync.data.settled > 0)
+      void queryClient.invalidateQueries({ queryKey: ['transactions', userId] })
+  }, [sync.data, queryClient, userId])
   const clients = useMcpClients()
   const [open, setOpen] = useState<TransactionActivityItem>()
   const items = useMemo(
@@ -515,7 +530,7 @@ function LiveTransactionDetail({
   const fresh = useQuery({
     queryKey: ['transaction', userId, item.id],
     queryFn: () => getTransaction(getAccessToken, item.id),
-    enabled: item.kind === 'agent' && pending,
+    enabled: pending,
     refetchInterval: (query) =>
       query.state.data && statusGroup(query.state.data) !== 'pending'
         ? false

@@ -5,6 +5,7 @@ import { TransactionsQuery } from '@lanatools/contracts'
 import type {
   TransactionActivityItem,
   TransactionsPage,
+  TransactionsSync,
 } from '@lanatools/contracts'
 import type { McpEnv } from '../mcp-service'
 import {
@@ -14,6 +15,11 @@ import {
   readTransaction,
 } from '../transactions/list'
 import type { TransactionExecutionEnv } from '../transactions/requests'
+import {
+  syncWalletTransfers,
+  walletHistoryRpc,
+} from '../transactions/wallet-transfers'
+import { paymentConfig } from '../solana/network'
 import { privyAuth } from './privy-auth'
 
 /** The dashboard's read of the signed-in user's transactions. */
@@ -37,6 +43,22 @@ export const transactions = new Hono<{
       limit: TRANSACTIONS_PAGE_SIZE,
     })
     return c.json(page satisfies TransactionsPage)
+  })
+  // Brings deposits and settled withdrawals in from the chain. The page
+  // calls it when it opens and when it regains focus.
+  .post('/sync', async (c) => {
+    const { network, rpcUrl } = await paymentConfig(c.env)
+    try {
+      const result = await syncWalletTransfers(c.env.DB, {
+        userId: c.get('userId'),
+        network: network.name,
+        rpc: walletHistoryRpc(rpcUrl),
+      })
+      return c.json(result satisfies TransactionsSync)
+    } catch {
+      // RPC errors can include the RPC URL and its provider key.
+      throw new HTTPException(502)
+    }
   })
   .get('/:id', async (c) => {
     c.header('Cache-Control', 'no-store')

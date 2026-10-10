@@ -2,6 +2,7 @@ import {
   TRANSACTION_STATUS_GROUPS,
   TransactionActivityItem,
   TransactionsPage,
+  TransactionsSync,
   transactionStatusGroup,
 } from '@lanatools/contracts'
 import type {
@@ -110,6 +111,16 @@ export async function listTransactions(
   })
   if (!response.ok) throw new Error('Could not load transactions.')
   return TransactionsPage.assert(await response.json())
+}
+
+/** Asks the API to bring deposits and settled withdrawals in from the chain. */
+export async function syncTransactions(getAccessToken: GetAccessToken) {
+  const response = await fetch('/api/transactions/sync', {
+    method: 'POST',
+    headers: await authorized(getAccessToken),
+  })
+  if (!response.ok) throw new Error('Could not check the chain for deposits.')
+  return TransactionsSync.assert(await response.json())
 }
 
 /** One transaction, after the API has checked the chain for it. */

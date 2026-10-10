@@ -220,6 +220,13 @@ export async function mockDashboard(page: Page, empty = false) {
           : { pending: 3, confirmed: 3, failed: 1, expired: 1 },
       },
     }
+    if (
+      path === '/api/transactions/sync' &&
+      route.request().method() === 'POST'
+    ) {
+      await route.fulfill({ json: { inserted: 0, settled: 0 } })
+      return
+    }
     const one = /^\/api\/transactions\/([^/]+)$/.exec(path)?.[1]
     const found = one && transactions.find((t) => t.id === one)
     if (found && route.request().method() === 'GET') {

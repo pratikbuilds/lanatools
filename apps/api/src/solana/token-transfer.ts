@@ -265,6 +265,20 @@ export async function prepareTokenTransfer(
   return wire
 }
 
+/** What a checked withdrawal moves, read from its one transfer instruction. */
+export type WithdrawalTransfer = {
+  mint: Address | 'native'
+  amount: bigint
+  decimals: number
+  /** The account that receives the asset: a wallet for SOL, a token account for a token. */
+  destination: Address
+  /**
+   * The recipient wallet, when the transaction names it: always for SOL, and
+   * for a token when the transaction creates the recipient's token account.
+   */
+  recipient: Address | null
+}
+
 /** A signed withdrawal that has been checked and may be sent. */
 export type SignedWithdrawal = {
   transaction: Transaction
@@ -272,6 +286,7 @@ export type SignedWithdrawal = {
   payer: Address
   signature: string
   blockhash: Blockhash
+  transfer: WithdrawalTransfer
 }
 
 /**
@@ -312,7 +327,8 @@ export async function readSignedWithdrawal(
   )
     throw new TransferError('The transaction is not signed by the wallet')
 
-  if (!(await isTokenWithdrawal(instructions, payer)))
+  const transfer = await withdrawalTransfer(instructions, payer)
+  if (!transfer)
     throw new TransferError('The signed transaction is not a token withdrawal')
 
   return {
@@ -320,37 +336,48 @@ export async function readSignedWithdrawal(
     payer,
     signature: getBase58Decoder().decode(signature),
     blockhash: toBlockhash(blockhash),
+    transfer,
   }
 }
 
 /**
- * Whether the instructions are exactly a token transfer authorized by the
- * payer, optionally after creating the recipient's token account at the
- * payer's expense: the shapes `prepareTokenTransfer` builds.
+ * The transfer, if the instructions are exactly a token transfer authorized
+ * by the payer, optionally after creating the recipient's token account at
+ * the payer's expense: the shapes `prepareTokenTransfer` builds. Null for
+ * anything else.
  */
-async function isTokenWithdrawal(
+async function withdrawalTransfer(
   instructions: readonly Instruction[],
   payer: Address,
-) {
+): Promise<WithdrawalTransfer | null> {
   try {
     const [first, second] = instructions
     const transfer = second ?? first
-    if (!transfer?.data || instructions.length > 2) return false
+    if (!transfer?.data || instructions.length > 2) return null
     if (transfer.programAddress === SYSTEM_PROGRAM_ADDRESS) {
       if (
         instructions.length !== 1 ||
         identifySystemInstruction(transfer.data) !==
           SystemInstruction.TransferSol
       )
-        return false
+        return null
       const parsed = parseTransferSolInstruction(
         transfer as Parameters<typeof parseTransferSolInstruction>[0],
       )
-      return (
-        parsed.accounts.source.address === payer &&
-        parsed.accounts.destination.address !== payer &&
-        parsed.data.amount > 0n
+      const destination = parsed.accounts.destination.address
+      if (
+        parsed.accounts.source.address !== payer ||
+        destination === payer ||
+        parsed.data.amount <= 0n
       )
+        return null
+      return {
+        mint: 'native',
+        amount: parsed.data.amount,
+        decimals: 9,
+        destination,
+        recipient: destination,
+      }
     }
     if (
       (transfer.programAddress !== TOKEN_PROGRAM_ADDRESS &&
@@ -358,7 +385,7 @@ async function isTokenWithdrawal(
       identifyTokenInstruction(transfer.data) !==
         TokenInstruction.TransferChecked
     )
-      return false
+      return null
     const { accounts, data } = parseTransferCheckedInstruction(
       transfer as Parameters<typeof parseTransferCheckedInstruction>[0],
     )
@@ -368,7 +395,8 @@ async function isTokenWithdrawal(
       accounts.source.address === accounts.destination.address ||
       data.amount === 0n
     )
-      return false
+      return null
+    let recipient: Address | null = null
     if (second && first) {
       if (
         first.programAddress !== ASSOCIATED_TOKEN_PROGRAM_ADDRESS ||
@@ -376,7 +404,7 @@ async function isTokenWithdrawal(
         identifyAssociatedTokenInstruction(first.data) !==
           AssociatedTokenInstruction.CreateAssociatedTokenIdempotent
       )
-        return false
+        return null
       const create = parseCreateAssociatedTokenIdempotentInstruction(
         first as Parameters<
           typeof parseCreateAssociatedTokenIdempotentInstruction
@@ -395,11 +423,18 @@ async function isTokenWithdrawal(
         create.accounts.ata.address !== expected ||
         accounts.destination.address !== expected
       )
-        return false
+        return null
+      recipient = create.accounts.owner.address
     }
-    return true
+    return {
+      mint: accounts.mint.address,
+      amount: data.amount,
+      decimals: data.decimals,
+      destination: accounts.destination.address,
+      recipient,
+    }
   } catch {
-    return false
+    return null
   }
 }
 
