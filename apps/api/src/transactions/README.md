@@ -2,7 +2,7 @@
 
 Each transaction is its own MCP tool. Its input is the operation's own
 arguments plus `delivery` and an `idempotencyKey`. A call stores the validated
-intent in `transaction_request`; it never builds, signs, or sends.
+intent in `transaction_request`; link delivery waits for the review page.
 
 ```json
 {
@@ -76,7 +76,11 @@ An operation can return private `execution` metadata. Jupiter saves only its
 request ID beside the unsigned candidate in `candidate_json`. The submission
 schema validates it before storage and again before signature acceptance. Both
 fresh and resumed public responses omit it. Signed bytes and credentials are
-never stored there.
+never stored there. An embedded retry restores the accepted signature onto the
+saved unsigned candidate and uses the same verification and relay path, without
+signing again or replacing the message. Removing wallet access blocks preparation,
+signature acceptance and further relays; already broadcast transactions can still
+confirm.
 
 The link service preserves its original deadline, one accepted signature, exact
 message/signature checks, identical-payload retries and renewal only after

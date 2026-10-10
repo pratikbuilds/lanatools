@@ -34,7 +34,7 @@ Each transaction tool takes its own arguments plus `delivery` and an
 `idempotencyKey`: `solana_transfer` (`recipient`, decimal-string
 `amountLamports`; scope `solana:transfer`) and `jupiter_swap` (`inputMint`,
 `outputMint`, decimal `amount`, `maxSlippageBps`, optional `minOutputAmount`;
-scope `jupiter:read`). No call signs or sends.
+scope `jupiter:read`). Delivery determines when signing and sending happen.
 
 - `delivery: "link"` returns `reviewUrl`; the user signs on that page and
   LanaTools sends.
@@ -58,6 +58,9 @@ stops payments.
 Network comes from API deployment configuration. A retry with
 the same client, key and input returns the same transaction; changed input
 conflicts.
+An embedded retry can resend the same signed transaction without asking Privy
+to sign again. Wallet access must still be enabled; already broadcast transactions
+can confirm after access is removed.
 
 Every transaction tool and `get_transaction_status` return the same result:
 `id`, `tool`, `network`, `delivery`, `status`, `review`, `signature`,

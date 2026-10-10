@@ -218,7 +218,7 @@ export function AgentPaymentsView({
                 : running === 'setup'
                   ? 'Setting up agent payments…'
                   : enabled
-                    ? 'Your clients can pay from this wallet, each within its own limit. Disconnect a client to stop just that one.'
+                    ? 'Your clients can pay from this wallet within their payment limits. Clients allowed swaps or SOL transfers can send from it without further approval or an amount limit when transaction signing is set up. Disconnect a client to stop just that one.'
                     : removed
                       ? 'You removed LanaTools access. No client can pay, and LanaTools cannot sign from your wallet.'
                       : 'Your clients cannot pay until the LanaTools signer is on your wallet.'}
@@ -235,9 +235,10 @@ export function AgentPaymentsView({
             (confirming && enabled ? (
               <div className="mt-5 rounded-[10px] border border-line bg-surface px-3.5 py-3">
                 <p className="text-[13px]">
-                  Remove LanaTools access? Every client stops paying right away,
-                  and the LanaTools signer is removed from your wallet. You can
-                  set it up again later.
+                  Remove LanaTools access? This stops payments and embedded
+                  transactions, and removes the LanaTools signers from your
+                  wallet. Transactions already broadcast may still confirm. You
+                  can set it up again later.
                 </p>
                 <div className="mt-3 flex gap-2">
                   <button
@@ -274,12 +275,16 @@ export function AgentPaymentsView({
         <>
           <h3 className="d-label">Signing rules</h3>
           <dl className="mt-4 grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2.5 text-[13.5px]">
-            <dt className="text-fg-3">Token</dt>
+            <dt className="text-fg-3">API payments</dt>
             <dd>USDC only</dd>
-            <dt className="text-fg-3">Amount</dt>
+            <dt className="text-fg-3">Payment amount</dt>
             <dd>Within each client’s own limit</dd>
-            <dt className="text-fg-3">Also signs</dt>
-            <dd>Network fee and memo instructions</dd>
+            <dt className="text-fg-3">Transactions</dt>
+            <dd>
+              When set up, swaps and SOL transfers need no further approval and
+              have no amount limit. The client must have the matching
+              permission.
+            </dd>
             <dt className="text-fg-3">Wallet</dt>
             <dd className="min-w-0">
               <code

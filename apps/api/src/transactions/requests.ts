@@ -9,6 +9,7 @@ import {
 } from '@lanatools/contracts'
 import {
   observeSubmission,
+  restoreSignedTransaction,
   transactionRpc,
   verifyRpcNetwork,
   verifySignedTransaction,
@@ -193,19 +194,24 @@ export async function createTransactionRequest(
       rpc: options.rpc ?? transactionRpc(env.SOLANA_RPC_URL),
       jupiterApiKey: env.JUPITER_API_KEY,
     })
-    // The insert checks the grant again atomically so concurrent revocation
-    // cannot create a usable new intent after authorization was read.
+    // Recheck access atomically so concurrent revocation or wallet removal wins.
     await db.run(sql`
       insert into transaction_request
         (id, tool_name, arguments_json, network, creator_user_id,
          creator_client_id, creator_grant_id, idempotency_key, delivery,
-         review_json, created_at, updated_at, expires_at)
+         review_json, account, created_at, updated_at, expires_at)
       select ${id}, ${name}, ${argumentsJson}, ${config.network},
         ${identity.userId}, ${identity.clientId}, ${identity.grantId}, ${idempotencyKey},
-        ${delivery}, ${JSON.stringify(review)}, ${now}, ${now}, ${now + 15 * 60_000}
+        ${delivery}, ${JSON.stringify(review)}, ${embedded?.wallet?.walletAddress ?? null},
+        ${now}, ${now}, ${now + 15 * 60_000}
       from mcp_grant where id = ${identity.grantId}
         and privy_user_id = ${identity.userId} and client_id = ${identity.clientId}
         and status = 'active'
+        and (${delivery} != 'embedded' or exists (
+          select 1 from payment_signer
+          where privy_user_id = ${identity.userId} and status = 'enabled'
+            and wallet_id = ${embedded?.wallet?.walletId ?? null}
+            and transaction_policy_id is not null))
       on conflict (creator_user_id, creator_client_id, idempotency_key) do nothing
     `)
     const row = await db
@@ -219,7 +225,12 @@ export async function createTransactionRequest(
         ),
       )
       .get()
-    if (!row) return failed('unauthorized')
+    if (!row)
+      return failed(
+        (await authorizeGrant(env.DB, identity, null, now)) === 'active'
+          ? 'embedded_unavailable'
+          : 'unauthorized',
+      )
     if (row.creatorGrantId !== identity.grantId)
       return failed(
         'conflict',
@@ -246,14 +257,26 @@ export async function createTransactionRequest(
       else if (prepared.error.code !== 'closed') return prepared
     }
     if (row.delivery === 'embedded' && embedded?.wallet && embedded.sign) {
-      const prepared = await prepareTransactionLink(
-        env,
-        row.id,
-        { account: embedded.wallet.walletAddress },
-        { ...options, now },
-      )
-      if (prepared.ok) {
-        let signed: string
+      let signed: string
+      if (row.signature && row.candidateJson) {
+        signed = restoreSignedTransaction(
+          publicTransaction(JSON.parse(row.candidateJson)),
+          row.signature,
+        )
+      } else {
+        const prepared = await prepareTransactionLink(
+          env,
+          row.id,
+          { account: embedded.wallet.walletAddress },
+          { ...options, now },
+        )
+        if (!prepared.ok) return prepared
+        const currentWallet = await embeddedWallet(env.DB, identity.userId)
+        if (
+          currentWallet?.walletId !== embedded.wallet.walletId ||
+          currentWallet.walletAddress !== embedded.wallet.walletAddress
+        )
+          return failed('embedded_unavailable')
         try {
           signed = await embedded.sign(
             embedded.wallet,
@@ -266,21 +289,18 @@ export async function createTransactionRequest(
               : 'unavailable',
           )
         }
-        // The same checks and relay as a signed link: exact bytes, the
-        // wallet's signature saved before the transaction is sent.
-        const sent = await sendTransactionLink(
-          env,
-          row.id,
-          { transaction: signed },
-          options,
-        )
-        if (!sent.ok) return sent
-        return {
-          ok: true,
-          result: toResult(sent.result, 'embedded', config.webOrigin),
-        }
       }
-      if (prepared.error.code !== 'closed') return prepared
+      const sent = await sendTransactionLink(
+        env,
+        row.id,
+        { transaction: signed },
+        options,
+      )
+      if (!sent.ok) return sent
+      return {
+        ok: true,
+        result: toResult(sent.result, 'embedded', config.webOrigin),
+      }
     }
     const link = await readTransactionLink(env.DB, row.id, now, tools)
     if (!link) return failed('unavailable')
@@ -321,13 +341,18 @@ export async function readTransactionLink(
       ),
     )
     .get()
+  const walletAvailable =
+    row.delivery !== 'embedded' ||
+    !!row.signature ||
+    (await embeddedWallet(database, row.creatorUserId))?.walletAddress ===
+      row.account
   const status =
     !row.signature &&
     (['open', 'preparing', 'ready', 'transaction_expired'].includes(
       row.status,
     ) ||
       isLegacyBlockhashExpiry(row))
-      ? grant?.status !== 'active'
+      ? grant?.status !== 'active' || !walletAvailable
         ? 'unavailable'
         : row.expiresAt <= now
           ? 'expired'
@@ -429,11 +454,17 @@ export const SendTransactionInput = z.strictObject({
     .regex(/^[A-Za-z0-9+/]+={0,2}$/),
 })
 
-const liveGrant = sql`exists (select 1 from mcp_grant
+const liveAccess = sql`exists (select 1 from mcp_grant
   where mcp_grant.id = transaction_request.creator_grant_id
   and mcp_grant.privy_user_id = transaction_request.creator_user_id
   and mcp_grant.client_id = transaction_request.creator_client_id
-  and mcp_grant.status = 'active')`
+  and mcp_grant.status = 'active')
+  and (transaction_request.delivery != 'embedded' or exists (
+    select 1 from payment_signer
+    where payment_signer.privy_user_id = transaction_request.creator_user_id
+      and payment_signer.status = 'enabled'
+      and payment_signer.wallet_address = transaction_request.account
+      and payment_signer.transaction_policy_id is not null))`
 
 async function storedLink(database: D1Database, id: string) {
   return drizzle(database)
@@ -558,10 +589,12 @@ export async function prepareTransactionLink(
   const now = options.now ?? Date.now()
   let reservation: number | undefined
   let renewing = false
+  let embedded = false
   try {
     const config = configuration(env)
     const row = await storedLink(env.DB, id)
     if (!row) return failed('not_found')
+    embedded = row.delivery === 'embedded'
     if (row.network !== config.network) return failed('unavailable')
     const publicLink = await readTransactionLink(env.DB, id, now, options.tools)
     if (
@@ -623,7 +656,7 @@ export async function prepareTransactionLink(
           eq(transactionRequest.status, row.status),
           sql`${transactionRequest.signature} is null`,
           sql`${transactionRequest.expiresAt} > ${now}`,
-          liveGrant,
+          liveAccess,
         ),
       )
       .returning({ revision: transactionRequest.revision })
@@ -672,7 +705,7 @@ export async function prepareTransactionLink(
           eq(transactionRequest.status, 'preparing'),
           sql`${transactionRequest.signature} is null`,
           sql`${transactionRequest.updatedAt} > ${completedAt - PREPARATION_LEASE_MS}`,
-          liveGrant,
+          liveAccess,
           sql`${transactionRequest.expiresAt} > ${completedAt}`,
         ),
       )
@@ -681,12 +714,12 @@ export async function prepareTransactionLink(
     return { ok: true, result: publicTransaction(candidate) }
   } catch {
     if (reservation !== undefined) {
-      // A failed renewal retains the old candidate and its wallet; every cleanup is fenced.
+      // Keep the wallet for embedded requests and renewals; every cleanup is fenced.
       await drizzle(env.DB)
         .update(transactionRequest)
         .set({
           status: renewing ? 'transaction_expired' : 'open',
-          account: renewing ? parsed.data.account : null,
+          account: renewing || embedded ? parsed.data.account : null,
           revision: reservation + 1,
           updatedAt: options.now ?? Date.now(),
         })
@@ -850,7 +883,7 @@ export async function sendTransactionLink(
             eq(transactionRequest.revision, row.revision),
             eq(transactionRequest.status, 'ready'),
             sql`${transactionRequest.signature} is null`,
-            liveGrant,
+            liveAccess,
             sql`${transactionRequest.expiresAt} > ${now}`,
           ),
         )
@@ -886,7 +919,7 @@ export async function sendTransactionLink(
           eq(transactionRequest.id, id),
           eq(transactionRequest.signature, extracted),
           sql`${transactionRequest.status} in ('submitting', 'unknown')`,
-          liveGrant,
+          liveAccess,
           sql`${transactionRequest.expiresAt} > ${options.now ?? Date.now()}`,
         ),
       )

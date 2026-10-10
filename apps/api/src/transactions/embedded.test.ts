@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, mock, test } from 'bun:test'
 import { drizzle } from 'drizzle-orm/d1'
+import { eq } from 'drizzle-orm'
 import type { D1Database } from '@cloudflare/workers-types'
 import {
   address,
@@ -12,12 +13,17 @@ import {
 } from '@solana/kit'
 import type { KeyPairSigner } from '@solana/kit'
 import { TransactionResult } from '@lanatools/contracts'
-import { mcpGrant, paymentSigner } from '../db/schema'
+import { mcpGrant, paymentSigner, transactionRequest } from '../db/schema'
 import { PolicyDeniedError } from '../payments/privy-signer'
+import { disableSigner } from '../payments/signer-setup'
 import { PAYMENT_NETWORKS } from '../solana/network'
 import { testDatabase } from '../test-database'
 import type { EmbeddedSigner } from './embedded'
-import { createTransactionRequest, requestDelivery } from './requests'
+import {
+  createTransactionRequest,
+  requestDelivery,
+  transactionStatus,
+} from './requests'
 import { solTransfer } from './sol-transfer'
 import type { TransactionRpc } from './submission'
 
@@ -250,4 +256,222 @@ test('bytes that are not the prepared transaction are refused before sending', a
   )
   expect(result).toMatchObject({ ok: false, error: { code: 'invalid_input' } })
   expect(fake.sent).toHaveLength(0)
+})
+
+test.each(['review', 'build', 'sign'] as const)(
+  'removing wallet access during %s prevents embedded relay',
+  async (stage) => {
+    const identity = await connect()
+    const fake = mockRpc()
+    const local = localSigner()
+    const sign = mock<EmbeddedSigner>(async (embeddedWallet, transaction) => {
+      if (stage === 'sign') await disableSigner(db, identity.userId)
+      return local(embeddedWallet, transaction)
+    })
+    const request = input()
+    const created = await createTransactionRequest(
+      env(),
+      identity,
+      'solana_transfer',
+      request,
+      {
+        rpc: fake.rpc,
+        observation,
+        embeddedSigner: sign,
+        tools: {
+          solana_transfer: {
+            ...solTransfer,
+            review: async (intent, context) => {
+              const review = await solTransfer.review(intent, context)
+              if (stage === 'review') await disableSigner(db, identity.userId)
+              return review
+            },
+            build: async (intent, account, context) => {
+              const candidate = await solTransfer.build(
+                intent,
+                account,
+                context,
+              )
+              if (stage === 'build') await disableSigner(db, identity.userId)
+              return candidate
+            },
+          },
+        },
+      },
+    )
+    expect(created.ok).toBe(false)
+    expect(sign).toHaveBeenCalledTimes(stage === 'sign' ? 1 : 0)
+    expect(fake.sent).toHaveLength(0)
+    const row = await drizzle(db)
+      .select()
+      .from(transactionRequest)
+      .where(eq(transactionRequest.idempotencyKey, request.idempotencyKey))
+      .get()
+    if (stage === 'review') expect(row).toBeUndefined()
+    else expect(row?.signature).toBeNull()
+  },
+)
+
+test('embedded retries restore the same signed bytes after a transient relay failure', async () => {
+  const identity = await connect()
+  const fake = mockRpc()
+  const sign = localSigner()
+  const request = input()
+  let landed = false
+  fake.rpc.send = async (wire) => {
+    fake.sent.push(wire)
+    if (fake.sent.length === 1)
+      throw new Error('connection refused before broadcast')
+    landed = true
+    return ''
+  }
+  fake.rpc.status = async () =>
+    landed ? { err: null, slot: 123n, confirmationStatus: 'confirmed' } : null
+  const options = { rpc: fake.rpc, observation, embeddedSigner: sign }
+  const first = await createTransactionRequest(
+    env(),
+    identity,
+    'solana_transfer',
+    request,
+    options,
+  )
+  expect(first).toMatchObject({ ok: true, result: { status: 'unknown' } })
+  if (!first.ok) throw new Error(first.error.message)
+  const retry = await createTransactionRequest(
+    env(),
+    identity,
+    'solana_transfer',
+    request,
+    options,
+  )
+  expect(retry).toMatchObject({
+    ok: true,
+    result: { status: 'confirmed', signature: first.result.signature },
+  })
+  expect(fake.sent).toHaveLength(2)
+  expect(fake.sent[1]).toBe(fake.sent[0])
+  expect(sign).toHaveBeenCalledTimes(1)
+
+  await disableSigner(db, identity.userId)
+  expect(
+    await transactionStatus(env(), identity, first.result.id, options),
+  ).toMatchObject({ ok: true, result: { status: 'confirmed' } })
+})
+
+test('a failed embedded build retains its wallet and can be retried', async () => {
+  const identity = await connect()
+  const fake = mockRpc()
+  const sign = localSigner()
+  const request = input()
+  const latest = fake.rpc.latestBlockhash
+  fake.rpc.latestBlockhash = async () => {
+    throw new Error('RPC temporarily unavailable')
+  }
+  const options = { rpc: fake.rpc, observation, embeddedSigner: sign }
+  expect(
+    await createTransactionRequest(
+      env(),
+      identity,
+      'solana_transfer',
+      request,
+      options,
+    ),
+  ).toMatchObject({ ok: false, error: { code: 'unavailable' } })
+  expect(sign).not.toHaveBeenCalled()
+  fake.rpc.latestBlockhash = latest
+  expect(
+    await createTransactionRequest(
+      env(),
+      identity,
+      'solana_transfer',
+      request,
+      options,
+    ),
+  ).toMatchObject({ ok: true, result: { status: 'confirmed' } })
+  expect(sign).toHaveBeenCalledTimes(1)
+})
+
+test.each(['removed access', 'expired blockhash'] as const)(
+  'an embedded retry does not relay after %s',
+  async (reason) => {
+    const identity = await connect()
+    const fake = mockRpc()
+    const sign = localSigner()
+    const request = input()
+    fake.rpc.status = async () => null
+    fake.rpc.send = async (wire) => {
+      fake.sent.push(wire)
+      throw new Error('connection refused before broadcast')
+    }
+    const options = { rpc: fake.rpc, observation, embeddedSigner: sign }
+    const first = await createTransactionRequest(
+      env(),
+      identity,
+      'solana_transfer',
+      request,
+      options,
+    )
+    expect(first).toMatchObject({ ok: true, result: { status: 'unknown' } })
+    if (reason === 'removed access') await disableSigner(db, identity.userId)
+    else fake.rpc.blockHeight = async () => 501n
+    const retry = await createTransactionRequest(
+      env(),
+      identity,
+      'solana_transfer',
+      request,
+      options,
+    )
+    expect(retry).toMatchObject(
+      reason === 'removed access'
+        ? { ok: false, error: { code: 'embedded_unavailable' } }
+        : { ok: true, result: { status: 'unknown' } },
+    )
+    expect(fake.sent).toHaveLength(1)
+    expect(sign).toHaveBeenCalledTimes(1)
+  },
+)
+
+test('the cleanup migration removes unsupported requests and keeps current tools', async () => {
+  const identity = await connect()
+  const ids = ['jupiter_build_swap', 'solana_transfer', 'jupiter_swap'].map(
+    () => crypto.randomUUID(),
+  )
+  await drizzle(db)
+    .insert(transactionRequest)
+    .values(
+      ['jupiter_build_swap', 'solana_transfer', 'jupiter_swap'].map(
+        (toolName, index) => ({
+          id: ids[index]!,
+          toolName,
+          argumentsJson: '{}',
+          network: 'devnet' as const,
+          creatorUserId: identity.userId,
+          creatorClientId: identity.clientId,
+          creatorGrantId: identity.grantId,
+          idempotencyKey: ids[index]!,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          expiresAt: Date.now() + 900000,
+        }),
+      ),
+    )
+  await db
+    .prepare(
+      await Bun.file(
+        new URL(
+          '../../drizzle/0016_remove_unsupported_transactions.sql',
+          import.meta.url,
+        ),
+      ).text(),
+    )
+    .run()
+  for (const [index, id] of ids.entries()) {
+    const row = await drizzle(db)
+      .select()
+      .from(transactionRequest)
+      .where(eq(transactionRequest.id, id))
+      .get()
+    if (index === 0) expect(row).toBeUndefined()
+    else expect(row).toBeDefined()
+  }
 })
