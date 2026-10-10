@@ -404,6 +404,7 @@ test('a sent request is checked against the chain when it is read', async () => 
     }),
   })
   const rpc: TransactionRpc = {
+    accounts: {} as TransactionRpc['accounts'],
     genesisHash: async () => SOLANA_NETWORKS.devnet.genesisHash,
     latestBlockhash: () => Promise.reject(new Error('unused')),
     blockHeight: async () => 1n,
@@ -430,6 +431,7 @@ test('a pending withdrawal asks the chain once when it is read', async () => {
     source: 'withdrawal',
   })
   const landed: TransactionRpc = {
+    accounts: {} as TransactionRpc['accounts'],
     genesisHash: async () => SOLANA_NETWORKS.devnet.genesisHash,
     latestBlockhash: () => Promise.reject(new Error('unused')),
     blockHeight: async () => 1n,
@@ -471,4 +473,20 @@ test('a pending withdrawal asks the chain once when it is read', async () => {
   expect(
     await readTransaction(env(), user, silent, { now: NOON, rpc: unknown }),
   ).toMatchObject({ kind: 'withdrawal', status: 'pending' })
+})
+
+test('retired transaction tools retain their stored review in history', async () => {
+  const grant = await connect('client-a')
+  const review = {
+    title: 'Historical trade',
+    description: 'Saved review',
+    actionLabel: 'Trade',
+    fields: [],
+  }
+  const id = await request(grant, {
+    toolName: 'retired_trade',
+    reviewJson: JSON.stringify(review),
+  })
+  const page = await listTransactions(env(), user, { limit: 50 }, { now: NOON })
+  expect(page.items.find((item) => item.id === id)).toMatchObject({ review })
 })

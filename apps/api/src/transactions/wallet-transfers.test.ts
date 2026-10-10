@@ -123,6 +123,7 @@ function fakeChain(
 ) {
   const calls: string[] = []
   const rpc: WalletHistoryRpc = {
+    tokenAccounts: async () => [],
     async signatures(_wallet, { before, until, limit }) {
       calls.push(`signatures before=${before ?? ''} until=${until ?? ''}`)
       // Newest first, as the RPC returns them, cut at `until` as the RPC does.
@@ -330,7 +331,8 @@ test('a sync inserts deposits, skips what is already recorded, and settles pendi
     origin: 'https://merchant.example',
     path: '/',
     status: 'paid',
-    signature: 'sig-payment',
+    signature: null,
+    payerSignature: 'sig-payment',
     createdAt: NOON,
   })
   await recordWithdrawal(db, {
@@ -378,8 +380,8 @@ test('a sync inserts deposits, skips what is already recorded, and settles pendi
   ).toEqual({ inserted: 2, settled: 1, more: false })
   // Only transactions it must read are fetched; known signatures are not.
   expect(calls.filter((c) => c.startsWith('transaction'))).toEqual([
-    'transaction sig-sol-in',
     'transaction sig-usdc-in',
+    'transaction sig-sol-in',
   ])
   const stored = await rows()
   expect(stored).toMatchObject([
@@ -428,7 +430,7 @@ test('a sync inserts deposits, skips what is already recorded, and settles pendi
     }),
   ).toEqual({ inserted: 0, settled: 0, more: false })
   // The bookmark is the newest row the sync inserted, never a withdrawal.
-  expect(calls).toEqual(['signatures before= until=sig-usdc-in'])
+  expect(calls).toEqual(['signatures before= until=sig-withdrawal'])
 
   // A new deposit after that is picked up.
   {
@@ -485,7 +487,7 @@ test('a user without a wallet, or a failed transaction, records nothing', async 
   expect(await rows()).toEqual([])
 })
 
-test('a long history is caught up in batches, oldest first', async () => {
+test('a long history is caught up in bounded pages with durable progress', async () => {
   const history = Array.from({ length: 60 }, (_, i) => ({
     entry: entry(`sig-${String(59 - i).padStart(2, '0')}`, {
       slot: BigInt(1000 + 59 - i),
@@ -502,14 +504,14 @@ test('a long history is caught up in batches, oldest first', async () => {
   expect(await sync()).toEqual({ inserted: 25, settled: 0, more: true })
   expect((await rows()).map((r) => r.signature)).toEqual(
     history
-      .slice(35)
+      .slice(0, 25)
       .reverse()
       .map((h) => h.entry.signature),
   )
   expect(await sync()).toEqual({ inserted: 25, settled: 0, more: true })
   // The second call walked back only to the newest row the first inserted.
   expect(calls.filter((c) => c.startsWith('signatures')).at(-1)).toBe(
-    'signatures before= until=sig-24',
+    'signatures before=sig-35 until=',
   )
   expect(await sync()).toEqual({ inserted: 10, settled: 0, more: false })
   expect(await sync()).toEqual({ inserted: 0, settled: 0, more: false })
@@ -552,5 +554,83 @@ test('a withdrawal confirmed before the first sync does not hide older deposits'
   expect((await rows()).map((r) => r.signature).sort()).toEqual([
     'sig-old-deposit',
     'sig-withdrawal',
+  ])
+})
+
+test('signature discovery is bounded and progresses past missing and unchanged transactions', async () => {
+  const history = Array.from({ length: 2100 }, (_, i) => ({
+    entry: entry(`history-${i}`, { slot: BigInt(3000 - i) }),
+    tx:
+      i === 26
+        ? solTransfer(FRIEND, WALLET, 9n)
+        : i === 1
+          ? solTransfer(FRIEND, WALLET, 0n)
+          : null,
+  }))
+  const { rpc, calls } = fakeChain(history)
+  const sync = () =>
+    syncWalletTransfers(db, { userId: user, network: 'devnet', rpc })
+  expect(await sync()).toEqual({ inserted: 0, settled: 0, more: true })
+  expect(calls.filter((c) => c.startsWith('signatures'))).toHaveLength(1)
+  expect(calls.filter((c) => c.startsWith('transaction'))).toHaveLength(25)
+  expect(await sync()).toEqual({ inserted: 1, settled: 0, more: true })
+  expect(calls.filter((c) => c.startsWith('signatures'))).toEqual([
+    'signatures before= until=',
+    'signatures before=history-24 until=',
+  ])
+  expect((await rows())[0]?.signature).toBe('history-26')
+})
+
+test('SPL deposits referenced only by the token account are found and deduplicated', async () => {
+  const { rpc: tokenRpc } = fakeChain([
+    { entry: entry('spl-deposit'), tx: tokenTransfer(FRIEND, WALLET, 10n) },
+  ])
+  const queried: string[] = []
+  const rpc: WalletHistoryRpc = {
+    tokenAccounts: async () => ['token-account', 'token-account'],
+    signatures: async (wallet, options) => {
+      queried.push(wallet)
+      return wallet === WALLET ? [] : tokenRpc.signatures(wallet, options)
+    },
+    transaction: tokenRpc.transaction,
+  }
+  const sync = () =>
+    syncWalletTransfers(db, { userId: user, network: 'devnet', rpc })
+  expect(await sync()).toEqual({ inserted: 0, settled: 0, more: true })
+  expect(await sync()).toEqual({ inserted: 1, settled: 0, more: false })
+  expect(queried).toEqual([WALLET, 'token-account'])
+  expect((await rows())[0]).toMatchObject({
+    signature: 'spl-deposit',
+    mint: USDC,
+    amountAtomic: '10',
+  })
+  expect(await sync()).toEqual({ inserted: 0, settled: 0, more: true })
+  expect(await sync()).toEqual({ inserted: 0, settled: 0, more: false })
+  expect(await rows()).toHaveLength(1)
+})
+
+test('an unverified receipt cannot hide an unrelated deposit', async () => {
+  await drizzle(db).insert(paymentActivity).values({
+    id: crypto.randomUUID(),
+    privyUserId: user,
+    clientId: 'client',
+    grantId: 'grant',
+    method: 'GET',
+    origin: 'https://merchant.example',
+    path: '/',
+    status: 'paid',
+    signature: 'unrelated-deposit',
+    payerSignature: 'actual-payment',
+    createdAt: NOON,
+  })
+  const { rpc } = fakeChain([
+    { entry: entry('unrelated-deposit'), tx: solTransfer(FRIEND, WALLET, 11n) },
+    { entry: entry('actual-payment'), tx: solTransfer(WALLET, FRIEND, 4n) },
+  ])
+  expect(
+    await syncWalletTransfers(db, { userId: user, network: 'devnet', rpc }),
+  ).toEqual({ inserted: 1, settled: 0, more: false })
+  expect((await rows()).map((row) => row.signature)).toEqual([
+    'unrelated-deposit',
   ])
 })

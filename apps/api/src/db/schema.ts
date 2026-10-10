@@ -285,3 +285,9 @@ export const walletTransfer = sqliteTable(
     ),
   ],
 )
+
+/** Durable chain-history progress, scoped to the user, network and wallet. */
+export const walletSync = sqliteTable('wallet_sync', {
+  id: text('id').primaryKey(),
+  stateJson: text('state_json').notNull(),
+})

@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
 import { address, createSolanaRpc, signature } from '@solana/kit'
@@ -7,6 +7,7 @@ import {
   paymentSigner,
   transactionRequest,
   walletTransfer,
+  walletSync,
 } from '../db/schema'
 import { PAYMENT_NETWORKS, RPC_TIMEOUT_MS } from '../solana/network'
 import type { SolanaNetwork } from '../solana/network'
@@ -124,6 +125,7 @@ export type ParsedWalletTransaction = {
 }
 
 export type WalletHistoryRpc = {
+  tokenAccounts: (wallet: string) => Promise<string[]>
   /** Newest first, as the RPC returns them. */
   signatures: (
     wallet: string,
@@ -202,6 +204,25 @@ export function walletHistoryRpc(rpcUrl: string): WalletHistoryRpc {
   const rpc = createSolanaRpc(rpcUrl)
   const send = () => ({ abortSignal: AbortSignal.timeout(RPC_TIMEOUT_MS) })
   return {
+    async tokenAccounts(wallet) {
+      const accounts = await Promise.all(
+        [
+          'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+          'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb',
+        ].map(async (program) =>
+          (
+            await rpc
+              .getTokenAccountsByOwner(
+                address(wallet),
+                { programId: address(program) },
+                { encoding: 'base64', commitment: 'confirmed' },
+              )
+              .send(send())
+          ).value.map((account) => account.pubkey),
+        ),
+      )
+      return [...new Set(accounts.flat())]
+    },
     async signatures(wallet, { before, until, limit }) {
       const page = await rpc
         .getSignaturesForAddress(address(wallet), {
@@ -343,20 +364,15 @@ async function knownSignatures(
   return found
 }
 
-/**
- * Brings the wallet's ledger up to date from the chain: inserts transfers
- * newer than the last one it stored, and settles rows still pending once
- * their signature has landed. Signatures that agent transactions or
- * payments already own are skipped, so nothing is listed twice. Runs within
- * the request; nothing is scheduled.
- *
- * The bookmark is the newest row the sync itself inserted. Rows the Wallet
- * page recorded never serve as one: a withdrawal confirmed before the first
- * sync would otherwise hide every older deposit. Unknown transactions are
- * processed oldest first and at most `SYNC_FETCH_LIMIT` per call, so a call
- * that stops early leaves a contiguous ledger and the next call resumes from
- * the same bookmark.
- */
+type SyncState = {
+  // A checkpoint per wallet or token-account history, independent of ledger rows.
+  checkpoints: Record<string, string | undefined>
+  pending: string[]
+  before?: string | undefined
+  newest?: string | undefined
+}
+
+/** Processes one bounded history page; saves progress even without movement. */
 export async function syncWalletTransfers(
   database: D1Database,
   input: {
@@ -379,31 +395,30 @@ export async function syncWalletTransfers(
   if (!signer) return { inserted: 0, settled: 0, more: false }
   const wallet = signer.wallet
   const mine = eq(walletTransfer.privyUserId, input.userId)
-  const bookmark = await db
-    .select({ signature: walletTransfer.signature })
-    .from(walletTransfer)
-    .where(
-      and(
-        mine,
-        eq(walletTransfer.wallet, wallet),
-        eq(walletTransfer.source, 'chain_sync'),
-      ),
-    )
-    .orderBy(desc(walletTransfer.createdAt), desc(walletTransfer.id))
+  const key = `${input.userId}:${input.network}:${wallet}`
+  const saved = await db
+    .select()
+    .from(walletSync)
+    .where(eq(walletSync.id, key))
     .get()
-
-  const entries: WalletHistoryEntry[] = []
-  let before: string | undefined
-  for (;;) {
-    const page = await input.rpc.signatures(wallet, {
-      ...(before ? { before } : {}),
-      ...(bookmark ? { until: bookmark.signature } : {}),
-      limit: WALLET_HISTORY_PAGE,
-    })
-    entries.push(...page)
-    if (page.length < WALLET_HISTORY_PAGE) break
-    before = page[page.length - 1]?.signature
+  const state: SyncState = saved
+    ? JSON.parse(saved.stateJson)
+    : { checkpoints: {}, pending: [] }
+  if (!state.pending.length) {
+    state.pending = [
+      ...new Set([wallet, ...(await input.rpc.tokenAccounts(wallet))]),
+    ]
   }
+  const historyAddress = state.pending[0]!
+  // Count all signatures toward the budget, including known or failed ones.
+  const entries = await input.rpc.signatures(historyAddress, {
+    ...(state.before ? { before: state.before } : {}),
+    ...(state.checkpoints[historyAddress]
+      ? { until: state.checkpoints[historyAddress] }
+      : {}),
+    limit: Math.min(fetchLimit, WALLET_HISTORY_PAGE),
+  })
+  state.newest ??= entries[0]?.signature
   const signatures = entries.map((entry) => entry.signature)
   const [recorded, pending, owned] = await Promise.all([
     knownSignatures(
@@ -447,12 +462,12 @@ export async function syncWalletTransfers(
         ).map((row) => row.signature ?? ''),
         ...(
           await db
-            .select({ signature: paymentActivity.signature })
+            .select({ signature: paymentActivity.payerSignature })
             .from(paymentActivity)
             .where(
               and(
                 eq(paymentActivity.privyUserId, input.userId),
-                inArray(paymentActivity.signature, chunk),
+                inArray(paymentActivity.payerSignature, chunk),
               ),
             )
         ).map((row) => row.signature ?? ''),
@@ -463,10 +478,7 @@ export async function syncWalletTransfers(
 
   let inserted = 0
   let settled = 0
-  let fetched = 0
-  let more = false
-  // Oldest first, so a call that stops early leaves a contiguous ledger.
-  for (const entry of entries.reverse()) {
+  for (const entry of entries) {
     if (recorded.has(entry.signature)) {
       if (pending.has(entry.signature))
         settled += await settleWalletTransfer(database, {
@@ -481,11 +493,6 @@ export async function syncWalletTransfers(
       continue
     }
     if (entry.err || owned.has(entry.signature)) continue
-    if (fetched >= fetchLimit) {
-      more = true
-      break
-    }
-    fetched++
     const tx = await input.rpc.transaction(entry.signature)
     if (!tx || tx.err) continue
     for (const change of walletChanges(tx, wallet)) {
@@ -518,5 +525,22 @@ export async function syncWalletTransfers(
       inserted += result.meta.changes
     }
   }
-  return { inserted, settled, more }
+  if (entries.length === Math.min(fetchLimit, WALLET_HISTORY_PAGE)) {
+    state.before = entries.at(-1)!.signature
+  } else {
+    state.checkpoints[historyAddress] =
+      state.newest ?? state.checkpoints[historyAddress]
+    state.pending.shift()
+    delete state.before
+    delete state.newest
+  }
+  // Writes above are idempotent. A failed cursor write safely replays this page.
+  await db
+    .insert(walletSync)
+    .values({ id: key, stateJson: JSON.stringify(state) })
+    .onConflictDoUpdate({
+      target: walletSync.id,
+      set: { stateJson: JSON.stringify(state) },
+    })
+  return { inserted, settled, more: state.pending.length > 0 }
 }

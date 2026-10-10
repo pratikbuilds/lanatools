@@ -22,15 +22,17 @@ const PAGES: Array<[prefix: string, modules: Array<string>]> = [
     '/sign-in',
     [APP, ACCOUNT, '/src/routes/_account/sign-in.tsx?tsr-split=component'],
   ],
-  ...['activity', 'settings'].map((page): [string, Array<string>] => [
-    `/dashboard/${page}`,
-    [
-      APP,
-      ACCOUNT,
-      '/src/routes/_account/dashboard.tsx?tsr-split=component',
-      `/src/routes/_account/dashboard/${page}.tsx?tsr-split=component`,
+  ...['activity', 'settings', 'transactions'].map(
+    (page): [string, Array<string>] => [
+      `/dashboard/${page}`,
+      [
+        APP,
+        ACCOUNT,
+        '/src/routes/_account/dashboard.tsx?tsr-split=component',
+        `/src/routes/_account/dashboard/${page}.tsx?tsr-split=component`,
+      ],
     ],
-  ]),
+  ),
   [
     '/dashboard',
     [

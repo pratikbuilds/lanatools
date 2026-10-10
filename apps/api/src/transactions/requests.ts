@@ -328,8 +328,16 @@ export function projectTransactionLink(
   now = Date.now(),
   tools?: TransactionRegistry,
 ): TransactionLink {
-  const tool = transactionOperation(row.toolName, tools)
-  if (!tool) throw new Error('Stored transaction tool is unavailable')
+  const review = row.candidateJson
+    ? publicTransaction(JSON.parse(row.candidateJson)).review
+    : row.reviewJson
+      ? TransactionReview.assert(JSON.parse(row.reviewJson))
+      : legacyReview()
+  function legacyReview() {
+    const tool = transactionOperation(row.toolName, tools)
+    if (!tool) throw new Error('Stored transaction tool is unavailable')
+    return tool.describe(tool.arguments.parse(JSON.parse(row.argumentsJson)))
+  }
   const status =
     !row.signature &&
     (['open', 'preparing', 'ready', 'transaction_expired'].includes(
@@ -352,11 +360,7 @@ export function projectTransactionLink(
     id: row.id,
     tool: row.toolName,
     network: row.network,
-    review: row.candidateJson
-      ? publicTransaction(JSON.parse(row.candidateJson)).review
-      : row.reviewJson
-        ? TransactionReview.assert(JSON.parse(row.reviewJson))
-        : tool.describe(tool.arguments.parse(JSON.parse(row.argumentsJson))),
+    review,
     status,
     account:
       preparationLeaseExpired(row, now) && !row.candidateJson

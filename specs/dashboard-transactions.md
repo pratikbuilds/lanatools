@@ -73,7 +73,7 @@ filtered by status, kind, client, signing method and address.
 | 18  | Row hierarchy                      | What moved and how much first, then with whom, then who started it. Five columns: Time, Transaction, Source, Amount, Signature. Status is not a column. Client and signing method share the Source column as "Codex · Embedded"; withdrawals read "You · Wallet page"; deposits have no source. |
 | 20  | Ledger surface                     | One bordered card with a tinted header row, as the Connected clients table; amounts set a size up with the unit small and mute; a Klein blue rail on hover. Open hairlines were tried and read as dull. |
 | 21  | Signature in the row               | Rows that reached the chain show the shortened signature as an Explorer link, so a done transaction can be verified without opening the drawer. |
-| 22  | Sync batch                         | One call fetches at most 25 unknown transactions, oldest first, and answers `more: true` when it stopped early; the page calls again until `more` is false. 25 keeps a call inside the Workers free-plan budget of 50 subrequests and to a few seconds. The bookmark is the newest row the sync itself inserted, never a withdrawal the Wallet page recorded. |
+| 22  | Sync batch                         | One call discovers at most 25 signatures from one wallet or token-account history and fetches at most 25 transactions. Durable per-history progress advances even when no movement is recorded; the page calls again while `more` is true. Ledger rows never determine the bookmark. |
 | 19  | Filter band                        | Status is a row of plain text tabs with counts, since it is what people scan for. Kind, client and signing are quiet selects, and the address search sits beside them. No boxed segment controls. |
 | 15  | Amounts                            | Signed from the wallet's side: out is negative, in is positive. A swap shows what it paid, with what it received on a second line. Failed and expired amounts are struck through, since nothing moved. |
 | 16  | Second line of a row               | Answers "with whom": "To <addr>" for transfers and withdrawals, "From <addr>" for deposits, "Jupiter" for swaps, and the failure reason in coral for failed rows. Addresses are shortened in rows and full in the drawer. |
@@ -214,25 +214,20 @@ the user's money.
 Built in `apps/api/src/transactions/wallet-transfers.ts`, for the wallet in
 `payment_signer`:
 
-1. Read the newest `wallet_transfer` row the sync itself inserted
-   (`source: 'chain_sync'`) for this wallet; its signature is the bookmark.
-   Rows the Wallet page recorded never serve as one: a withdrawal confirmed
-   before the first sync would hide every older deposit, and a pending one
-   may never land, which would send the RPC through the whole history.
-2. Call `getSignaturesForAddress(wallet, { until: bookmark })`, paging with
-   `before` in pages of 1000, the RPC's own maximum, until `until` is reached
-   or history ends. The first sync for a wallet has no `until` and walks its
-   full history.
-3. Known signatures are looked up in bulk, then oldest first: a signature
-   already in `wallet_transfer` settles any pending row (confirmed, or failed
-   from the entry's `err`) and is otherwise left alone; one in
-   `transaction_request` or `payment_activity` for this user is skipped; a
-   failed transaction is skipped. At most 25 of the rest are fetched with
-   `jsonParsed` and `maxSupportedTransactionVersion: 0`, and the wallet's net
-   SOL and per-mint token changes become one `in` or `out` row per asset. The
-   fee is added back for a wallet that paid it, so an amount is what reached
-   the other party. The parser is the API's own; the helius package's
-   `netBalanceChanges` stays where it is.
+1. Read durable `wallet_sync` progress scoped to the user, network and wallet.
+   At the start of a scan, enumerate owned accounts for the Token and Token-2022
+   programs and queue their histories alongside the wallet's history.
+2. Read one page of at most 25 signatures for the next history address, using
+   its saved `before` cursor and completed-scan `until` checkpoint. This bounds
+   discovery as well as transaction fetches, including the first sync.
+3. Look up known signatures in bulk. A signature in `wallet_transfer` settles
+   pending rows; agent transaction signatures and payment `payerSignature`
+   identities are skipped. Failed transactions are skipped. Fetch remaining
+   transactions with `jsonParsed` and `maxSupportedTransactionVersion: 0`;
+   net SOL and per-mint token changes become one row per asset. Add back the
+   fee when the wallet paid it. Save progress after each page even if a
+   transaction was missing or had no tracked movement. Idempotent ledger
+   inserts make replay safe if saving the cursor fails.
 4. The counterparty is the one other account that moved the other way when
    there is exactly one, otherwise the fee payer; the wallet is never its own
    counterparty. Symbols are known for SOL and the network's USDC only; other
@@ -242,8 +237,9 @@ Built in `apps/api/src/transactions/wallet-transfers.ts`, for the wallet in
 The sync runs inside the request and returns when done. Nothing runs in the
 background.
 
-Open question 2 asks how much history one sync may read per call. No cap is
-assumed here.
+Each call processes one bounded page. A completed history saves its newest
+signature as the next scan checkpoint; `more` stays true until all queued
+histories have been processed.
 
 ### 5.4 Counterparty on agent rows
 
@@ -355,8 +351,8 @@ signed-in user, including the address filter against a known recipient.
 
 ## 8. Open questions
 
-1. Resolved October 10: one sync call fetches at most 25 unknown
-   transactions (decision 22); the page calls again while `more` is true.
+1. Resolved October 10: one sync call discovers at most 25 signatures and
+   fetches at most 25 transactions (decision 22); the page calls again while `more` is true.
 2. Should `transaction_request` rows older than the index migration, which
    have no `counterparty`, be backfilled from `arguments_json` in the
    migration, or left null?

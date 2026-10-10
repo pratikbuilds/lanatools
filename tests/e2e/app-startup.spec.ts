@@ -40,7 +40,7 @@ const pages = [
       name: 'Sign in to your workspace.',
     }),
   },
-  ...['activity', 'settings'].map((child) => ({
+  ...['activity', 'settings', 'transactions'].map((child) => ({
     path: `/dashboard/${child}`,
     boot: 'Opening your dashboard',
     bar: 'Checking your account',

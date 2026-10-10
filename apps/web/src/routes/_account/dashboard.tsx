@@ -107,7 +107,9 @@ function Loading() {
     ? 'Activity'
     : pathname.startsWith('/dashboard/settings')
       ? 'Settings'
-      : 'Wallet'
+      : pathname.startsWith('/dashboard/transactions')
+        ? 'Transactions'
+        : 'Wallet'
   return (
     <DashboardShell
       status={{
@@ -143,6 +145,12 @@ function Loading() {
               <SectionHead title="Latest activity" />
               <CallSkeleton />
             </section>
+          </>
+        ) : page === 'Transactions' ? (
+          <>
+            <PageHead title="Transactions" />
+            <Skeleton className="mt-5 h-10 w-full" />
+            <Skeleton className="d-card mt-4 h-[140px]" />
           </>
         ) : page === 'Activity' ? (
           <>
