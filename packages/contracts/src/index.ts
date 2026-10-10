@@ -1,5 +1,7 @@
 import { type } from 'arktype'
 
+export * from './catalog'
+
 export const HealthResponse = type({ status: "'ok'" })
 export type HealthResponse = typeof HealthResponse.infer
 

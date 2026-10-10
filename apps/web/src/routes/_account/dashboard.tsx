@@ -105,9 +105,11 @@ function Loading() {
   const { pathname } = useLocation()
   const page = pathname.startsWith('/dashboard/activity')
     ? 'Activity'
-    : pathname.startsWith('/dashboard/settings')
-      ? 'Settings'
-      : 'Wallet'
+    : pathname.startsWith('/dashboard/payments')
+      ? 'Payments'
+      : pathname.startsWith('/dashboard/settings')
+        ? 'Settings'
+        : 'Wallet'
   return (
     <DashboardShell
       status={{
@@ -160,6 +162,11 @@ function Loading() {
               <Skeleton className="h-[34px] w-full lg:ml-auto lg:w-[520px]" />
             </SectionHead>
             <CallSkeleton />
+          </>
+        ) : page === 'Payments' ? (
+          <>
+            <PageHead title="Payments" />
+            <Skeleton className="mt-5 h-[160px] w-full" />
           </>
         ) : (
           <>

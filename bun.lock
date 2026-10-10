@@ -18,6 +18,7 @@
     "apps/api": {
       "name": "@lanatools/api",
       "dependencies": {
+        "@lanatools/catalog": "workspace:*",
         "@lanatools/contracts": "workspace:*",
         "@lanatools/helius": "workspace:*",
         "@lanatools/jupiter": "workspace:*",
