@@ -10,7 +10,7 @@ export default defineConfig({
   webServer: [
     {
       command:
-        'bun run --cwd apps/web dev --config test-support/vite.config.ts --port 4174',
+        'bun run --cwd apps/web build --config test-support/vite.config.ts --outDir test-support/dist && bun run --cwd apps/web preview --config test-support/vite.config.ts --outDir test-support/dist --port 4174 --host 127.0.0.1',
       url: 'http://127.0.0.1:4174',
       reuseExistingServer: false,
     },
