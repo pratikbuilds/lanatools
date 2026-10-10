@@ -25,11 +25,11 @@ for (const width of [1280, 390]) {
     try {
       await page.goto('/', { waitUntil: 'commit' })
       const heading = page.getByRole('heading', { level: 1 })
-      await expect(heading).toHaveText('Let your agents work.On Solana.')
+      await expect(heading).toHaveText('Give your agentsSolana tools.')
       await expect(heading).toBeVisible()
       const original = await heading.elementHandle()
       await expect(
-        page.getByRole('link', { name: 'Connect your agents' }),
+        page.getByRole('link', { name: 'Connect your agent', exact: true }),
       ).toHaveAttribute('href', '/sign-in')
       const form = page.getByRole('form', { name: 'Get updates by email' })
       const input = form.getByRole('textbox', { name: 'Email address' })
