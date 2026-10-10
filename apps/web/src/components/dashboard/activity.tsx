@@ -30,6 +30,7 @@ import { Drawer, DrawerFacts, DrawerHeader } from './drawer'
 import { useDashboardSession } from './session'
 import { useMcpClients } from './use-mcp-clients'
 import { PageHead, SectionHead } from './page-head'
+import { Skeleton } from './skeleton'
 
 const DAY_MS = 86_400_000
 const ROW =
@@ -57,7 +58,11 @@ export function LatestActivity({ onViewAll }: { onViewAll: () => void }) {
   const items = latest.data?.items.slice(0, 5)
 
   return (
-    <section className="mt-9" aria-label="Latest activity">
+    <section
+      className="mt-9"
+      aria-label="Latest activity"
+      aria-busy={latest.isPending}
+    >
       <SectionHead title="Latest activity">
         {items && items.length > 0 && (
           <button
@@ -71,7 +76,7 @@ export function LatestActivity({ onViewAll }: { onViewAll: () => void }) {
       </SectionHead>
       {latest.isPending ? (
         <CallSkeleton />
-      ) : latest.isError ? (
+      ) : latest.isError && !latest.data ? (
         <LoadError onRetry={() => void latest.refetch()} />
       ) : items && items.length > 0 ? (
         <CallTable>
@@ -79,6 +84,9 @@ export function LatestActivity({ onViewAll }: { onViewAll: () => void }) {
         </CallTable>
       ) : (
         <NoCalls />
+      )}
+      {latest.isRefetchError && (
+        <LoadError onRetry={() => void latest.refetch()} refreshing />
       )}
       <CallDrawer item={open} onClose={() => setOpen(undefined)} />
     </section>
@@ -125,8 +133,15 @@ export function ActivityPage({
       <PageHead title="Activity" />
       <div className="d-frame mt-5">
         <div className="d-inset d-pane flex flex-wrap items-end justify-between gap-x-14 gap-y-6">
-          <ActivityTotals totals={calls.data?.pages[0]?.totals} />
-          {days.data && <ActivityHeatmap days={days.data} />}
+          <ActivityTotals
+            totals={calls.data?.pages[0]?.totals}
+            pending={calls.isPending}
+          />
+          {days.data ? (
+            <ActivityHeatmap days={days.data} />
+          ) : (
+            days.isPending && <HeatmapSkeleton />
+          )}
         </div>
       </div>
       <p className="mt-3 text-[12.5px] text-fg-3">{CREDIT_ESTIMATE_NOTE}</p>
@@ -169,7 +184,7 @@ export function ActivityPage({
 
       {calls.isPending ? (
         <CallSkeleton />
-      ) : calls.isError ? (
+      ) : calls.isError && !calls.data ? (
         <LoadError onRetry={() => void calls.refetch()} />
       ) : items && items.length > 0 ? (
         <>
@@ -194,6 +209,9 @@ export function ActivityPage({
       ) : (
         <NoCalls />
       )}
+      {calls.isRefetchError && (
+        <LoadError onRetry={() => void calls.refetch()} refreshing />
+      )}
       <CallDrawer item={open} onClose={() => setOpen(undefined)} />
     </>
   )
@@ -201,8 +219,10 @@ export function ActivityPage({
 
 export function ActivityTotals({
   totals,
+  pending = false,
 }: {
   totals: Page['totals'] | undefined
+  pending?: boolean
 }) {
   return (
     <dl className="flex flex-wrap gap-x-14 gap-y-5">
@@ -219,7 +239,7 @@ export function ActivityTotals({
         <div key={label}>
           <dt className="d-label mb-2">{label}</dt>
           <dd className="font-mono text-[1.75rem] leading-[1.1] font-semibold tracking-[-0.04em]">
-            {value ?? '—'}
+            {value ?? (pending ? <Skeleton className="h-[1.1em] w-24" /> : '—')}
           </dd>
         </div>
       ))}
@@ -553,14 +573,45 @@ function LoadMore({
   )
 }
 
-function CallSkeleton() {
-  return <span className="d-card block h-[140px] animate-pulse" />
+export function HeatmapSkeleton() {
+  return <Skeleton className="h-[104px] w-[165px]" />
 }
 
-function LoadError({ onRetry }: { onRetry: () => void }) {
+export function CallSkeleton() {
+  return (
+    <div role="status" aria-label="Loading activity">
+      <div aria-hidden="true">
+        <CallTable>
+          {[0, 1, 2].map((row) => (
+            <div
+              key={row}
+              className={`${ROW} min-h-[54px] border-t border-line py-2`}
+            >
+              <Skeleton className="h-3 w-16" />
+              <Skeleton className="col-span-2 row-start-2 h-3.5 w-48 max-w-full lg:col-span-1 lg:row-auto" />
+              <Skeleton className="hidden h-3.5 w-28 lg:block" />
+              <Skeleton className="hidden h-3 w-12 lg:block" />
+              <Skeleton className="col-start-2 row-start-1 ml-auto h-3.5 w-20 lg:col-auto lg:row-auto" />
+            </div>
+          ))}
+        </CallTable>
+      </div>
+    </div>
+  )
+}
+
+function LoadError({
+  onRetry,
+  refreshing = false,
+}: {
+  onRetry: () => void
+  refreshing?: boolean
+}) {
   return (
     <p role="alert" className="text-[13px] text-bad">
-      Could not load activity.{' '}
+      {refreshing
+        ? 'Could not refresh activity. Showing the last loaded data.'
+        : 'Could not load activity.'}{' '}
       <button
         type="button"
         className="font-semibold underline underline-offset-[3px]"

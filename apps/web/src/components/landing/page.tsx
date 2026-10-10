@@ -104,31 +104,47 @@ const CONNECT_STEPS = [
   'Approve that client’s permissions and limit at sign-in.',
 ]
 
+// The Solana logomark set as a word in the headline: flat lime like the text
+// around it, and filled with the brand gradient while the headline is hovered.
+function SolanaMark() {
+  return (
+    <span
+      aria-hidden="true"
+      className="relative mr-[0.18em] inline-block h-[0.72em] w-[0.83em] align-[-0.02em]"
+    >
+      <Logo
+        id="solana"
+        color="currentColor"
+        className="absolute inset-0 size-full"
+      />
+      <Logo
+        id="solana"
+        className="absolute inset-0 size-full opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+      />
+    </span>
+  )
+}
+
 function Hero() {
   return (
-    <section
-      className={`${wide} overflow-x-clip pt-12 pb-14 sm:pt-16 lg:pt-20`}
-    >
-      <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-14">
+    <section className={`${wide} overflow-x-clip py-12 sm:py-16 lg:py-20`}>
+      <div className="grid items-center gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-14">
         <div>
-          <span className="chip chip-wrap gap-1.5">
-            <Logo id="solana" size={12} />
-            the toolkit for your agents · on Solana
-          </span>
-          <h1 className="display mt-6 text-[clamp(2.4rem,6vw,4.1rem)] [word-spacing:-0.28em]">
-            Let your agents work.
+          <h1 className="display group text-[clamp(2.2rem,4.5vw,3.5rem)]">
+            Connect your agent
             <br />
-            <span className="inline-block rounded-[5px] bg-lime px-[0.2em] text-ink [word-spacing:normal]">
-              On Solana.
+            <span className="text-lime">
+              to <SolanaMark />
+              Solana.
             </span>
           </h1>
-          <div className="mt-6 max-w-[60ch] text-[14px] leading-6 text-paper">
+          <div className="mt-6 max-w-[56ch] text-[14px] leading-6 text-paper">
             <p className="font-medium">
-              One connection for your agents to access onchain data, pay for
-              services, and execute transactions on Solana.
+              Read onchain data, pay for services, and send transactions through
+              one MCP connection.
             </p>
-            <p className="mt-2 text-paper/90">
-              You set the permissions and one limit for each agent.
+            <p className="mt-3 text-paper-2">
+              You control each agent’s permissions and spending limit.
             </p>
           </div>
           {/* .btn is unlayered CSS, so size overrides need !important. */}
@@ -136,7 +152,7 @@ function Hero() {
             href="/sign-in"
             className="btn btn-primary group mt-8 h-14! gap-3! px-7! text-[16px]! max-sm:w-full"
           >
-            Connect your agents
+            Get started
             <span
               aria-hidden="true"
               className="transition-transform duration-200 ease-(--ease-out) group-hover:translate-x-1"
@@ -162,23 +178,17 @@ export function Home() {
         <Hero />
 
         <section id="why" className="on-paper bg-paper text-ink">
-          <div className={`${wide} py-16 sm:py-24`}>
-            <Reveal>
-              <p className="eyebrow text-mute">why</p>
-              <h2 className="title mt-3 max-w-[30ch] text-[clamp(1.6rem,3vw,2.25rem)]">
-                Stop wiring every tool into{' '}
-                <Sweep tone="blue">every agent.</Sweep>
+          <div className={`${wide} py-12 sm:py-16`}>
+            <Reveal className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start md:gap-12">
+              <h2 className="title text-[clamp(1.25rem,2.2vw,1.75rem)]">
+                One connection. Less setup.
               </h2>
-              <p className="mt-5 max-w-[62ch] text-[15.5px] text-mute">
-                Today, every tool an agent uses on Solana needs its own server,
-                API key, and payment setup, repeated for each agent. Every copy
-                is a key that can leak, and no single place shows what your
-                agents did. With LanaTools, each agent connects once to one
-                toolkit, with no API keys in its config and every call in one
-                log.
+              <p className="max-w-[60ch] text-[14px] leading-6 text-mute">
+                Keep provider API keys out of agent configs. Manage permissions,
+                spending limits, and activity in LanaTools.
               </p>
             </Reveal>
-            <div className="mt-12">
+            <div className="mt-8">
               <BeforeAfter />
             </div>
           </div>

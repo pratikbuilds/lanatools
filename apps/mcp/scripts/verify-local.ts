@@ -144,10 +144,9 @@ try {
     const content = z
       .array(z.object({ text: z.string().optional() }))
       .parse(called.content)
-    const account = z
-      .object({ userId: z.string().min(1), clientId: z.string() })
-      .parse(JSON.parse(content[0]?.text || ''))
-    assert.equal(account.clientId, clientId)
+    z.strictObject({ walletAddress: z.string().min(1).nullable() }).parse(
+      JSON.parse(content[0]?.text || ''),
+    )
     console.log('MCP_WHOAMI passed')
     const market = await client.callTool({
       name: 'phoenix_get_market',

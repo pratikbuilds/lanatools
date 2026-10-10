@@ -202,6 +202,8 @@ function mockRpc() {
   const broadcasts: string[] = []
   let chainStatus: Awaited<ReturnType<TransactionRpc['status']>> = null
   const rpc: TransactionRpc = {
+    // These builders never read accounts.
+    accounts: {} as TransactionRpc['accounts'],
     genesisHash: async () => PAYMENT_NETWORKS.mainnet.genesisHash,
     latestBlockhash: async () => {
       throw new Error('Provider owns the blockhash')

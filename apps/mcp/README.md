@@ -14,7 +14,7 @@ consent cookie and a verified Privy access token.
 Each tool family has one scope, and the user picks them per client on the
 consent page: **Helius** (`helius:read`) and **Pay** (`payments:pay`) start on,
 **Jupiter** (`jupiter:read`, which also covers swaps), **Phoenix**
-(`phoenix:read`) and **SOL transfers** (`solana:transfer`) start off. The
+(`phoenix:read`) and **Transfers** (`solana:transfer`, SOL and tokens) start off. The
 scopes a client asks for in `/authorize` are ignored; `approveConsent` issues
 the token with the user's choice plus `account:read`, and the API stores the
 same list on the grant. Turning Pay on asks for a spending limit.
@@ -25,16 +25,19 @@ was given in `tools/list`, and every call is checked again against the token
 and the stored grant. To change a client's families, the user disconnects it and connects it
 again.
 
-`whoami` returns the Privy user ID, the OAuth client ID and the user's payment
-wallet address, which is null until the user sets one up.
+`whoami` returns only the user's payment wallet address, which is null until
+the user sets one up.
 
 ## Transactions
 
 Each transaction tool takes its own arguments plus `delivery` and an
 `idempotencyKey`: `solana_transfer` (`recipient`, decimal-string
-`amountLamports`; scope `solana:transfer`) and `jupiter_swap` (`inputMint`,
-`outputMint`, decimal `amount`, `maxSlippageBps`, optional `minOutputAmount`;
-scope `jupiter:read`). Delivery determines when signing and sending happen.
+`amountLamports`; scope `solana:transfer`), `solana_token_transfer`
+(`recipient`, `mint`, decimal `amount` in token units; scope
+`solana:transfer`; the recipient's token account is created if needed, at the
+sender's expense) and `jupiter_swap` (`inputMint`, `outputMint`, decimal
+`amount`, `maxSlippageBps`, optional `minOutputAmount`; scope `jupiter:read`).
+Delivery determines when signing and sending happen.
 
 - `delivery: "link"` returns `reviewUrl`; the user signs on that page and
   LanaTools sends.

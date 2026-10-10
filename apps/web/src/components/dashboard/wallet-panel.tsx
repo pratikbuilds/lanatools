@@ -10,6 +10,7 @@ import { SolanaShine } from './solana-shine'
 import { SplitPanel } from './split-panel'
 import { useDashboardSession } from './session'
 import { WithdrawModal } from './withdraw-modal'
+import { Skeleton } from './skeleton'
 
 export function CreateWallet() {
   const { createWallet } = useCreateWallet()
@@ -109,7 +110,7 @@ export function WalletPanelView({
   onDeposit,
   onWithdraw,
 }: {
-  walletAddress: string
+  walletAddress: string | null
   balances: { usdc: bigint; sol: bigint } | undefined
   pending: boolean
   failed: boolean
@@ -117,7 +118,12 @@ export function WalletPanelView({
   onWithdraw: () => void
 }) {
   return (
-    <section className="mt-5">
+    <section className="mt-5" aria-label="Payment wallet" aria-busy={pending}>
+      {pending && (
+        <p role="status" className="sr-only">
+          Loading balances…
+        </p>
+      )}
       <SplitPanel
         left={
           <>
@@ -130,21 +136,32 @@ export function WalletPanelView({
                   prefix="$"
                   className="max-w-full overflow-x-auto"
                 />
-              ) : (
+              ) : pending ? (
                 <span
-                  className={
-                    pending
-                      ? 'h-[0.95em] w-[3em] animate-pulse rounded-[8px] bg-panel-2'
-                      : ''
-                  }
+                  aria-hidden="true"
+                  className="relative inline-flex items-center leading-[1.5]"
                 >
-                  {pending ? '' : '—'}
+                  <span className="invisible">$0.00</span>
+                  <Skeleton className="absolute top-1/2 left-0 h-[0.95em] w-full -translate-y-1/2" />
                 </span>
+              ) : (
+                <span>—</span>
               )}
               <small className="ml-2.5 text-[14px] font-medium tracking-normal text-fg-3">
                 USDC
               </small>
-              {balances && <FeeBalance sol={balances.sol} />}
+              {balances ? (
+                <FeeBalance sol={balances.sol} />
+              ) : (
+                pending && (
+                  <small className="ml-2.5 text-[14px] font-medium tracking-normal text-fg-3">
+                    <span aria-hidden="true" className="mr-2.5">
+                      ·
+                    </span>
+                    <Skeleton className="inline-block h-3.5 w-16 align-middle" />
+                  </small>
+                )
+              )}
             </p>
             <p className="max-w-[330px] text-fg-2 lg:pr-16">
               Your connected clients pay for tools from this balance, each
@@ -165,7 +182,13 @@ export function WalletPanelView({
           <>
             <h2 className="d-label">Deposit USDC</h2>
             <div className="mt-3 w-full max-w-[30rem]">
-              <WalletAddress walletAddress={walletAddress} compact />
+              {walletAddress ? (
+                <WalletAddress walletAddress={walletAddress} compact />
+              ) : (
+                <div className="flex h-[50px] items-center rounded-[9px] border border-line-2 bg-panel-2/40 px-3.5">
+                  <Skeleton className="h-4 w-48 max-w-full" />
+                </div>
+              )}
             </div>
             <p className="mt-3 text-[12.5px] text-fg-3">
               Send USDC on {NETWORK.label}, plus a little SOL for withdrawal
@@ -175,11 +198,17 @@ export function WalletPanelView({
               <button
                 type="button"
                 className="d-btn d-btn-primary"
+                disabled={!walletAddress}
                 onClick={onDeposit}
               >
                 <span aria-hidden="true">↓</span> Deposit
               </button>
-              <button type="button" className="d-btn" onClick={onWithdraw}>
+              <button
+                type="button"
+                className="d-btn"
+                disabled={!walletAddress}
+                onClick={onWithdraw}
+              >
                 <span aria-hidden="true">↑</span> Withdraw
               </button>
             </div>

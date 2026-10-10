@@ -354,8 +354,11 @@ test('each client sees the catalog and only the tool families it was given', asy
   expect(jupiter).toContain('jupiter_swap')
   expect(jupiter).not.toContain('solana_transfer')
 
+  expect(jupiter).not.toContain('solana_token_transfer')
+
   const transfer = await list(['account:read', 'solana:transfer'])
   expect(transfer).toContain('solana_transfer')
+  expect(transfer).toContain('solana_token_transfer')
   expect(transfer).not.toContain('jupiter_swap')
   expect(count(jupiter, 'phoenix_')).toBe(0)
   expect(jupiter).not.toContain('call')
@@ -377,8 +380,9 @@ test('each transaction tool is its own MCP tool with a flat input and the shared
     for (const removed of ['create_transaction_link', 'jupiter_build_swap'])
       expect(names).not.toContain(removed)
     const transfer = tools.find((tool) => tool.name === 'solana_transfer')
+    const tokens = tools.find((tool) => tool.name === 'solana_token_transfer')
     const swap = tools.find((tool) => tool.name === 'jupiter_swap')
-    for (const tool of [transfer, swap]) {
+    for (const tool of [transfer, tokens, swap]) {
       expect(tool?.annotations).toMatchObject({
         readOnlyHint: false,
         destructiveHint: true,
@@ -397,6 +401,15 @@ test('each transaction tool is its own MCP tool with a flat input and the shared
       expect.arrayContaining([
         'recipient',
         'amountLamports',
+        'delivery',
+        'idempotencyKey',
+      ]),
+    )
+    expect(tokens?.inputSchema.required).toEqual(
+      expect.arrayContaining([
+        'recipient',
+        'mint',
+        'amount',
         'delivery',
         'idempotencyKey',
       ]),
@@ -591,7 +604,7 @@ test('catalog tools work for any active grant', async () => {
   }
 })
 
-test('whoami returns the account, client and payment wallet address', async () => {
+test('whoami returns only the payment wallet address', async () => {
   const session = await connect(['account:read'])
   try {
     const result = await session.client.callTool({
@@ -603,8 +616,6 @@ test('whoami returns the account, client and payment wallet address', async () =
       {
         type: 'text',
         text: JSON.stringify({
-          userId: identity.userId,
-          clientId: identity.clientId,
           walletAddress: address,
         }),
       },
@@ -616,7 +627,10 @@ test('whoami returns the account, client and payment wallet address', async () =
       name: 'whoami',
       arguments: {},
     })
-    expect(JSON.stringify(unset.content)).toContain('\\"walletAddress\\":null')
+    expect(unset.isError).not.toBe(true)
+    expect(unset.content).toEqual([
+      { type: 'text', text: JSON.stringify({ walletAddress: null }) },
+    ])
   } finally {
     await session.close()
   }

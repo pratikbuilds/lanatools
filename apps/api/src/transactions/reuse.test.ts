@@ -192,6 +192,8 @@ test.each(cases)(
 
     const broadcasts: string[] = []
     const rpc: TransactionRpc = {
+      // These builders never read accounts.
+      accounts: {} as TransactionRpc['accounts'],
       genesisHash: async () => PAYMENT_NETWORKS.devnet.genesisHash,
       latestBlockhash: async () => ({
         blockhash: blockhash(PAYMENT_NETWORKS.devnet.genesisHash),
