@@ -1,4 +1,4 @@
-import local from '../data/catalog.json'
+import local from '../data/catalog.json' with { type: 'json' }
 import { jevSearch } from './jev'
 import { keywordSearch } from './keyword'
 import { describeEndpoint } from './shape'
