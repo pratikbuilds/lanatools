@@ -1029,7 +1029,9 @@ test('Jupiter uses the shared mainnet connect, sign and Explorer flow', async ({
   ).toBeEnabled()
   expect(preparations).toBe(0)
   await page.getByRole('button', { name: 'Sign & send', exact: true }).click()
-  await expect(page.getByRole('status')).toContainText('Transaction confirmed')
+  await expect(
+    page.getByRole('heading', { name: 'Transaction confirmed', exact: true }),
+  ).toBeVisible()
   await expect(
     page.getByRole('link', { name: 'View on Solana Explorer', exact: true }),
   ).toHaveAttribute('href', `https://explorer.solana.com/tx/${signature}`)
