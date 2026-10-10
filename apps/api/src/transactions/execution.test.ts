@@ -63,6 +63,8 @@ function mockRpc(overrides: Partial<TransactionRpc> = {}) {
   const calls: string[] = []
   let sentSignature = ''
   const rpc: TransactionRpc = {
+    // These builders never read accounts.
+    accounts: {} as TransactionRpc['accounts'],
     genesisHash: async () => {
       calls.push('genesis')
       return PAYMENT_NETWORKS.devnet.genesisHash

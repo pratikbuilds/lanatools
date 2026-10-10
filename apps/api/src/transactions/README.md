@@ -55,7 +55,9 @@ signing wallet. JupiterZ RFQ and sponsored routes are excluded.
 
 The MCP tool and its input schema follow the registry. No HTTP route, database
 table, or transaction page is needed. The native SOL operation lives in
-`sol-transfer.ts`.
+`sol-transfer.ts`; the SPL and Token-2022 transfer in `spl-token-transfer.ts`
+shares its mint and token account checks with wallet withdrawals
+(`apps/api/src/solana/token-transfer.ts`).
 
 ## Link execution
 

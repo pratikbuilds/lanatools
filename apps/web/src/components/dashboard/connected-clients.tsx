@@ -13,6 +13,7 @@ import { SectionHead } from './page-head'
 import { useDashboardSession } from './session'
 import { mcpClientsKey, useMcpClients } from './use-mcp-clients'
 import { useWalletBalances } from './wallet-panel'
+import { Skeleton } from './skeleton'
 
 // account:read is on every grant, so it is not listed as a tool.
 const TOOL_LABELS: Record<string, string> = {
@@ -20,7 +21,7 @@ const TOOL_LABELS: Record<string, string> = {
   'payments:pay': 'Pay within its limit',
   'jupiter:read': 'Jupiter',
   'phoenix:read': 'Phoenix',
-  'solana:transfer': 'SOL transfers',
+  'solana:transfer': 'SOL and token transfers',
 }
 
 /** The tool families a client may use; the catalog is always included. */
@@ -125,7 +126,11 @@ export function ConnectedClients({
   }
 
   return (
-    <section className="mt-9" aria-label="Connected clients">
+    <section
+      className="mt-9"
+      aria-label="Connected clients"
+      aria-busy={clients.isPending}
+    >
       <SectionHead title="Connected clients">
         {clients.data && (
           <span className="rounded-full border border-line bg-panel-2 px-2 font-mono text-[11px] font-medium text-fg-2">
@@ -147,8 +152,8 @@ export function ConnectedClients({
         )}
       </SectionHead>
       {clients.isPending ? (
-        <span className="d-card block h-[110px] animate-pulse" />
-      ) : clients.isError ? (
+        <ClientSkeleton />
+      ) : clients.isError && !clients.data ? (
         <p role="alert" className="text-[13px] text-bad">
           Could not load connected clients.
         </p>
@@ -159,6 +164,11 @@ export function ConnectedClients({
           onManage={(client) => manage(client.grantId)}
           onConnect={onConnect}
         />
+      )}
+      {clients.isRefetchError && (
+        <p role="alert" className="mt-2 text-[13px] text-bad">
+          Could not refresh connected clients. Showing the last loaded data.
+        </p>
       )}
 
       <Drawer
@@ -186,6 +196,35 @@ export function ConnectedClients({
         )}
       </Drawer>
     </section>
+  )
+}
+
+export function ClientSkeleton() {
+  return (
+    <div role="status" aria-label="Loading connected clients">
+      <div className="d-card" aria-hidden="true">
+        <div className={`${ROW} d-th hidden min-h-9 lg:grid`}>
+          {['Client', 'Spend / limit', 'Remaining', 'Activity'].map((label) => (
+            <span key={label} className="d-label">
+              {label}
+            </span>
+          ))}
+          <span />
+        </div>
+        {[0, 1, 2].map((row) => (
+          <div
+            key={row}
+            className={`${ROW} min-h-[54px] border-t border-line py-3 lg:py-2.5`}
+          >
+            <Skeleton className="h-3.5 w-32 max-w-full" />
+            <Skeleton className="col-span-2 row-start-2 h-6 w-full lg:col-span-1 lg:row-auto" />
+            <Skeleton className="col-start-2 row-start-1 h-3.5 w-16 lg:col-auto lg:row-auto" />
+            <Skeleton className="col-span-2 row-start-3 h-6 w-24 lg:col-span-1 lg:row-auto" />
+            <Skeleton className="hidden h-6 w-16 lg:block" />
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 

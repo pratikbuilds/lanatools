@@ -6,6 +6,7 @@ for (const width of [320, 1440]) {
     page,
   }) => {
     await page.setViewportSize({ width, height: 740 })
+    await page.emulateMedia({ reducedMotion: 'reduce' })
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     page.on('console', (message) => {
@@ -40,6 +41,16 @@ for (const width of [320, 1440]) {
               symbol: 'TEST',
               image: 'https://example.com/token.svg',
             },
+            ...Array.from({ length: 30 }, (_, index) => ({
+              account: `extra-${index}`,
+              mint: `ExampleMint${index}`,
+              program: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+              amount: '123456789',
+              decimals: 6,
+              name: `Additional token ${index}`,
+              symbol: `T${index}`,
+              image: null,
+            })),
             {
               account: 'unnamed-account',
               mint: '9sj4Zv9pYmSbPQ4acY1rPSH6rS1GYxkfQXL3GoXYxK5N',
@@ -64,8 +75,23 @@ for (const width of [320, 1440]) {
     await page.getByRole('button', { name: /Withdraw/ }).click()
     const dialog = page.getByRole('dialog', { name: 'Withdraw', exact: true })
     await expect(dialog.getByText('USD Coin', { exact: true })).toBeVisible()
-    const other = dialog.getByRole('radio', { name: /Example token/ })
-    await other.check()
+    const trigger = dialog.getByRole('button', { name: /Choose token/ })
+    const address = dialog.getByPlaceholder('Solana address')
+    await page.evaluate(() => document.fonts.ready)
+    const before = await address.boundingBox()
+    await trigger.click()
+    const search = dialog.getByRole('searchbox', { name: 'Search tokens' })
+    await expect(search).toBeFocused()
+    await search.fill('missing-token')
+    await expect(dialog.getByRole('status')).toContainText('No tokens found')
+    await search.fill('additional token 29')
+    await expect(
+      dialog.getByRole('button', { name: /Additional token/ }),
+    ).toHaveCount(1)
+    await search.fill(mint)
+    await dialog.getByRole('button', { name: /Example token/ }).click()
+    await expect(trigger).toBeFocused()
+    expect(await address.boundingBox()).toEqual(before)
     await expect(
       dialog.getByText('0.123456789 TEST available', { exact: true }),
     ).toBeVisible()
@@ -86,10 +112,19 @@ for (const width of [320, 1440]) {
       .fill('9sj4Zv9pYmSbPQ4acY1rPSH6rS1GYxkfQXL3GoXYxK5N')
     await dialog.getByPlaceholder('0.00').fill('0.1234567891')
     await expect(dialog.getByRole('alert')).toContainText('9 decimals')
-    await dialog.getByRole('radio', { name: /9sj4Zv…xK5N/ }).check()
+    await trigger.click()
+    await search.fill('9sj4Zv')
+    await dialog.getByRole('button', { name: /9sj4Zv…xK5N/ }).click()
     await dialog.getByRole('button', { name: 'Max', exact: true }).click()
     await expect(dialog.getByPlaceholder('0.00')).toHaveValue('2')
-    await dialog.getByRole('radio', { name: /Solana SOL/ }).check()
+    const beforeSol = await address.boundingBox()
+    await trigger.click()
+    await search.fill('sol')
+    await search.press('Tab')
+    await page.keyboard.press('Enter')
+    await expect(trigger).toContainText('Solana')
+    await expect(dialog.getByText('Native SOL · No mint address')).toBeVisible()
+    expect(await address.boundingBox()).toEqual(beforeSol)
     await dialog.getByRole('button', { name: 'Max', exact: true }).click()
     await expect(dialog.getByPlaceholder('0.00')).toHaveValue('0.099995')
     expect(
@@ -100,6 +135,19 @@ for (const width of [320, 1440]) {
     await expect(
       dialog.getByRole('button', { name: 'Close', exact: true }),
     ).toBeInViewport()
+    await trigger.click()
+    await search.press('Escape')
+    await expect(dialog).toBeVisible()
+    await expect(trigger).toBeFocused()
+    await expect(search).toHaveCount(0)
+    await trigger.click()
+    await dialog.getByRole('heading', { name: 'Withdraw' }).click()
+    await expect(search).toHaveCount(0)
+    expect(
+      await dialog
+        .locator('form')
+        .evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+    ).toBe(true)
     expect(errors).toEqual([])
   })
 }

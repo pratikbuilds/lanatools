@@ -11,7 +11,7 @@ import {
 } from '#/lib/withdrawals'
 import type { SignTransaction } from '#/lib/withdrawals'
 import { Modal } from './modal'
-import { SolanaMark } from './solana-mark'
+import { WithdrawalTokenPicker } from './withdrawal-token-picker'
 import { useDashboardSession } from './session'
 
 /**
@@ -187,7 +187,7 @@ export function WithdrawModal({
         />
       ) : (
         <form
-          className="grid gap-4"
+          className="grid grid-cols-1 gap-4"
           onSubmit={(event) => {
             event.preventDefault()
             const amount =
@@ -196,52 +196,20 @@ export function WithdrawModal({
               withdraw.mutate({ to: form.to, amount, token })
           }}
         >
-          <fieldset disabled={withdraw.isPending} className="min-w-0">
-            <legend className="d-label mb-2">Token</legend>
-            <div className="grid max-h-40 gap-1 overflow-y-auto rounded-lg border border-line p-1">
-              {tokens.map((item) => (
-                <label
-                  key={item.account}
-                  className={`flex min-w-0 cursor-pointer items-center gap-2 rounded-md p-2 ${item.account === token?.account ? 'bg-panel-2' : ''}`}
-                >
-                  <input
-                    type="radio"
-                    name="token"
-                    value={item.account}
-                    checked={item.account === token?.account}
-                    onChange={() => {
-                      setSelected(item.account)
-                      setForm({ ...form, amount: '' })
-                      withdraw.reset()
-                    }}
-                  />
-                  <TokenImage token={item} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px]">
-                      {item.name ??
-                        `${item.mint.slice(0, 6)}…${item.mint.slice(-4)}`}
-                    </span>
-                    <span className="block truncate font-mono text-[11px] text-fg-3">
-                      {item.symbol ??
-                        `${item.mint.slice(0, 6)}…${item.mint.slice(-4)}`}
-                    </span>
-                  </span>
-                  <span className="max-w-[45%] break-all text-right font-mono text-[12px]">
-                    {formatTokenAmount(BigInt(item.amount), item.decimals)}
-                  </span>
-                </label>
-              ))}
-            </div>
-            {token && token.mint !== 'native' && (
-              <p className="mt-2 break-all font-mono text-[10px] text-fg-3">
-                Mint: {token.mint}
-              </p>
-            )}
-          </fieldset>
-          <label className="grid gap-1.5">
+          <WithdrawalTokenPicker
+            tokens={tokens}
+            token={token}
+            disabled={withdraw.isPending}
+            onChange={(item) => {
+              setSelected(item.account)
+              setForm({ ...form, amount: '' })
+              withdraw.reset()
+            }}
+          />
+          <label className="grid grid-cols-1 gap-1.5">
             <span className="d-label">To address</span>
             <input
-              className="d-input h-10 font-mono"
+              className="d-input h-10 min-w-0 font-mono"
               placeholder="Solana address"
               value={form.to}
               onChange={(event) =>
@@ -252,7 +220,7 @@ export function WithdrawModal({
               disabled={withdraw.isPending}
             />
           </label>
-          <label className="grid gap-1.5">
+          <label className="grid grid-cols-1 gap-1.5">
             <span className="flex items-baseline justify-between">
               <span className="d-label">Amount</span>
               <span className="min-w-0 flex-1 break-all text-right font-mono text-[12px] text-fg-3">
@@ -367,30 +335,5 @@ function Sent({
         Done
       </button>
     </div>
-  )
-}
-
-/** Metadata is optional; broken images retain a readable token mark. */
-function TokenImage({ token }: { token: WalletToken }) {
-  const [failed, setFailed] = useState(false)
-  return token.image && !failed ? (
-    <img
-      src={token.image}
-      alt=""
-      referrerPolicy="no-referrer"
-      onError={() => setFailed(true)}
-      className="size-8 shrink-0 rounded-full object-cover"
-    />
-  ) : (
-    <span
-      aria-hidden="true"
-      className="flex size-8 shrink-0 items-center justify-center rounded-full bg-panel-2 text-[12px]"
-    >
-      {token.mint === 'native' ? (
-        <SolanaMark size={18} />
-      ) : (
-        (token.symbol ?? token.mint).slice(0, 2)
-      )}
-    </span>
   )
 }

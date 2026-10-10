@@ -11,7 +11,7 @@ import {
   signatureBytes,
   verifySignature,
 } from '@solana/kit'
-import type { Blockhash } from '@solana/kit'
+import type { Blockhash, GetAccountInfoApi, Rpc } from '@solana/kit'
 import { solanaRpcConnection } from '@solana/kit-plugin-rpc'
 import type {
   PreparedTransaction,
@@ -21,6 +21,8 @@ import { SOLANA_NETWORKS } from '@lanatools/contracts/networks'
 import type { NetworkId } from '@lanatools/contracts/networks'
 
 export type TransactionRpc = {
+  /** Account reads for builders that inspect mints and token accounts. */
+  accounts: Rpc<GetAccountInfoApi>
   genesisHash: () => Promise<string>
   latestBlockhash: () => Promise<{
     blockhash: Blockhash
@@ -40,6 +42,7 @@ const request = () => ({ abortSignal: AbortSignal.timeout(5_000) })
 export function transactionRpc(url: string): TransactionRpc {
   const { rpc } = createClient().use(solanaRpcConnection({ rpcUrl: url }))
   return {
+    accounts: rpc,
     genesisHash: () => rpc.getGenesisHash().send(request()),
     latestBlockhash: async () =>
       (
