@@ -73,6 +73,7 @@ filtered by status, kind, client, signing method and address.
 | 18  | Row hierarchy                      | What moved and how much first, then with whom, then who started it. Five columns: Time, Transaction, Source, Amount, Signature. Status is not a column. Client and signing method share the Source column as "Codex · Embedded"; withdrawals read "You · Wallet page"; deposits have no source. |
 | 20  | Ledger surface                     | One bordered card with a tinted header row, as the Connected clients table; amounts set a size up with the unit small and mute; a Klein blue rail on hover. Open hairlines were tried and read as dull. |
 | 21  | Signature in the row               | Rows that reached the chain show the shortened signature as an Explorer link, so a done transaction can be verified without opening the drawer. |
+| 22  | Sync batch                         | One call fetches at most 25 unknown transactions, oldest first, and answers `more: true` when it stopped early; the page calls again until `more` is false. 25 keeps a call inside the Workers free-plan budget of 50 subrequests and to a few seconds. The bookmark is the newest row the sync itself inserted, never a withdrawal the Wallet page recorded. |
 | 19  | Filter band                        | Status is a row of plain text tabs with counts, since it is what people scan for. Kind, client and signing are quiet selects, and the address search sits beside them. No boxed segment controls. |
 | 15  | Amounts                            | Signed from the wallet's side: out is negative, in is positive. A swap shows what it paid, with what it received on a second line. Failed and expired amounts are struck through, since nothing moved. |
 | 16  | Second line of a row               | Answers "with whom": "To <addr>" for transfers and withdrawals, "From <addr>" for deposits, "Jupiter" for swaps, and the failure reason in coral for failed rows. Addresses are shortened in rows and full in the drawer. |
@@ -133,9 +134,9 @@ rows are merged in memory, and the cursor carries the kind as a tie-breaker.
 ### 4.2 `POST /api/transactions/sync`
 
 Privy auth. Runs the chain sync in §5.3 for the signed-in user's wallet and
-returns `{ inserted, settled }`. The web calls it when the tab mounts and
-whenever the window regains focus, and refetches the list when either count
-is above zero. Idempotent; concurrent calls are safe because inserts are
+returns `{ inserted, settled, more }`. The web calls it when the tab mounts
+and whenever the window regains focus, calls again while `more` is true, and
+refetches the list when either count is above zero. Idempotent; concurrent calls are safe because inserts are
 keyed on signature, mint and direction. An RPC failure is a 502 without the
 provider's message.
 
@@ -213,18 +214,20 @@ the user's money.
 Built in `apps/api/src/transactions/wallet-transfers.ts`, for the wallet in
 `payment_signer`:
 
-1. Read the newest stored `wallet_transfer` row for this wallet that is not
-   pending; its signature is the bookmark. (A pending withdrawal may never
-   land, so it cannot be the bookmark: the RPC would walk the whole history
-   looking for it.)
+1. Read the newest `wallet_transfer` row the sync itself inserted
+   (`source: 'chain_sync'`) for this wallet; its signature is the bookmark.
+   Rows the Wallet page recorded never serve as one: a withdrawal confirmed
+   before the first sync would hide every older deposit, and a pending one
+   may never land, which would send the RPC through the whole history.
 2. Call `getSignaturesForAddress(wallet, { until: bookmark })`, paging with
    `before` in pages of 1000, the RPC's own maximum, until `until` is reached
    or history ends. The first sync for a wallet has no `until` and walks its
    full history.
-3. Oldest first: a signature already in `wallet_transfer` settles any pending
-   row (confirmed, or failed from the entry's `err`) and is otherwise left
-   alone; one in `transaction_request` or `payment_activity` for this user is
-   skipped; a failed transaction is skipped. The rest are fetched with
+3. Known signatures are looked up in bulk, then oldest first: a signature
+   already in `wallet_transfer` settles any pending row (confirmed, or failed
+   from the entry's `err`) and is otherwise left alone; one in
+   `transaction_request` or `payment_activity` for this user is skipped; a
+   failed transaction is skipped. At most 25 of the rest are fetched with
    `jsonParsed` and `maxSupportedTransactionVersion: 0`, and the wallet's net
    SOL and per-mint token changes become one `in` or `out` row per asset. The
    fee is added back for a wallet that paid it, so an amount is what reached
@@ -352,11 +355,8 @@ signed-in user, including the address filter against a known recipient.
 
 ## 8. Open questions
 
-1. How much history may one sync read per call? As built there is no cap:
-   a sync pages in 1000s until it reaches its bookmark or the start of the
-   wallet's history, and fetches each unknown transaction one by one. A
-   wallet with a long history before LanaTools will make its first sync
-   slow. No number was chosen; one should be before launch.
+1. Resolved October 10: one sync call fetches at most 25 unknown
+   transactions (decision 22); the page calls again while `more` is true.
 2. Should `transaction_request` rows older than the index migration, which
    have no `counterparty`, be backfilled from `arguments_json` in the
    migration, or left null?

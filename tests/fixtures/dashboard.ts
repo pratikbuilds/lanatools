@@ -224,7 +224,7 @@ export async function mockDashboard(page: Page, empty = false) {
       path === '/api/transactions/sync' &&
       route.request().method() === 'POST'
     ) {
-      await route.fulfill({ json: { inserted: 0, settled: 0 } })
+      await route.fulfill({ json: { inserted: 0, settled: 0, more: false } })
       return
     }
     const one = /^\/api\/transactions\/([^/]+)$/.exec(path)?.[1]

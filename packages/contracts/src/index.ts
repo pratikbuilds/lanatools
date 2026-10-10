@@ -477,6 +477,10 @@ export const TransactionsPage = type({
 })
 export type TransactionsPage = typeof TransactionsPage.infer
 
-/** What one chain sync of the wallet ledger did. */
-export const TransactionsSync = type({ inserted: 'number', settled: 'number' })
+/** What one chain sync of the wallet ledger did; `more` asks for another call. */
+export const TransactionsSync = type({
+  inserted: 'number',
+  settled: 'number',
+  more: 'boolean',
+})
 export type TransactionsSync = typeof TransactionsSync.infer

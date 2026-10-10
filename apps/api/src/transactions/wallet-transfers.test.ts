@@ -375,7 +375,7 @@ test('a sync inserts deposits, skips what is already recorded, and settles pendi
       rpc,
       now: NOON,
     }),
-  ).toEqual({ inserted: 2, settled: 1 })
+  ).toEqual({ inserted: 2, settled: 1, more: false })
   // Only transactions it must read are fetched; known signatures are not.
   expect(calls.filter((c) => c.startsWith('transaction'))).toEqual([
     'transaction sig-sol-in',
@@ -426,8 +426,9 @@ test('a sync inserts deposits, skips what is already recorded, and settles pendi
       rpc,
       now: NOON,
     }),
-  ).toEqual({ inserted: 0, settled: 0 })
-  expect(calls).toEqual(['signatures before= until=sig-withdrawal'])
+  ).toEqual({ inserted: 0, settled: 0, more: false })
+  // The bookmark is the newest row the sync inserted, never a withdrawal.
+  expect(calls).toEqual(['signatures before= until=sig-usdc-in'])
 
   // A new deposit after that is picked up.
   {
@@ -440,6 +441,7 @@ test('a sync inserts deposits, skips what is already recorded, and settles pendi
         }),
       },
       { entry: entry('sig-withdrawal', { slot: 104n }), tx: null },
+      { entry: entry('sig-usdc-in', { slot: 103n }), tx: null },
     ])
     expect(
       await syncWalletTransfers(db, {
@@ -448,7 +450,7 @@ test('a sync inserts deposits, skips what is already recorded, and settles pendi
         rpc: later,
         now: NOON,
       }),
-    ).toEqual({ inserted: 1, settled: 0 })
+    ).toEqual({ inserted: 1, settled: 0, more: false })
     expect((await rows()).at(-1)).toMatchObject({
       signature: 'sig-later',
       amountAtomic: '7',
@@ -471,7 +473,7 @@ test('a user without a wallet, or a failed transaction, records nothing', async 
       rpc,
       now: NOON,
     }),
-  ).toEqual({ inserted: 0, settled: 0 })
+  ).toEqual({ inserted: 0, settled: 0, more: false })
   expect(
     await syncWalletTransfers(db, {
       userId: 'nobody',
@@ -479,6 +481,76 @@ test('a user without a wallet, or a failed transaction, records nothing', async 
       rpc,
       now: NOON,
     }),
-  ).toEqual({ inserted: 0, settled: 0 })
+  ).toEqual({ inserted: 0, settled: 0, more: false })
   expect(await rows()).toEqual([])
+})
+
+test('a long history is caught up in batches, oldest first', async () => {
+  const history = Array.from({ length: 60 }, (_, i) => ({
+    entry: entry(`sig-${String(59 - i).padStart(2, '0')}`, {
+      slot: BigInt(1000 + 59 - i),
+      blockTime: BigInt(1_791_700_000 + 59 - i),
+    }),
+    tx: solTransfer(FRIEND, WALLET, BigInt(59 - i + 1), {
+      slot: BigInt(1000 + 59 - i),
+      blockTime: BigInt(1_791_700_000 + 59 - i),
+    }),
+  }))
+  const { rpc, calls } = fakeChain(history)
+  const sync = () =>
+    syncWalletTransfers(db, { userId: user, network: 'devnet', rpc, now: NOON })
+  expect(await sync()).toEqual({ inserted: 25, settled: 0, more: true })
+  expect((await rows()).map((r) => r.signature)).toEqual(
+    history
+      .slice(35)
+      .reverse()
+      .map((h) => h.entry.signature),
+  )
+  expect(await sync()).toEqual({ inserted: 25, settled: 0, more: true })
+  // The second call walked back only to the newest row the first inserted.
+  expect(calls.filter((c) => c.startsWith('signatures')).at(-1)).toBe(
+    'signatures before= until=sig-24',
+  )
+  expect(await sync()).toEqual({ inserted: 10, settled: 0, more: false })
+  expect(await sync()).toEqual({ inserted: 0, settled: 0, more: false })
+  expect((await rows()).length).toBe(60)
+})
+
+test('a withdrawal confirmed before the first sync does not hide older deposits', async () => {
+  await recordWithdrawal(db, {
+    userId: user,
+    wallet: WALLET,
+    network: 'devnet',
+    mint: 'native',
+    decimals: 9,
+    amount: 1n,
+    counterparty: FRIEND,
+    signature: 'sig-withdrawal',
+    now: NOON,
+  })
+  await settleWalletTransfer(db, {
+    userId: user,
+    signature: 'sig-withdrawal',
+    status: 'confirmed',
+  })
+  const { rpc, calls } = fakeChain([
+    { entry: entry('sig-withdrawal', { slot: 200n }), tx: null },
+    {
+      entry: entry('sig-old-deposit', { slot: 100n }),
+      tx: solTransfer(FRIEND, WALLET, 5n),
+    },
+  ])
+  expect(
+    await syncWalletTransfers(db, {
+      userId: user,
+      network: 'devnet',
+      rpc,
+      now: NOON,
+    }),
+  ).toEqual({ inserted: 1, settled: 0, more: false })
+  expect(calls[0]).toBe('signatures before= until=')
+  expect((await rows()).map((r) => r.signature).sort()).toEqual([
+    'sig-old-deposit',
+    'sig-withdrawal',
+  ])
 })

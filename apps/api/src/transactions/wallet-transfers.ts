@@ -1,4 +1,4 @@
-import { and, desc, eq, ne, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
 import { address, createSolanaRpc, signature } from '@solana/kit'
@@ -324,11 +324,38 @@ export function walletChanges(
 }
 
 /**
+ * How many unknown transactions one sync call fetches. Each is one RPC
+ * subrequest inside the Worker request, so this keeps a call within the
+ * platform's subrequest budget and to a few seconds; the page calls again
+ * while `more` is true.
+ */
+export const SYNC_FETCH_LIMIT = 25
+
+/** Looks a column up for many values at once, in chunks D1 accepts. */
+async function knownSignatures(
+  lookup: (chunk: string[]) => Promise<string[]>,
+  signatures: string[],
+) {
+  const found = new Set<string>()
+  for (let i = 0; i < signatures.length; i += 100)
+    for (const each of await lookup(signatures.slice(i, i + 100)))
+      found.add(each)
+  return found
+}
+
+/**
  * Brings the wallet's ledger up to date from the chain: inserts transfers
  * newer than the last one it stored, and settles rows still pending once
  * their signature has landed. Signatures that agent transactions or
  * payments already own are skipped, so nothing is listed twice. Runs within
  * the request; nothing is scheduled.
+ *
+ * The bookmark is the newest row the sync itself inserted. Rows the Wallet
+ * page recorded never serve as one: a withdrawal confirmed before the first
+ * sync would otherwise hide every older deposit. Unknown transactions are
+ * processed oldest first and at most `SYNC_FETCH_LIMIT` per call, so a call
+ * that stops early leaves a contiguous ledger and the next call resumes from
+ * the same bookmark.
  */
 export async function syncWalletTransfers(
   database: D1Database,
@@ -337,19 +364,21 @@ export async function syncWalletTransfers(
     network: Network
     rpc: WalletHistoryRpc
     now?: number
+    /** Overrides `SYNC_FETCH_LIMIT`, for tests. */
+    fetchLimit?: number
   },
-): Promise<{ inserted: number; settled: number }> {
+): Promise<{ inserted: number; settled: number; more: boolean }> {
   const now = input.now ?? Date.now()
+  const fetchLimit = input.fetchLimit ?? SYNC_FETCH_LIMIT
   const db = drizzle(database)
   const signer = await db
     .select({ wallet: paymentSigner.walletAddress })
     .from(paymentSigner)
     .where(eq(paymentSigner.privyUserId, input.userId))
     .get()
-  if (!signer) return { inserted: 0, settled: 0 }
+  if (!signer) return { inserted: 0, settled: 0, more: false }
   const wallet = signer.wallet
   const mine = eq(walletTransfer.privyUserId, input.userId)
-  // The newest transfer already seen on chain; the RPC walks back to it.
   const bookmark = await db
     .select({ signature: walletTransfer.signature })
     .from(walletTransfer)
@@ -357,7 +386,7 @@ export async function syncWalletTransfers(
       and(
         mine,
         eq(walletTransfer.wallet, wallet),
-        ne(walletTransfer.status, 'pending'),
+        eq(walletTransfer.source, 'chain_sync'),
       ),
     )
     .orderBy(desc(walletTransfer.createdAt), desc(walletTransfer.id))
@@ -375,17 +404,71 @@ export async function syncWalletTransfers(
     if (page.length < WALLET_HISTORY_PAGE) break
     before = page[page.length - 1]?.signature
   }
+  const signatures = entries.map((entry) => entry.signature)
+  const [recorded, pending, owned] = await Promise.all([
+    knownSignatures(
+      async (chunk) =>
+        (
+          await db
+            .select({ signature: walletTransfer.signature })
+            .from(walletTransfer)
+            .where(and(mine, inArray(walletTransfer.signature, chunk)))
+        ).map((row) => row.signature),
+      signatures,
+    ),
+    knownSignatures(
+      async (chunk) =>
+        (
+          await db
+            .select({ signature: walletTransfer.signature })
+            .from(walletTransfer)
+            .where(
+              and(
+                mine,
+                eq(walletTransfer.status, 'pending'),
+                inArray(walletTransfer.signature, chunk),
+              ),
+            )
+        ).map((row) => row.signature),
+      signatures,
+    ),
+    knownSignatures(
+      async (chunk) => [
+        ...(
+          await db
+            .select({ signature: transactionRequest.signature })
+            .from(transactionRequest)
+            .where(
+              and(
+                eq(transactionRequest.creatorUserId, input.userId),
+                inArray(transactionRequest.signature, chunk),
+              ),
+            )
+        ).map((row) => row.signature ?? ''),
+        ...(
+          await db
+            .select({ signature: paymentActivity.signature })
+            .from(paymentActivity)
+            .where(
+              and(
+                eq(paymentActivity.privyUserId, input.userId),
+                inArray(paymentActivity.signature, chunk),
+              ),
+            )
+        ).map((row) => row.signature ?? ''),
+      ],
+      signatures,
+    ),
+  ])
 
   let inserted = 0
   let settled = 0
-  // Oldest first, so a failure part way through leaves a contiguous ledger.
+  let fetched = 0
+  let more = false
+  // Oldest first, so a call that stops early leaves a contiguous ledger.
   for (const entry of entries.reverse()) {
-    const known = await db
-      .select({ status: walletTransfer.status })
-      .from(walletTransfer)
-      .where(and(mine, eq(walletTransfer.signature, entry.signature)))
-    if (known.length > 0) {
-      if (known.some((row) => row.status === 'pending'))
+    if (recorded.has(entry.signature)) {
+      if (pending.has(entry.signature))
         settled += await settleWalletTransfer(database, {
           userId: input.userId,
           signature: entry.signature,
@@ -397,18 +480,12 @@ export async function syncWalletTransfers(
         })
       continue
     }
-    if (entry.err) continue
-    const [owned] = await db
-      .select({
-        count: sql<number>`(select count(*) from ${transactionRequest}
-            where ${transactionRequest.creatorUserId} = ${input.userId}
-              and ${transactionRequest.signature} = ${entry.signature})
-          + (select count(*) from ${paymentActivity}
-            where ${paymentActivity.privyUserId} = ${input.userId}
-              and ${paymentActivity.signature} = ${entry.signature})`,
-      })
-      .from(sql`(select 1)`)
-    if (owned && owned.count > 0) continue
+    if (entry.err || owned.has(entry.signature)) continue
+    if (fetched >= fetchLimit) {
+      more = true
+      break
+    }
+    fetched++
     const tx = await input.rpc.transaction(entry.signature)
     if (!tx || tx.err) continue
     for (const change of walletChanges(tx, wallet)) {
@@ -441,5 +518,5 @@ export async function syncWalletTransfers(
       inserted += result.meta.changes
     }
   }
-  return { inserted, settled }
+  return { inserted, settled, more }
 }
