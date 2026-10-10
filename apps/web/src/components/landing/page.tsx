@@ -12,6 +12,7 @@ import { Flow } from '#/components/landing/flow'
 import { EarlyAccess } from '#/components/landing/early-access'
 import { Footer } from '#/components/landing/footer'
 import { UrlBox } from '#/components/landing/copy-url'
+import { Logo } from '#/components/landing/logo'
 import { Playground } from '#/components/landing/playground'
 import { EASE, Reveal } from '#/components/landing/reveal'
 import { Toolset } from '#/components/landing/toolset'
@@ -103,15 +104,39 @@ const CONNECT_STEPS = [
   'Approve that client’s permissions and limit at sign-in.',
 ]
 
+// The Solana logomark set as a word in the headline: flat lime like the text
+// around it, and filled with the brand gradient while the headline is hovered.
+function SolanaMark() {
+  return (
+    <span
+      aria-hidden="true"
+      className="relative mr-[0.18em] inline-block h-[0.72em] w-[0.83em] align-[-0.02em]"
+    >
+      <Logo
+        id="solana"
+        color="currentColor"
+        className="absolute inset-0 size-full"
+      />
+      <Logo
+        id="solana"
+        className="absolute inset-0 size-full opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+      />
+    </span>
+  )
+}
+
 function Hero() {
   return (
     <section className={`${wide} overflow-x-clip py-12 sm:py-16 lg:py-20`}>
       <div className="grid items-center gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-14">
         <div>
-          <h1 className="display text-[clamp(2.2rem,4.5vw,3.5rem)]">
+          <h1 className="display group text-[clamp(2.2rem,4.5vw,3.5rem)]">
             Connect your agent
             <br />
-            <span className="text-lime">to everything on Solana.</span>
+            <span className="text-lime">
+              to <SolanaMark />
+              Solana.
+            </span>
           </h1>
           <div className="mt-6 max-w-[56ch] text-[14px] leading-6 text-paper">
             <p className="font-medium">
