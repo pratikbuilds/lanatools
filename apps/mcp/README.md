@@ -25,8 +25,8 @@ was given in `tools/list`, and every call is checked again against the token
 and the stored grant. To change a client's families, the user disconnects it and connects it
 again.
 
-`whoami` returns the Privy user ID, the OAuth client ID and the user's payment
-wallet address, which is null until the user sets one up.
+`whoami` returns only the user's payment wallet address, which is null until
+the user sets one up.
 
 ## Transactions
 

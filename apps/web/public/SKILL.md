@@ -69,8 +69,8 @@ approve on their behalf.
 
 ## Check that it worked
 
-Call `whoami`. It returns the account, your client, and the user's payment
-wallet address, which is null until they set a wallet up. Then
+Call `whoami`. It returns only the user's payment wallet address, which is
+null until they set a wallet up. Then
 `list_catalog` or `search_catalog` finds paid endpoints, and `call` pays
 for one within your limit.
 

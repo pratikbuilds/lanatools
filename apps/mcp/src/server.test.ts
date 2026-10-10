@@ -591,7 +591,7 @@ test('catalog tools work for any active grant', async () => {
   }
 })
 
-test('whoami returns the account, client and payment wallet address', async () => {
+test('whoami returns only the payment wallet address', async () => {
   const session = await connect(['account:read'])
   try {
     const result = await session.client.callTool({
@@ -603,8 +603,6 @@ test('whoami returns the account, client and payment wallet address', async () =
       {
         type: 'text',
         text: JSON.stringify({
-          userId: identity.userId,
-          clientId: identity.clientId,
           walletAddress: address,
         }),
       },
@@ -616,7 +614,10 @@ test('whoami returns the account, client and payment wallet address', async () =
       name: 'whoami',
       arguments: {},
     })
-    expect(JSON.stringify(unset.content)).toContain('\\"walletAddress\\":null')
+    expect(unset.isError).not.toBe(true)
+    expect(unset.content).toEqual([
+      { type: 'text', text: JSON.stringify({ walletAddress: null }) },
+    ])
   } finally {
     await session.close()
   }
