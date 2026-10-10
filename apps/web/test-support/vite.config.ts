@@ -1,7 +1,7 @@
 import { defineConfig, mergeConfig } from 'vite'
 import { createWebConfig } from '../vite.config'
 
-// This server is used only by browser tests. Production never loads the auth stub.
+// This build is used only by browser tests. Production never loads the auth stub.
 export default defineConfig(() =>
   mergeConfig(createWebConfig('devnet'), {
     root: new URL('..', import.meta.url).pathname,

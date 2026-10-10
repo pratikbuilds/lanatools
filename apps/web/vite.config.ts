@@ -8,19 +8,50 @@ import viteReact from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { checkNetworkEnv } from './src/lib/networks'
 
-// The landing page is a dynamic import in main.tsx, so the browser would only
-// find its chunks after the entry runs. Preload them on / alone; app pages
-// never load the landing code.
-function landingPreload(
+// Every page is a dynamic import (the landing page in main.tsx, app pages
+// through the router), so the browser would only find a page's chunks after
+// the entry runs, one round trip at a time. Preload them from the HTML
+// instead: the landing page on / alone, and on any other path the app with
+// that page's own route, so app pages never load the landing code.
+const APP = '/src/app.tsx'
+const ACCOUNT = '/src/routes/_account.tsx?tsr-split=component'
+const PAGES: Array<[prefix: string, modules: Array<string>]> = [
+  ['/', ['/src/components/landing/page.tsx']],
+  ['/tx/', [APP, '/src/routes/tx.$linkId.tsx?tsr-split=component']],
+  [
+    '/sign-in',
+    [APP, ACCOUNT, '/src/routes/_account/sign-in.tsx?tsr-split=component'],
+  ],
+  ...['activity', 'settings', 'payments'].map(
+    (page): [string, Array<string>] => [
+      `/dashboard/${page}`,
+      [
+        APP,
+        ACCOUNT,
+        '/src/routes/_account/dashboard.tsx?tsr-split=component',
+        `/src/routes/_account/dashboard/${page}.tsx?tsr-split=component`,
+      ],
+    ],
+  ),
+  [
+    '/dashboard',
+    [
+      APP,
+      ACCOUNT,
+      '/src/routes/_account/dashboard.tsx?tsr-split=component',
+      '/src/routes/_account/dashboard/index.tsx?tsr-split=component',
+    ],
+  ],
+  // Any other path: the app, which shows the router's not-found page.
+  ['', [APP]],
+]
+
+function pagePreload(
   bundle: Rollup.OutputBundle | undefined,
   entry: Rollup.OutputChunk | undefined,
 ) {
-  if (!bundle || !entry) throw new Error('Landing preload needs the bundle')
+  if (!bundle || !entry) throw new Error('Page preload needs the bundle')
   const chunks = Object.values(bundle).filter((c) => c.type === 'chunk')
-  const landing = chunks.find((c) =>
-    c.facadeModuleId?.endsWith('/src/components/landing/page.tsx'),
-  )
-  if (!landing) throw new Error('Landing page chunk is missing')
   const closure = (start: Rollup.OutputChunk) => {
     const seen = new Set<string>()
     const visit = (fileName: string) => {
@@ -33,8 +64,18 @@ function landingPreload(
     return seen
   }
   const loaded = closure(entry)
-  const files = [...closure(landing)].filter((f) => !loaded.has(f))
-  return `<script>if(location.pathname==='/')${JSON.stringify(files)}.forEach(function(f){var l=document.createElement('link');l.rel='modulepreload';l.crossOrigin='';l.href='/'+f;document.head.appendChild(l)})</script>`
+  const pages = PAGES.map(([prefix, modules]) => {
+    const files = new Set<string>()
+    for (const id of modules) {
+      const chunk = chunks.find((c) => c.facadeModuleId?.endsWith(id))
+      if (!chunk) throw new Error(`Chunk for ${id} is missing`)
+      for (const file of closure(chunk)) if (!loaded.has(file)) files.add(file)
+    }
+    return [prefix, [...files]] as const
+  })
+  // The first page whose prefix matches wins; "/" matches only itself and
+  // "" matches everything.
+  return `<script>;(function(){var p=location.pathname,pages=${JSON.stringify(pages)};for(var i=0;i<pages.length;i++){var k=pages[i][0];if(k==='/'?p==='/':p===k||p.indexOf(k.replace(/\\/$/,'')+'/')===0){pages[i][1].forEach(function(f){var l=document.createElement('link');l.rel='modulepreload';l.crossOrigin='';l.href='/'+f;document.head.appendChild(l)});return}}})()</script>`
 }
 
 const proxy = {
@@ -71,7 +112,7 @@ export function createWebConfig(network: string | undefined): UserConfig {
             return html
               .replace(
                 '</head>',
-                `${landingPreload(ctx.bundle, ctx.chunk)}</head>`,
+                `${pagePreload(ctx.bundle, ctx.chunk)}</head>`,
               )
               .replace(
                 '<div id="app"></div>',
