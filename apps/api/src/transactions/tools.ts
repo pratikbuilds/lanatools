@@ -3,6 +3,7 @@ import { isAddress } from '@solana/kit'
 import { jupiterSwapTool } from '@lanatools/jupiter'
 import type { ToolScope } from '@lanatools/contracts'
 import { solTransfer } from './sol-transfer'
+import { TOKEN_TRANSFER_PROGRAMS, tokenTransfer } from './spl-token-transfer'
 import { bindTransaction } from './adapter'
 import type { BuilderContext, TransactionRegistry } from './adapter'
 import type { TransactionOperation } from '@lanatools/toolkit/transactions'
@@ -30,6 +31,14 @@ export const transactionTools: Readonly<Record<string, TransactionTool>> = {
       'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr',
     ],
     operation: solTransfer,
+  },
+  solana_token_transfer: {
+    title: 'Send tokens',
+    description:
+      'Send an SPL or Token-2022 token from the user wallet to a recipient. mint is the token mint address; amount is in decimal token units (1 means one USDC, not one base unit). The recipient is a wallet, whose token account is created if needed, or an existing token account for that mint. The signing wallet pays network fees in SOL.',
+    scope: 'solana:transfer',
+    programs: TOKEN_TRANSFER_PROGRAMS,
+    operation: tokenTransfer,
   },
   [jupiterSwapTool.name]: {
     title: jupiterSwapTool.title,

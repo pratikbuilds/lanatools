@@ -24,9 +24,9 @@ export const TOOL_FAMILIES: Record<
     detail: 'Read perps markets, order books and candles',
   },
   'solana:transfer': {
-    title: 'SOL transfers',
+    title: 'Transfers',
     detail:
-      'Send SOL from your LanaTools wallet without further approval or an amount limit.',
+      'Send SOL and tokens from your LanaTools wallet without further approval or an amount limit.',
   },
 }
 

@@ -27,6 +27,7 @@ import {
 import type {
   Address,
   Blockhash,
+  GetAccountInfoApi,
   Instruction,
   Rpc,
   SolanaRpcApi,
@@ -67,6 +68,8 @@ export class TransferError extends Error {
 }
 
 export type WithdrawalRpc = Rpc<SolanaRpcApi>
+/** Enough RPC to inspect mints and token accounts. */
+export type AccountRpc = Rpc<GetAccountInfoApi>
 
 function send() {
   return { abortSignal: AbortSignal.timeout(RPC_TIMEOUT_MS) }
@@ -92,7 +95,7 @@ export function associatedTokenAccount(
  * account from it would strand the funds.
  */
 async function destinationFor(
-  rpc: WithdrawalRpc,
+  rpc: AccountRpc,
   to: Address,
   mint: Address,
   program: Address,
@@ -119,6 +122,94 @@ async function destinationFor(
     account: await associatedTokenAccount(to, mint, program),
     create: true,
   }
+}
+
+/** The program that owns `mint`, and its decimals. */
+export async function readTokenMint(rpc: AccountRpc, mint: Address) {
+  const mintAccount = await fetchEncodedAccount(rpc, mint, send())
+  if (
+    !mintAccount.exists ||
+    (mintAccount.programAddress !== TOKEN_PROGRAM_ADDRESS &&
+      mintAccount.programAddress !== TOKEN_2022_PROGRAM)
+  )
+    throw new TransferError('That address is not a token mint')
+  const { decimals, isInitialized } = getMintDecoder().decode(mintAccount.data)
+  if (!isInitialized)
+    throw new TransferError('That token mint is not initialized')
+  return { program: mintAccount.programAddress, decimals }
+}
+
+/**
+ * The instructions that move `amount` base units of `mint` from the owner's
+ * token account to the recipient's: a checked transfer, after creating the
+ * recipient's associated token account at the owner's expense when it does
+ * not exist yet. The owner must hold enough, and may not pay itself.
+ */
+export async function tokenTransferInstructions(
+  rpc: AccountRpc,
+  {
+    owner,
+    to,
+    amount,
+    mint,
+    program,
+    decimals,
+    source: sourceAccount,
+  }: {
+    owner: Address
+    to: Address
+    amount: bigint
+    mint: Address
+    program: Address
+    decimals: number
+    source?: Address
+  },
+): Promise<Instruction[]> {
+  const source =
+    sourceAccount ?? (await associatedTokenAccount(owner, mint, program))
+  const [held, destination] = await Promise.all([
+    fetchMaybeToken(rpc, source, send()),
+    destinationFor(rpc, to, mint, program),
+  ])
+  if (destination.account === source)
+    throw new TransferError('Enter an address other than this wallet')
+  if (
+    !held.exists ||
+    held.programAddress !== program ||
+    held.data.owner !== owner ||
+    held.data.mint !== mint
+  )
+    throw new TransferError(
+      'That token account does not belong to this wallet and mint',
+    )
+  if (held.data.state !== 1)
+    throw new TransferError('That token account is frozen or unavailable')
+  if (held.data.amount < amount)
+    throw new TransferError('Not enough tokens in the wallet')
+  // shortcut: transfer-hook extra accounts need Kit's resolver once a compatible release is available.
+  const transfer = getTransferCheckedInstruction(
+    {
+      source,
+      mint,
+      destination: destination.account,
+      authority: owner,
+      amount,
+      decimals,
+    },
+    { programAddress: program },
+  )
+  return destination.create
+    ? [
+        getCreateAssociatedTokenIdempotentInstruction({
+          payer: createNoopSigner(owner),
+          ata: destination.account,
+          owner: to,
+          mint,
+          tokenProgram: program,
+        }),
+        transfer,
+      ]
+    : [transfer]
 }
 
 /**
@@ -162,64 +253,15 @@ export async function prepareTokenTransfer(
       }),
     ]
   } else {
-    const mintAccount = await fetchEncodedAccount(rpc, mint, send())
-    if (
-      !mintAccount.exists ||
-      (mintAccount.programAddress !== TOKEN_PROGRAM_ADDRESS &&
-        mintAccount.programAddress !== TOKEN_2022_PROGRAM)
-    )
-      throw new TransferError('That address is not a token mint')
-    const program = mintAccount.programAddress
-    const { decimals, isInitialized } = getMintDecoder().decode(
-      mintAccount.data,
-    )
-    if (!isInitialized)
-      throw new TransferError('That token mint is not initialized')
-    const source =
-      sourceAccount ?? (await associatedTokenAccount(owner, mint, program))
-    const [held, destination] = await Promise.all([
-      fetchMaybeToken(rpc, source, send()),
-      destinationFor(rpc, to, mint, program),
-    ])
-    if (destination.account === source)
-      throw new TransferError('Enter an address other than this wallet')
-    if (
-      !held.exists ||
-      held.programAddress !== program ||
-      held.data.owner !== owner ||
-      held.data.mint !== mint
-    )
-      throw new TransferError(
-        'That token account does not belong to this wallet and mint',
-      )
-    if (held.data.state !== 1)
-      throw new TransferError('That token account is frozen or unavailable')
-    if (held.data.amount < amount)
-      throw new TransferError('Not enough tokens in the wallet')
-    // shortcut: transfer-hook extra accounts need Kit's resolver once a compatible release is available.
-    const transfer = getTransferCheckedInstruction(
-      {
-        source,
-        mint,
-        destination: destination.account,
-        authority: owner,
-        amount,
-        decimals,
-      },
-      { programAddress: program },
-    )
-    instructions = destination.create
-      ? [
-          getCreateAssociatedTokenIdempotentInstruction({
-            payer: createNoopSigner(owner),
-            ata: destination.account,
-            owner: to,
-            mint,
-            tokenProgram: program,
-          }),
-          transfer,
-        ]
-      : [transfer]
+    const token = await readTokenMint(rpc, mint)
+    instructions = await tokenTransferInstructions(rpc, {
+      owner,
+      to,
+      amount,
+      mint,
+      ...token,
+      ...(sourceAccount ? { source: sourceAccount } : {}),
+    })
   }
   const { value: lifetime } = await rpc
     .getLatestBlockhash({ commitment: 'confirmed' })
