@@ -76,8 +76,13 @@ function reader(overrides: Record<string, unknown> = {}, decimals = 6) {
       expect(init?.headers).toMatchObject({ 'x-api-key': 'server-key' })
       if (parsed.pathname === '/tokens/v2/search')
         return Response.json([
-          { id: usdc, decimals },
-          { id: sol, decimals: 9 },
+          {
+            id: usdc,
+            decimals,
+            symbol: 'USDC',
+            icon: 'https://example.com/usdc.png',
+          },
+          { id: sol, decimals: 9, icon: 'http://insecure.example/sol.png' },
         ])
       expect(parsed.pathname).toBe('/swap/v2/order')
       return Response.json({
@@ -128,13 +133,21 @@ test('the swap tool owns the shared operation and selects its signer at executio
     network: 'mainnet',
     execution: { requestId: 'request-1' },
     review: {
+      title: 'Swap USDC for SOL',
       fields: expect.arrayContaining([
+        {
+          label: 'You pay',
+          value: '10.000001 USDC',
+          icon: 'https://example.com/usdc.png',
+        },
+        { label: 'Estimated receive', value: '0.123456789 SOL' },
         { label: 'Minimum receive', value: '0.12 SOL' },
       ]),
     },
   })
-  expect(calls[1]!.searchParams.get('taker')).toBe(wallet)
-  expect(calls[1]!.searchParams.get('excludeRouters')).toBe('jupiterz')
+  const order = calls.find((call) => call.pathname === '/swap/v2/order')
+  expect(order?.searchParams.get('taker')).toBe(wallet)
+  expect(order?.searchParams.get('excludeRouters')).toBe('jupiterz')
 })
 
 test('shared Jupiter operation rejects unsupported signing or expiry policies', async () => {
@@ -324,4 +337,45 @@ test('an order refusal returns a safe error instead of an empty transaction', as
     error: { code: 'no_route', retryable: false },
   })
   expect(JSON.stringify(outcome)).not.toContain('private provider diagnostic')
+})
+
+test('the swap review names tokens and falls back to a short mint', async () => {
+  const operation = jupiterSwapTool.transaction
+  const { wallet: _wallet, ...arguments_ } = input
+  const unknown = 'A7bdiYdS5GjqGFtxf17ppRHtDKPkkRqbKtR27dxvQXaS'
+  expect(
+    operation.describe({ ...arguments_, outputMint: unknown }),
+  ).toMatchObject({
+    title: 'Swap USDC for A7bd…QXaS',
+    fields: expect.arrayContaining([
+      { label: 'You receive', value: 'A7bd…QXaS' },
+    ]),
+  })
+  const { options } = reader()
+  expect(
+    await operation.review(arguments_, {
+      ...options,
+      network: 'mainnet',
+      blockHeight: async () => 100n,
+    }),
+  ).toMatchObject({
+    title: 'Swap USDC for SOL',
+    fields: expect.arrayContaining([
+      {
+        label: 'You pay',
+        value: '10.000001 USDC',
+        icon: 'https://example.com/usdc.png',
+      },
+      { label: 'You receive', value: 'SOL' },
+    ]),
+  })
+  // A failed lookup keeps the plain review instead of failing.
+  expect(
+    await operation.review(arguments_, {
+      apiKey: 'server-key',
+      fetch: async () => new Response('down', { status: 500 }),
+      network: 'mainnet',
+      blockHeight: async () => 100n,
+    }),
+  ).toEqual(operation.describe(arguments_))
 })

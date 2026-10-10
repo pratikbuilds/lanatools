@@ -2,7 +2,11 @@ import { and, eq, sql } from 'drizzle-orm'
 import { isAddress } from '@solana/kit'
 import { readSolanaNetwork } from '@lanatools/contracts/networks'
 import { z } from 'zod'
-import { PreparedTransaction, TransactionReceipt } from '@lanatools/contracts'
+import {
+  PreparedTransaction,
+  TransactionReceipt,
+  TransactionReview,
+} from '@lanatools/contracts'
 import {
   observeSubmission,
   transactionRpc,
@@ -181,16 +185,24 @@ export async function createTransactionRequest(
     if (embedded && (!embedded.wallet || !embedded.sign))
       return failed('embedded_unavailable')
     const db = drizzle(env.DB)
+    const id = crypto.randomUUID()
+    // Names a review shows (such as token symbols) are looked up once, here.
+    const review = await tool.review(args, {
+      requestId: id,
+      network: config.network,
+      rpc: options.rpc ?? transactionRpc(env.SOLANA_RPC_URL),
+      jupiterApiKey: env.JUPITER_API_KEY,
+    })
     // The insert checks the grant again atomically so concurrent revocation
     // cannot create a usable new intent after authorization was read.
     await db.run(sql`
       insert into transaction_request
         (id, tool_name, arguments_json, network, creator_user_id,
          creator_client_id, creator_grant_id, idempotency_key, delivery,
-         created_at, updated_at, expires_at)
-      select ${crypto.randomUUID()}, ${name}, ${argumentsJson}, ${config.network},
+         review_json, created_at, updated_at, expires_at)
+      select ${id}, ${name}, ${argumentsJson}, ${config.network},
         ${identity.userId}, ${identity.clientId}, ${identity.grantId}, ${idempotencyKey},
-        ${delivery}, ${now}, ${now}, ${now + 15 * 60_000}
+        ${delivery}, ${JSON.stringify(review)}, ${now}, ${now}, ${now + 15 * 60_000}
       from mcp_grant where id = ${identity.grantId}
         and privy_user_id = ${identity.userId} and client_id = ${identity.clientId}
         and status = 'active'
@@ -333,7 +345,9 @@ export async function readTransactionLink(
     network: row.network,
     review: row.candidateJson
       ? publicTransaction(JSON.parse(row.candidateJson)).review
-      : tool.describe(args),
+      : row.reviewJson
+        ? TransactionReview.assert(JSON.parse(row.reviewJson))
+        : tool.describe(args),
     status,
     account:
       preparationLeaseExpired(row, now) && !row.candidateJson

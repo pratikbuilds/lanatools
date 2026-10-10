@@ -272,12 +272,19 @@ export const WithdrawalReceipt = type({
 })
 export type WithdrawalReceipt = typeof WithdrawalReceipt.infer
 
-/** Fixed intent before preparation; a builder later supplies exact terms. */
+/**
+ * Fixed intent before preparation; a builder later supplies exact terms. A
+ * field's `icon` is an https image URL, such as a token logo.
+ */
 export const TransactionReview = type({
   title: 'string',
   description: 'string',
   actionLabel: 'string',
-  fields: type({ label: 'string', value: 'string' }).array(),
+  fields: type({
+    label: 'string',
+    value: 'string',
+    'icon?': 'string',
+  }).array(),
 })
 export type TransactionReview = typeof TransactionReview.infer
 

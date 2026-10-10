@@ -50,11 +50,34 @@ let db: D1Database
 let dispose: () => Promise<void>
 let wallet: KeyPairSigner
 
+// Token names for reviews; tests never reach the real Jupiter API.
+const tokenSearch = spyOn(JupiterClient.prototype, 'read')
 beforeAll(async () => {
   ;({ db, dispose } = await testDatabase())
   wallet = await generateKeyPairSigner()
+  tokenSearch.mockImplementation(async () => ({
+    ok: true,
+    result: {
+      source: 'jupiter',
+      network: 'mainnet-beta',
+      fetchedAt: new Date(0).toISOString(),
+      data: {
+        tokens: [
+          { id: usdc, symbol: 'USDC', icon: 'https://example.com/usdc.png' },
+          { id: sol, symbol: 'SOL' },
+        ],
+        missingMints: [],
+        verificationEligibility: null,
+        eligibilityError: null,
+      },
+      warnings: [],
+    },
+  }))
 }, 60_000)
-afterAll(() => dispose())
+afterAll(async () => {
+  tokenSearch.mockRestore()
+  await dispose()
+})
 
 const env = () => ({
   DB: db,
@@ -510,3 +533,24 @@ test.each([
     }
   },
 )
+
+test('a swap link stores its named review once and pages read it without Jupiter', async () => {
+  const before = tokenSearch.mock.calls.length
+  const id = await create()
+  expect(tokenSearch.mock.calls.length).toBe(before + 1)
+  const link = await readTransactionLink(db, id)
+  expect(link?.review).toMatchObject({
+    title: 'Swap USDC for SOL',
+    fields: expect.arrayContaining([
+      {
+        label: 'You pay',
+        value: '1 USDC',
+        icon: 'https://example.com/usdc.png',
+      },
+    ]),
+  })
+  expect(JSON.parse((await row(id))?.reviewJson ?? 'null')).toEqual(
+    link?.review,
+  )
+  expect(tokenSearch.mock.calls.length).toBe(before + 1)
+})

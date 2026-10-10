@@ -1,0 +1,1 @@
+ALTER TABLE `transaction_request` ADD `review_json` text;

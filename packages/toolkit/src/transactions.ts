@@ -35,6 +35,8 @@ export type TransactionOperation<TContext extends TransactionContext> = {
   arguments: z.ZodObject
   supportedNetworks: readonly NetworkId[]
   describe: (input: unknown) => TransactionReview
+  /** The review shown to the signer; may look up names. Falls back to describe. */
+  review: (input: unknown, context: TContext) => Promise<TransactionReview>
   build: (
     input: unknown,
     account: string,
@@ -55,6 +57,11 @@ export function defineTransactionOperation<
   arguments: z.ZodObject<TShape>
   supportedNetworks?: readonly NetworkId[]
   describe: (input: z.infer<z.ZodObject<TShape>>) => TransactionReview
+  /** Optional richer review, such as token names, read when it is needed. */
+  review?: (
+    input: z.infer<z.ZodObject<TShape>>,
+    context: TContext,
+  ) => Promise<TransactionReview>
   build: (
     input: z.infer<z.ZodObject<TShape>>,
     account: string,
@@ -80,10 +87,19 @@ export function defineTransactionOperation<
       throw new Error('Operation does not support the configured network')
     return network
   }
+  async function review(args: z.infer<z.ZodObject<TShape>>, context: TContext) {
+    if (!definition.review) return definition.describe(args)
+    // A failed lookup leaves the plain review rather than failing the request.
+    return definition
+      .review(args, context)
+      .catch(() => definition.describe(args))
+  }
   return {
     arguments: definition.arguments,
     supportedNetworks,
     describe: (input) => definition.describe(definition.arguments.parse(input)),
+    review: (input, context) =>
+      review(definition.arguments.parse(input), context),
     async build(input, account, context) {
       const network = checkNetwork(context)
       const args = definition.arguments.parse(input)
@@ -91,7 +107,7 @@ export function defineTransactionOperation<
         args,
         account,
         context,
-        definition.describe(args),
+        await review(args, context),
       )
       const candidate = publicTransaction(result)
       if (candidate.network !== network)

@@ -413,7 +413,20 @@ function Review({ link }: { link: TransactionLink }) {
         {link.review.fields.map((field, index) => (
           <div key={`${field.label}-${index}`}>
             <dt>{field.label}</dt>
-            <dd>{field.value}</dd>
+            <dd>
+              {field.icon && (
+                <img
+                  src={field.icon}
+                  alt=""
+                  width="20"
+                  height="20"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  className="tx-field-icon"
+                />
+              )}
+              <span>{field.value}</span>
+            </dd>
           </div>
         ))}
         <div>

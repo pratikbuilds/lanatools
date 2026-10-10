@@ -23,6 +23,7 @@ export function bindTransaction<TContext extends TransactionContext>(
 ): TransactionOperation<BuilderContext> {
   return {
     ...operation,
+    review: (input, context) => operation.review(input, configure(context)),
     build: (input, account, context) =>
       operation.build(input, account, configure(context)),
     relay: (candidate, context) =>

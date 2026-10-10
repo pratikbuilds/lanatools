@@ -198,6 +198,9 @@ export const transactionRequest = sqliteTable(
       .default('open'),
     revision: integer('revision').notNull().default(0),
     account: text('account'),
+    // The review shown before a transaction is built, with any looked-up
+    // names, so page reads do not call providers again.
+    reviewJson: text('review_json'),
     candidateJson: text('candidate_json'),
     signature: text('signature'),
     receiptJson: text('receipt_json'),
