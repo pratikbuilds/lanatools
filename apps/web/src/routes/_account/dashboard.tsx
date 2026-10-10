@@ -109,7 +109,9 @@ function Loading() {
       ? 'Payments'
       : pathname.startsWith('/dashboard/settings')
         ? 'Settings'
-        : 'Wallet'
+        : pathname.startsWith('/dashboard/transactions')
+          ? 'Transactions'
+          : 'Wallet'
   return (
     <DashboardShell
       status={{
@@ -146,6 +148,17 @@ function Loading() {
               <CallSkeleton />
             </section>
           </>
+        ) : page === 'Payments' ? (
+          <>
+            <PageHead title="Payments" />
+            <Skeleton className="mt-5 h-[160px] w-full" />
+          </>
+        ) : page === 'Transactions' ? (
+          <>
+            <PageHead title="Transactions" />
+            <Skeleton className="mt-5 h-10 w-full" />
+            <Skeleton className="d-card mt-4 h-[140px]" />
+          </>
         ) : page === 'Activity' ? (
           <>
             <PageHead title="Activity" />
@@ -162,11 +175,6 @@ function Loading() {
               <Skeleton className="h-[34px] w-full lg:ml-auto lg:w-[520px]" />
             </SectionHead>
             <CallSkeleton />
-          </>
-        ) : page === 'Payments' ? (
-          <>
-            <PageHead title="Payments" />
-            <Skeleton className="mt-5 h-[160px] w-full" />
           </>
         ) : (
           <>

@@ -50,7 +50,13 @@ for (const width of [320, 390, 640, 768, 1024, 1440]) {
         .getByRole('button', { name: client.clientName ?? '' }),
     ).toBeVisible()
     await fitsPage(page)
-    for (const name of ['Wallet', 'Payments', 'Activity', 'Settings']) {
+    for (const name of [
+      'Wallet',
+      'Payments',
+      'Activity',
+      'Transactions',
+      'Settings',
+    ]) {
       await expect(
         page.getByRole('link', { name, exact: true }),
       ).toBeInViewport()

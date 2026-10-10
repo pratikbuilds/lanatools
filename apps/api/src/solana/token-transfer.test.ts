@@ -294,6 +294,14 @@ test('only a withdrawal signed by its own wallet is read', async () => {
   expect(withdrawal.payer).toBe(owner.address)
   expect(withdrawal.signature).toBe(signature)
   expect(String(withdrawal.blockhash)).toBe(BLOCKHASH)
+  // The recipient's account is created here, so the transaction names them.
+  expect(withdrawal.transfer).toEqual({
+    mint: MINT,
+    amount: 1n,
+    decimals: 6,
+    destination: await ata(TO),
+    recipient: TO,
+  })
 
   await expect(readSignedWithdrawal('not a transaction')).rejects.toThrow(
     'could not be read',
@@ -522,7 +530,15 @@ test('SOL withdrawals reserve the actual fee and are checked after signing', asy
     amount: 95_000n,
   })
   const signed = await sign(owner, wire)
-  expect((await readSignedWithdrawal(signed.wire)).payer).toBe(owner.address)
+  const read = await readSignedWithdrawal(signed.wire)
+  expect(read.payer).toBe(owner.address)
+  expect(read.transfer).toEqual({
+    mint: 'native',
+    amount: 95_000n,
+    decimals: 9,
+    destination: TO,
+    recipient: TO,
+  })
   await expect(
     prepareTokenTransfer(rpc, {
       owner: owner.address,

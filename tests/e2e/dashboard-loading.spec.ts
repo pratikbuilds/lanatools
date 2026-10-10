@@ -40,6 +40,9 @@ for (const width of [390, 1440]) {
     await expect(
       page.getByRole('button', { name: /Connect a client/ }),
     ).toBeDisabled()
+    // Measure the account transition after fonts settle, so a font swap
+    // cannot change text metrics between the two layout measurements.
+    await page.evaluate(() => document.fonts.ready)
     const before = await wallet.boundingBox()
     await page.evaluate(() =>
       window.dispatchEvent(new Event('test:privy-ready')),
@@ -86,7 +89,7 @@ for (const width of [390, 1440]) {
   })
 }
 
-for (const pageName of ['Activity', 'Settings', 'Payments']) {
+for (const pageName of ['Activity', 'Settings', 'Payments', 'Transactions']) {
   test(`${pageName} reload shows its own account skeleton`, async ({
     page,
   }) => {

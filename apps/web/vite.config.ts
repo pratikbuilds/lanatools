@@ -22,7 +22,7 @@ const PAGES: Array<[prefix: string, modules: Array<string>]> = [
     '/sign-in',
     [APP, ACCOUNT, '/src/routes/_account/sign-in.tsx?tsr-split=component'],
   ],
-  ...['activity', 'settings', 'payments'].map(
+  ...['activity', 'settings', 'payments', 'transactions'].map(
     (page): [string, Array<string>] => [
       `/dashboard/${page}`,
       [
