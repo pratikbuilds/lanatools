@@ -487,7 +487,8 @@ export function CallDetail({
   )
 }
 
-function Transaction({
+/** A signature in a well, with its Explorer link and a copy button. */
+export function Transaction({
   signature,
   network,
 }: {

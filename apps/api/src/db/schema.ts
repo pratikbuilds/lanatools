@@ -198,6 +198,9 @@ export const transactionRequest = sqliteTable(
       .default('open'),
     revision: integer('revision').notNull().default(0),
     account: text('account'),
+    // The other party, such as a transfer's recipient, so the dashboard can
+    // filter by address. Null for operations without one, such as swaps.
+    counterparty: text('counterparty'),
     // The review shown before a transaction is built, with any looked-up
     // names, so page reads do not call providers again.
     reviewJson: text('review_json'),
@@ -214,6 +217,71 @@ export const transactionRequest = sqliteTable(
       table.creatorUserId,
       table.creatorClientId,
       table.idempotencyKey,
+    ),
+    // The dashboard reads a user's transactions newest first and filters
+    // them by the signing wallet or the other party.
+    index('transaction_request_user_time').on(
+      table.creatorUserId,
+      table.createdAt,
+      table.id,
+    ),
+    index('transaction_request_user_account').on(
+      table.creatorUserId,
+      table.account,
+    ),
+    index('transaction_request_user_counterparty').on(
+      table.creatorUserId,
+      table.counterparty,
+    ),
+  ],
+)
+
+/**
+ * One asset moving into or out of a user's LanaTools wallet: a withdrawal
+ * sent from the Wallet page, or a transfer found on chain. A transaction
+ * that moves several assets has one row per asset. Transactions that agent
+ * tools or payments already record are never copied here.
+ */
+export const walletTransfer = sqliteTable(
+  'wallet_transfer',
+  {
+    id: text('id').primaryKey(),
+    privyUserId: text('privy_user_id').notNull(),
+    wallet: text('wallet').notNull(),
+    direction: text('direction', { enum: ['in', 'out'] }).notNull(),
+    network: text('network', { enum: ['mainnet', 'devnet'] }).notNull(),
+    // A mint address, or 'native' for SOL.
+    mint: text('mint').notNull(),
+    symbol: text('symbol'),
+    decimals: integer('decimals').notNull(),
+    // Base units as text: a u64 does not fit a JavaScript number.
+    amountAtomic: text('amount_atomic').notNull(),
+    counterparty: text('counterparty').notNull(),
+    signature: text('signature').notNull(),
+    status: text('status', { enum: ['pending', 'confirmed', 'failed'] })
+      .notNull()
+      .default('pending'),
+    slot: text('slot'),
+    blockTime: integer('block_time'),
+    source: text('source', { enum: ['withdrawal', 'chain_sync'] }).notNull(),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('wallet_transfer_signature').on(
+      table.privyUserId,
+      table.signature,
+      table.mint,
+      table.direction,
+    ),
+    index('wallet_transfer_user_time').on(
+      table.privyUserId,
+      table.createdAt,
+      table.id,
+    ),
+    index('wallet_transfer_user_counterparty').on(
+      table.privyUserId,
+      table.counterparty,
     ),
   ],
 )

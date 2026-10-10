@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LanaTools transactions mockup</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400..800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* Tokens are copied from apps/web/src/styles.css, as in dashboard-activity.html. */
+      :root {
+        --blue: #0b2fb2;
+        --ink: #0a1f6e;
+        --paper: #f3efe6;
+        --card: #fffdf8;
+        --paper-2: #b5c1f0;
+        --mute: #4a5480;
+        --rule: #d6d0c2;
+        --lime: #d9ff4a;
+        --coral: #ff6b4a;
+        --coral-ink: #b8361a;
+        --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; min-width: 320px; background: var(--paper); color: var(--ink);
+        font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 13.5px; line-height: 1.55;
+        -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums;
+      }
+      h1, h2, h3, p, dl, dd, ul { margin: 0; padding: 0; }
+      button, input, select { font: inherit; color: inherit; }
+      :focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+      [hidden] { display: none !important; }
+
+      .meta { font-size: 12px; color: var(--mute); }
+      .btn { display: inline-flex; align-items: center; justify-content: center; height: 34px; padding: 0 14px; border: 1.5px solid var(--ink); border-radius: 6px; background: var(--card); color: var(--ink); font-size: 12.5px; font-weight: 600; line-height: 1; white-space: nowrap; cursor: pointer; }
+      .btn:hover { background: var(--paper); }
+      .btn-primary { background: var(--lime); }
+      .link { border: 0; background: none; padding: 0; cursor: pointer; font-size: 12.5px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; color: inherit; }
+      .wrap { max-width: 66rem; margin: 0 auto; padding: 0 28px; }
+
+      /* Navigation holds destinations only. */
+      .bar-top { background: var(--blue); color: var(--paper); }
+      .bar-top .wrap { display: flex; align-items: center; gap: 28px; height: 60px; }
+      .wordmark { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
+      .wordmark span span { font-weight: 500; color: var(--paper-2); }
+      .nav { display: flex; gap: 4px; }
+      .nav button { height: 32px; padding: 0 12px; border: 0; border-radius: 6px; background: none; color: var(--paper-2); font-size: 13px; cursor: pointer; }
+      .nav button[aria-current='page'] { background: var(--paper); color: var(--ink); font-weight: 700; }
+      .acct-btn { display: flex; align-items: center; gap: 8px; height: 34px; margin-left: auto; padding: 0 12px 0 4px; border: 1.5px solid rgb(181 193 240 / 0.5); border-radius: 17px; background: none; color: var(--paper); font-size: 12.5px; }
+      .avatar { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--paper); color: var(--ink); font-size: 12px; font-weight: 700; }
+
+      h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.03em; }
+      h2 { font-size: 15px; font-weight: 700; }
+      .page-head { padding: 36px 0 18px; }
+
+      /* Filter band: status is the one thing people scan for, so it is a row of
+         plain tabs. Everything else is a quiet control on the right. */
+      .band { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 24px; padding-bottom: 2px; border-bottom: 1px solid var(--rule); }
+      .tabs { display: flex; gap: 2px; margin-bottom: -1px; }
+      .tabs button { height: 36px; padding: 0 10px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--mute); font-size: 13px; cursor: pointer; }
+      .tabs button:hover { color: var(--ink); }
+      .tabs button[aria-pressed='true'] { color: var(--ink); font-weight: 700; border-bottom-color: var(--ink); }
+      .tabs button i { font-style: normal; margin-left: 5px; font-size: 11.5px; font-weight: 400; color: var(--mute); }
+      .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-bottom: 8px; }
+      .tools select, .tools input { height: 30px; padding: 0 8px; border: 1px solid var(--rule); border-radius: 6px; background: transparent; font-size: 12.5px; }
+      .tools select { color: var(--ink); font-weight: 600; }
+      .tools select.off { color: var(--mute); font-weight: 400; }
+      .tools input { width: 15rem; }
+      .tools input::placeholder { color: var(--mute); }
+      .tools .link { font-size: 12px; font-weight: 500; color: var(--mute); }
+
+      /* The ledger: time, what and with whom, who started it, how much.
+         It is one bordered surface, like the Connected clients table, so the page has
+         a focal object rather than floating hairlines. The amount is the loudest thing in a row. */
+      .ledger { margin-top: 16px; border: 1.5px solid var(--ink); border-radius: 10px; background: var(--card); overflow: hidden; }
+      .grid { grid-template-columns: 4.6rem minmax(0, 1fr) 11rem 8.5rem 9rem; }
+      .thead, .tr { display: grid; align-items: center; gap: 20px; padding: 0 20px; }
+      .thead { height: 40px; background: var(--paper); border-bottom: 1.5px solid var(--ink); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mute); }
+      .tr { width: 100%; min-height: 58px; padding-top: 10px; padding-bottom: 10px; border: 0; border-bottom: 1px solid var(--rule); background: none; text-align: left; cursor: pointer; transition: background-color 120ms var(--ease-out); }
+      .tr:hover { background: #fff; box-shadow: inset 3px 0 0 var(--blue); }
+      .ledger > :last-child, .ledger .tr:last-child { border-bottom: 0; }
+      .num { text-align: right; white-space: nowrap; }
+      .cut { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+      /* A day is a band across the ledger, so the eye finds the break before the rows. */
+      .day { display: flex; align-items: baseline; gap: 10px; padding: 7px 20px; background: var(--paper); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); font-size: 12px; font-weight: 700; color: var(--ink); }
+      .day span { padding-bottom: 1px; border-bottom: 2px solid var(--ink); }
+      .day small { font-size: 11px; font-weight: 400; color: var(--mute); }
+      .thead + .day { border-top: 0; }
+      .what b { display: block; font-size: 14px; font-weight: 700; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .what > span { display: block; margin-top: 1px; font-size: 12px; color: var(--mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .what > span.bad { color: var(--coral-ink); }
+      .src { font-size: 12.5px; color: var(--mute); }
+      .src b { font-weight: 600; color: var(--ink); }
+      /* The chain's own record, once there is one. It opens Explorer; the rest of the row opens the drawer. */
+      .sig a { font-size: 12.5px; color: var(--mute); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--rule); }
+      .sig a:hover { color: var(--blue); text-decoration-color: var(--blue); }
+      .sig a::after { content: ' ↗'; font-size: 11px; }
+      .amt { font-size: 16px; font-weight: 700; letter-spacing: -0.03em; }
+      .amt u { margin-left: 4px; font-size: 12px; font-weight: 500; letter-spacing: 0; text-decoration: none; color: var(--mute); }
+      .amt .in { padding: 3px 8px; border-radius: 5px; background: var(--lime); }
+      .amt .in u { color: var(--ink); }
+      .tr.is-failed .amt, .tr.is-expired .amt { text-decoration: line-through; color: var(--mute); font-weight: 500; }
+      /* Status is an exception mark beside the title, not a column. Confirmed shows nothing. */
+      .st { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 4px; font-size: 11px; font-weight: 600; letter-spacing: 0; vertical-align: 3px; }
+      .st-pending { border: 1.5px solid var(--blue); color: var(--blue); }
+      .st-failed { background: var(--coral); color: var(--ink); font-weight: 700; }
+      .st-expired { border: 1px solid var(--rule); color: var(--mute); }
+
+      /* Variant B, for comparison: the same rows on open hairlines, no card. */
+      body.open .ledger { margin-top: 0; border: 0; border-radius: 0; background: none; }
+      body.open .thead { background: none; border-bottom: 1px solid var(--rule); }
+      body.open .thead, body.open .tr, body.open .day { padding-left: 4px; padding-right: 4px; }
+      body.open .day { background: none; border: 0; padding-top: 22px; padding-bottom: 6px; }
+      body.open .tr:hover { background: var(--card); box-shadow: none; }
+
+      .foot { padding: 22px 0 0; text-align: center; }
+      .empty { padding: 56px 20px; text-align: center; }
+      .foot.meta { padding: 16px 20px; }
+      .empty p { max-width: 34rem; margin: 6px auto 0; }
+
+      /* Drawer, as on the other pages. */
+      .scrim { position: fixed; inset: 0; background: rgb(10 31 110 / 0.28); }
+      .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(28rem, 100vw); overflow-y: auto; padding: 22px 26px 32px; background: var(--card); border-left: 1.5px solid var(--ink); animation: slide 220ms var(--ease-out); }
+      @keyframes slide { from { transform: translateX(24px); opacity: 0; } }
+      .drawer-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 18px; }
+      .drawer h2 { font-size: 18px; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+      .big { display: block; margin: 6px 0 2px; font-size: 2.6rem; font-weight: 700; letter-spacing: -0.05em; line-height: 1; }
+      .big.gone { text-decoration: line-through; color: var(--mute); }
+      .also { display: block; margin-bottom: 4px; font-size: 1.15rem; font-weight: 600; letter-spacing: -0.02em; }
+      .kv { display: grid; grid-template-columns: 8.5rem minmax(0, 1fr); gap: 0 16px; margin-top: 18px; border-top: 1px solid var(--rule); }
+      .kv dt, .kv dd { padding: 10px 0; border-bottom: 1px solid var(--rule); }
+      .kv dt { font-size: 12px; color: var(--mute); }
+      .kv dd { overflow-wrap: anywhere; }
+      .kv dd.mono { font-size: 12.5px; }
+      .well { margin: 14px 0 0; padding: 12px 14px; border: 1.5px solid var(--ink); border-radius: 8px; background: var(--paper); font-size: 12.5px; font-weight: 600; overflow-wrap: anywhere; }
+      .drawer-foot { display: flex; flex-wrap: wrap; gap: 12px 20px; margin-top: 14px; }
+      .note { font-size: 12px; color: var(--coral-ink); }
+      .live { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--mute); }
+      .live::before { content: ''; width: 8px; height: 8px; border: 1.5px solid var(--ink); border-radius: 50%; border-right-color: transparent; animation: spin 900ms linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* Mockup controls: not part of the design. */
+      .mock { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 6px 14px; border: 1.5px dashed var(--mute); border-radius: 22px; background: var(--card); font-size: 12px; color: var(--mute); white-space: nowrap; z-index: 5; }
+      .spacer { height: 80px; }
+
+      @media (max-width: 820px) {
+        .wrap { padding-left: 16px; padding-right: 16px; }
+        .bar-top .wrap { gap: 12px; }
+        .acct-mail { display: none; }
+        .thead { display: none; }
+        .filters input { width: 100%; }
+        .filters .clear { margin-left: 0; }
+        .band { padding-bottom: 8px; }
+        .tabs { max-width: 100%; overflow-x: auto; }
+        .tabs button { white-space: nowrap; }
+        .tools input { width: 100%; }
+        /* Phone: time, then what, then the money. Source lives in the drawer. */
+        .thead, .tr, .day { padding-left: 14px; padding-right: 14px; }
+        .tr.grid { grid-template-columns: 4.6rem minmax(0, 1fr) auto; gap: 2px 10px; }
+        .tr .src, .tr .sig { display: none; }
+        .amt { font-size: 14px; }
+        /* Let the title wrap so its status mark is never cut off. */
+        .what b { white-space: normal; }
+        .st { margin-left: 6px; }
+      }
+      @media (max-width: 480px) {
+        /* Four destinations must fit beside the mark; the email is already hidden. */
+        .wordmark span { display: none; }
+        .bar-top .wrap { gap: 8px; }
+        .nav { gap: 2px; }
+        .nav button { padding: 0 7px; font-size: 12px; }
+        .acct-btn { padding: 0 3px; border: 0; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .drawer { animation: none; }
+        .live::before { animation: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="bar-top">
+      <div class="wrap">
+        <span class="wordmark">
+          <svg width="24" height="24" viewBox="0 0 64 64" aria-hidden="true">
+            <path d="M16 56h-4q-4 0-4-4V15q0-7 7-7h23l19 12.5V29L37 16H19.5q-3.5 0-3.5 3.5Z" fill="currentColor" />
+            <path d="M23 26l8 7-8 7" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" />
+            <rect x="35" y="41" width="15" height="5" rx="2.5" fill="#d9ff4a" />
+          </svg>
+          <span>lanatools<span>.sh</span></span>
+        </span>
+        <nav class="nav" aria-label="Main">
+          <button>Wallet</button>
+          <button>Activity</button>
+          <button aria-current="page">Transactions</button>
+          <button>Settings</button>
+        </nav>
+        <button class="acct-btn" aria-label="Account, pratik@example.com">
+          <span class="avatar" aria-hidden="true">P</span><span class="acct-mail">pratik@example.com</span>
+        </button>
+      </div>
+    </div>
+
+    <main class="wrap">
+      <div class="page-head"><h1>Transactions</h1></div>
+      <div class="band">
+        <div class="tabs" id="f-status" role="group" aria-label="Filter by status"></div>
+        <div class="tools">
+          <select id="f-kind" aria-label="Filter by kind"></select>
+          <select id="f-client" aria-label="Filter by client"></select>
+          <select id="f-signing" aria-label="Filter by signing method"></select>
+          <input id="f-address" autocomplete="off" spellcheck="false" placeholder="Search by address" aria-label="Filter by address" />
+          <button class="link" id="f-clear" hidden>Clear</button>
+        </div>
+      </div>
+      <div class="ledger">
+        <div class="thead grid"><span>Time</span><span>Transaction</span><span>Source</span><span>Signature</span><span class="num">Amount</span></div>
+        <div id="rows"></div>
+        <div id="tail"></div>
+      </div>
+      <div class="spacer"></div>
+    </main>
+
+    <div class="mock">
+      <span>Mockup, sample data.</span>
+      <button class="link" id="mock-empty">empty state</button>
+      <button class="link" id="mock-surface">open lines</button>
+    </div>
+
+    <div id="overlay" hidden>
+      <div class="scrim" id="scrim"></div>
+      <aside class="drawer" id="drawer" role="dialog" aria-modal="true"></aside>
+    </div>
+
+    <script>
+      const $ = (id) => document.getElementById(id)
+      const all = (selector, root = document) => [...root.querySelectorAll(selector)]
+      const WALLET = 'G7fu2vBDEZ9SYM4agJPshffJQUmyg6UCEEUnxuYRAMuq'
+      const SIG = '4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi8nXv2Tq1ZsVhUuYc6mRkQ3d5yW7oE2pBtGxHnLfAaJe9'
+      const SIG2 = '2Qm8xZbYH6kPq1sTd3vWn7yRtL9cFe4gJa5hUo6iKpVbNrXwS8zDfA1eC3tG7yHj9kLmQ2wErT5uYi8oPaSdFg'
+      const PHANTOM = '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU'
+      const FRIEND = 'DRpbCBMxVnDK7maPM5tGv6MvB3v1sRMC86PZ8okm21hy'
+      const clients = { codex: 'Codex', claude: 'Claude Code' }
+      const SIGNING = { link: 'Link', local: 'Local', embedded: 'Embedded', wallet: 'Wallet' }
+      const STATUS = {
+        confirmed: 'Confirmed', pending: 'Pending', failed: 'Failed', expired: 'Expired',
+      }
+      // Raw statuses live under the groups the filter shows. The drawer shows the raw one.
+      const RAW = {
+        confirmed: 'confirmed', open: 'pending', preparing: 'pending', ready: 'pending', submitting: 'pending', unknown: 'pending',
+        failed: 'failed', expired: 'expired', transaction_expired: 'expired',
+      }
+      const RAW_NOTE = {
+        open: 'Waiting for someone to open the review link and sign.',
+        ready: 'Built and waiting for the agent\'s wallet to sign it.',
+        submitting: 'Sent. Waiting for the chain to confirm it.',
+        unknown: 'Sent, but the chain has not confirmed or rejected it yet.',
+        failed: 'The chain rejected this transaction. Nothing moved.',
+        expired: 'The review link expired before anyone signed.',
+        transaction_expired: 'The built transaction expired before it was signed. The agent can retry with the same key.',
+      }
+
+      // kind: agent | withdrawal | deposit. Amounts are from the wallet's side: out is negative.
+      const rows = [
+        { kind: 'agent', tool: 'jupiter_swap', title: 'Swap USDC for SOL', day: 'Today', t: '14:31', client: 'codex', signing: 'embedded', raw: 'confirmed',
+          out: '1 USDC', in: '0.0062 SOL', account: WALLET, sig: SIG, slot: '454798245', commit: 'finalized',
+          fields: [['You pay', '1 USDC'], ['Estimated receive', '0.0062 SOL'], ['Minimum receive', '0.00617 SOL'], ['Maximum slippage', '0.5%']] },
+        { kind: 'deposit', title: 'Deposit USDC', day: 'Today', t: '13:58', signing: 'wallet', raw: 'confirmed', in: '25 USDC', from: PHANTOM, sig: SIG2, slot: '454797102', commit: 'finalized' },
+        { kind: 'agent', tool: 'solana_transfer', title: 'Send SOL', day: 'Today', t: '13:20', client: 'claude', signing: 'link', raw: 'open',
+          out: '0.05 SOL', to: FRIEND, account: null, fields: [['Amount', '0.05 SOL'], ['Recipient', FRIEND]], reviewUrl: 'https://lanatools.sh/t/8f3a…c21e', expires: 'in 11 minutes' },
+        { kind: 'agent', tool: 'jupiter_swap', title: 'Swap SOL for USDC', day: 'Today', t: '12:02', client: 'codex', signing: 'local', raw: 'ready',
+          out: '0.1 SOL', in: '16.21 USDC', account: PHANTOM, fields: [['You pay', '0.1 SOL'], ['Estimated receive', '16.21 USDC'], ['Minimum receive', '16.13 USDC'], ['Maximum slippage', '0.5%']], expires: 'in 40 seconds' },
+        { kind: 'withdrawal', title: 'Withdrawal USDC', day: 'Today', t: '11:40', signing: 'wallet', raw: 'confirmed', out: '10 USDC', to: PHANTOM, sig: SIG, slot: '454790011', commit: 'confirmed' },
+        { kind: 'agent', tool: 'jupiter_swap', title: 'Swap USDC for SOL', day: 'Today', t: '09:12', client: 'codex', signing: 'embedded', raw: 'failed',
+          out: '1 USDC', in: '0.0061 SOL', account: WALLET, sig: SIG2, why: 'chain_failed', fields: [['You pay', '1 USDC'], ['Estimated receive', '0.0061 SOL'], ['Minimum receive', '0.00607 SOL'], ['Maximum slippage', '0.5%']] },
+        { kind: 'agent', tool: 'solana_transfer', title: 'Send SOL', day: 'Yesterday', t: '18:05', client: 'claude', signing: 'link', raw: 'expired',
+          out: '0.2 SOL', to: FRIEND, account: null, fields: [['Amount', '0.2 SOL'], ['Recipient', FRIEND]] },
+        { kind: 'withdrawal', title: 'Withdrawal SOL', day: 'Yesterday', t: '16:45', signing: 'wallet', raw: 'submitting', out: '0.5 SOL', to: PHANTOM, sig: SIG2 },
+        { kind: 'agent', tool: 'solana_transfer', title: 'Send SOL', day: 'Yesterday', t: '11:02', client: 'claude', signing: 'embedded', raw: 'confirmed',
+          out: '0.01 SOL', to: FRIEND, account: WALLET, sig: SIG, slot: '454601877', commit: 'finalized', fields: [['Amount', '0.01 SOL'], ['Recipient', FRIEND]] },
+        { kind: 'deposit', title: 'Deposit SOL', day: 'Oct 8', t: '10:14', signing: 'wallet', raw: 'confirmed', in: '0.1 SOL', from: PHANTOM, sig: SIG2, slot: '454412390', commit: 'finalized' },
+        { kind: 'deposit', title: 'Deposit USDC', day: 'Oct 8', t: '10:11', signing: 'wallet', raw: 'confirmed', in: '5 USDC', from: PHANTOM, sig: SIG, slot: '454412301', commit: 'finalized' },
+      ]
+      const state = { empty: false, status: 'all', kind: 'all', client: 'all', signing: 'all', address: '' }
+      const group = (r) => RAW[r.raw]
+      const time = (t) => {
+        const [h, m] = t.split(':').map(Number)
+        return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`
+      }
+      const short = (a) => `${a.slice(0, 4)}…${a.slice(-4)}`
+      const counterparty = (r) => r.to ?? r.from ?? null
+
+      // The second line answers "with whom", or what came back for a swap.
+      const detail = (r) => {
+        if (group(r) === 'failed') return `<span class="bad">Rejected by the chain. Nothing moved.</span>`
+        if (r.kind === 'deposit') return `<span>From ${short(r.from)}</span>`
+        if (r.to) return `<span>To ${short(r.to)}</span>`
+        if (r.in) return `<span>${r.in} ${group(r) === 'confirmed' ? 'received' : 'expected'}</span>`
+        return ''
+      }
+      const unit = (v) => v.replace(/ (\w+)$/, ' <u>$1</u>')
+      const amount = (r) => (r.kind === 'deposit' ? `<span class="in">+${unit(r.in)}</span>` : `−${unit(r.out)}`)
+      const mark = (r) => (group(r) === 'confirmed' ? '' : `<span class="st st-${group(r)}">${STATUS[group(r)]}</span>`)
+      // Who started it, and how it was signed. Deposits have no source we can name.
+      const source = (r) =>
+        r.kind === 'agent' ? `<b>${clients[r.client]}</b> · ${SIGNING[r.signing]}` : r.kind === 'withdrawal' ? `<b>You</b> · Wallet page` : ''
+      const row = (r, i) => `<button class="tr grid is-${group(r)}" data-row="${i}">
+          <span class="time meta">${time(r.t)}</span>
+          <span class="what cut"><b>${r.title}${mark(r)}</b>${detail(r)}</span>
+          <span class="src cut">${source(r)}</span>
+          <span class="sig cut">${r.sig ? `<a href="https://explorer.solana.com/tx/${r.sig}?cluster=devnet" target="_blank" rel="noreferrer" data-explorer>${short(r.sig)}</a>` : ''}</span>
+          <span class="num amt">${amount(r)}</span>
+        </button>`
+
+      function matches(r) {
+        const addr = state.address.trim().toLowerCase()
+        return (
+          (state.status === 'all' || group(r) === state.status) &&
+          (state.kind === 'all' || r.kind === state.kind) &&
+          (state.client === 'all' || r.client === state.client) &&
+          (state.signing === 'all' || r.signing === state.signing) &&
+          (!addr || [r.account, counterparty(r)].some((a) => a && a.toLowerCase().includes(addr)))
+        )
+      }
+      function render() {
+        const list = state.empty ? [] : rows.map((r, i) => [r, i]).filter(([r]) => matches(r))
+        let day = null
+        const perDay = list.reduce((n, [r]) => ((n[r.day] = (n[r.day] ?? 0) + 1), n), {})
+        $('rows').innerHTML = list
+          .map(([r, i]) => (r.day === day ? '' : `<p class="day"><span>${(day = r.day)}</span><small>${perDay[day]} ${perDay[day] === 1 ? 'transaction' : 'transactions'}</small></p>`) + row(r, i))
+          .join('')
+        all('[data-row]').forEach((b) => (b.onclick = () => open(rows[+b.dataset.row])))
+        all('[data-explorer]').forEach((a) => (a.onclick = (e) => e.stopPropagation()))
+        const filtered = state.status !== 'all' || state.kind !== 'all' || state.client !== 'all' || state.signing !== 'all' || state.address
+        $('f-clear').hidden = !filtered
+        $('tail').innerHTML = state.empty
+          ? `<div class="empty"><h2>No transactions yet</h2><p class="meta">Deposits to your wallet, withdrawals you send, and swaps or transfers an agent prepares all show up here, with their status and signature.</p></div>`
+          : !list.length
+            ? `<p class="foot meta">No transactions match these filters.</p>`
+            : `<p class="foot meta">That is every transaction.</p>`
+      }
+
+      // ---- drawer
+      const head = (title, sub) =>
+        `<div class="drawer-head"><div><p class="meta">${sub}</p><h2>${title}</h2></div><button class="link" data-close>Close</button></div>`
+      function openDrawer(html) {
+        $('drawer').innerHTML = html
+        $('overlay').hidden = false
+        $('drawer').querySelector('[data-close]').onclick = close
+      }
+      const close = () => ($('overlay').hidden = true)
+      $('scrim').onclick = close
+      addEventListener('keydown', (e) => e.key === 'Escape' && close())
+
+      function open(r) {
+        const g = group(r)
+        const who = r.kind === 'agent' ? clients[r.client] : r.kind === 'withdrawal' ? 'You, from the Wallet page' : 'Deposit'
+        const gone = g === 'failed' || g === 'expired' ? ' gone' : ''
+        const amountBlock =
+          r.kind === 'deposit'
+            ? `<span class="big${gone}">+${r.in}</span>`
+            : `<span class="big${gone}">−${r.out}</span>${r.in ? `<span class="also">+${r.in}${g === 'confirmed' ? '' : ' expected'}</span>` : ''}`
+        const statusLine =
+          g === 'pending' && r.kind === 'agent' && r.raw !== 'open' && r.raw !== 'ready'
+            ? `<p class="live">Checking the chain…</p>`
+            : g === 'pending' && r.raw === 'submitting'
+              ? `<p class="live">Checking the chain…</p>`
+              : `<p class="${g === 'failed' ? 'note' : 'meta'}">${RAW_NOTE[r.raw] ?? 'Confirmed on chain.'}</p>`
+        const fields = (r.fields ?? []).map(([k, v]) => `<dt>${k}</dt><dd class="${v.length > 30 ? 'mono' : ''}">${v}</dd>`).join('')
+        const party = r.kind === 'deposit' ? `<dt>From</dt><dd class="mono">${r.from}</dd>` : r.kind === 'withdrawal' ? `<dt>To</dt><dd class="mono">${r.to}</dd>` : ''
+        const signer = r.account ? `<dt>Signed by</dt><dd class="mono">${r.account === WALLET ? 'Your LanaTools wallet' : r.account}</dd>` : r.kind !== 'agent' ? `<dt>Signed by</dt><dd>Your LanaTools wallet</dd>` : ''
+        openDrawer(
+          `${head(r.title, `${who}, ${r.day.toLowerCase()} at ${time(r.t)}`)}
+          <p class="meta">${STATUS[g]}${g !== 'confirmed' && r.raw !== g ? ` <span style="opacity:.7">(${r.raw.replaceAll('_', ' ')})</span>` : ''}</p>
+          ${amountBlock}
+          ${statusLine}
+          <dl class="kv">
+            ${fields}${party}
+            <dt>Kind</dt><dd>${r.kind === 'agent' ? `Agent transaction, ${r.tool}` : r.kind[0].toUpperCase() + r.kind.slice(1)}</dd>
+            ${r.client ? `<dt>Client</dt><dd>${clients[r.client]}</dd>` : ''}
+            <dt>Signing</dt><dd>${SIGNING[r.signing]}${r.signing === 'embedded' ? ', no approval' : r.signing === 'link' ? ', on the review page' : r.signing === 'local' ? ", the agent's own wallet" : ''}</dd>
+            ${signer}
+            <dt>Network</dt><dd>Solana devnet</dd>
+            ${r.slot ? `<dt>Slot</dt><dd>${r.slot}, ${r.commit}</dd>` : ''}
+            ${r.why ? `<dt>Error</dt><dd>${r.why}</dd>` : ''}
+            ${r.expires ? `<dt>Expires</dt><dd>${r.expires}</dd>` : ''}
+          </dl>
+          ${r.sig ? `<p class="meta" style="margin-top:18px">Signature</p><p class="well">${r.sig}</p>
+            <div class="drawer-foot"><a class="link" href="#">View on Solana Explorer</a><button class="link">Copy signature</button></div>` : ''}
+          ${r.reviewUrl ? `<p class="meta" style="margin-top:18px">Review link</p><p class="well">${r.reviewUrl}</p>
+            <div class="drawer-foot"><a class="link" href="#">Open review page</a><button class="link">Copy link</button></div>` : ''}`,
+        )
+      }
+
+      // ---- filters
+      const counts = () => rows.reduce((n, r) => ((n[group(r)] = (n[group(r)] ?? 0) + 1), n), {})
+      function paintTabs() {
+        const n = state.empty ? {} : counts()
+        $('f-status').innerHTML = [['all', 'All'], ['pending', 'Pending'], ['confirmed', 'Confirmed'], ['failed', 'Failed'], ['expired', 'Expired']]
+          .map(([id, label]) => `<button data-v="${id}" aria-pressed="${id === state.status}">${label}${id !== 'all' && n[id] ? `<i>${n[id]}</i>` : ''}</button>`)
+          .join('')
+        all('button', $('f-status')).forEach((b) => (b.onclick = () => ((state.status = b.dataset.v), paintTabs(), render())))
+      }
+      const select = (el, label, options, key) => {
+        el.innerHTML = `<option value="all">${label}</option>` + options.map(([id, name]) => `<option value="${id}">${name}</option>`).join('')
+        el.className = 'off'
+        el.onchange = () => {
+          state[key] = el.value
+          el.className = el.value === 'all' ? 'off' : ''
+          render()
+        }
+      }
+      select($('f-kind'), 'All kinds', [['agent', 'Agent'], ['withdrawal', 'Withdrawals'], ['deposit', 'Deposits']], 'kind')
+      select($('f-client'), 'All clients', Object.entries(clients), 'client')
+      select($('f-signing'), 'Any signing', Object.entries(SIGNING), 'signing')
+      $('f-address').oninput = (e) => ((state.address = e.target.value), render())
+      $('f-clear').onclick = () => {
+        Object.assign(state, { status: 'all', kind: 'all', client: 'all', signing: 'all', address: '' })
+        for (const id of ['f-kind', 'f-client', 'f-signing']) ($(id).value = 'all'), ($(id).className = 'off')
+        $('f-address').value = ''
+        paintTabs()
+        render()
+      }
+      paintTabs()
+      $('mock-empty').onclick = () => {
+        state.empty = !state.empty
+        $('mock-empty').textContent = state.empty ? 'sample data' : 'empty state'
+        paintTabs()
+        render()
+      }
+      render()
+    </script>
+  </body>
+</html>
