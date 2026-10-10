@@ -29,6 +29,11 @@
   "vars": { "SOLANA_NETWORK": "mainnet", "WEB_ORIGIN": "https://lanatools.sh" },
   "ratelimits": [
     {
+      "name": "CATALOG_SEARCH_LIMITER",
+      "namespace_id": "2001003",
+      "simple": { "limit": 20, "period": 60 },
+    },
+    {
       "name": "TRANSACTION_LINK_LIMITER",
       "namespace_id": "2001002",
       "simple": { "limit": 120, "period": 60 },

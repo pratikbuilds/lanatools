@@ -19,6 +19,11 @@
   "vars": { "SOLANA_NETWORK": "devnet", "WEB_ORIGIN": "http://localhost:5173" },
   "ratelimits": [
     {
+      "name": "CATALOG_SEARCH_LIMITER",
+      "namespace_id": "2001003",
+      "simple": { "limit": 20, "period": 60 },
+    },
+    {
       "name": "TRANSACTION_LINK_LIMITER",
       "namespace_id": "2001002",
       "simple": { "limit": 120, "period": 60 },
