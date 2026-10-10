@@ -184,7 +184,8 @@ function SignIn() {
   if (authenticated)
     return (
       <>
-        <Navigate to="/dashboard" replace />
+        {/* OAuth finishes by rewriting the URL; let it finish before navigating. */}
+        {ready && !googleBusy && <Navigate to="/dashboard" replace />}
         <Preparing label="Opening your dashboard" />
       </>
     )
