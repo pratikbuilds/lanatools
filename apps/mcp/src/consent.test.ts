@@ -75,7 +75,7 @@ test('transaction permissions disclose execution without approval or amount limi
     'Swap tokens from your LanaTools wallet without further approval or an amount limit.',
   )
   expect(html).toContain(
-    'Send SOL from your LanaTools wallet without further approval or an amount limit.',
+    'Send SOL and tokens from your LanaTools wallet without further approval or an amount limit.',
   )
 })
 

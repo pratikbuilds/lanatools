@@ -9,6 +9,7 @@ import { mcpGrant, transactionRequest } from '../db/schema'
 import { testDatabase } from '../test-database'
 import { PAYMENT_NETWORKS } from '../solana/network'
 import { createTransactionRequest } from '../transactions/requests'
+import type { TransactionRpc } from '../transactions/submission'
 import { createTransactionLinks, transactionLinks } from './transaction-links'
 import type { TransactionLinksEnv } from './transaction-links'
 
@@ -196,6 +197,8 @@ test('public GET recovers chain confirmation from a saved signature without buil
     '/api/transaction-links',
     createTransactionLinks({
       rpc: {
+        // The SOL builder never reads accounts.
+        accounts: {} as TransactionRpc['accounts'],
         genesisHash: async () => PAYMENT_NETWORKS.devnet.genesisHash,
         latestBlockhash: async () => {
           calls.push('build')

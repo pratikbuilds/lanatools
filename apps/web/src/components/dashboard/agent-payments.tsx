@@ -218,7 +218,7 @@ export function AgentPaymentsView({
                 : running === 'setup'
                   ? 'Setting up agent payments…'
                   : enabled
-                    ? 'Your clients can pay from this wallet within their payment limits. Clients allowed swaps or SOL transfers can send from it without further approval or an amount limit when transaction signing is set up. Disconnect a client to stop just that one.'
+                    ? 'Your clients can pay from this wallet within their payment limits. Clients allowed swaps or transfers can send SOL and tokens from it without further approval or an amount limit when transaction signing is set up. Disconnect a client to stop just that one.'
                     : removed
                       ? 'You removed LanaTools access. No client can pay, and LanaTools cannot sign from your wallet.'
                       : 'Your clients cannot pay until the LanaTools signer is on your wallet.'}
@@ -281,9 +281,8 @@ export function AgentPaymentsView({
             <dd>Within each client’s own limit</dd>
             <dt className="text-fg-3">Transactions</dt>
             <dd>
-              When set up, swaps and SOL transfers need no further approval and
-              have no amount limit. The client must have the matching
-              permission.
+              When set up, swaps and transfers need no further approval and have
+              no amount limit. The client must have the matching permission.
             </dd>
             <dt className="text-fg-3">Wallet</dt>
             <dd className="min-w-0">

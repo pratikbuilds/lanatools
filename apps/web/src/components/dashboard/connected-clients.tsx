@@ -20,7 +20,7 @@ const TOOL_LABELS: Record<string, string> = {
   'payments:pay': 'Pay within its limit',
   'jupiter:read': 'Jupiter',
   'phoenix:read': 'Phoenix',
-  'solana:transfer': 'SOL transfers',
+  'solana:transfer': 'SOL and token transfers',
 }
 
 /** The tool families a client may use; the catalog is always included. */
