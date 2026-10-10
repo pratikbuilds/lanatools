@@ -24,19 +24,7 @@ export function WalletPage({
   const [connecting, setConnecting] = useState<AgentId | null>(null)
   return (
     <>
-      <PageHead title="Wallet">
-        <span className="d-chip">
-          <SolanaMark />
-          {NETWORK.label}
-        </span>
-        <button
-          type="button"
-          className="d-btn sm:ml-auto"
-          onClick={() => setConnecting(DEFAULT_CLIENT)}
-        >
-          <span aria-hidden="true">＋</span> Connect a client
-        </button>
-      </PageHead>
+      <WalletPageHead onConnect={() => setConnecting(DEFAULT_CLIENT)} />
       {walletAddress ? (
         <WalletPanel walletAddress={walletAddress} />
       ) : (
@@ -52,5 +40,24 @@ export function WalletPage({
         onClose={() => setConnecting(null)}
       />
     </>
+  )
+}
+
+export function WalletPageHead({ onConnect }: { onConnect?: () => void }) {
+  return (
+    <PageHead title="Wallet">
+      <span className="d-chip">
+        <SolanaMark />
+        {NETWORK.label}
+      </span>
+      <button
+        type="button"
+        className="d-btn sm:ml-auto"
+        disabled={!onConnect}
+        onClick={onConnect}
+      >
+        <span aria-hidden="true">＋</span> Connect a client
+      </button>
+    </PageHead>
   )
 }

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 
 export const walletAddress = 'F8ypHfv7gs9JiHVnb51g7aVA2tmmC9ZpF5FdpChYjpV3'
 const unavailable = () => {
@@ -7,24 +8,34 @@ const unavailable = () => {
 export const PrivyProvider = ({ children }: { children: ReactNode }) => children
 export const defaultSolanaRpcsPlugin = () => ({})
 export const toSolanaWalletConnectors = () => []
-export const usePrivy = () => ({
-  ready: !new URLSearchParams(location.search).has('loading'),
-  authenticated: true,
-  user: {
-    id: 'responsive-test',
-    google: { name: 'mobile-layout-test-account@example.com' },
-    linkedAccounts: [
-      {
-        type: 'wallet',
-        chainType: 'solana',
-        walletClientType: 'privy',
-        address: walletAddress,
-      },
-    ],
-  },
-  getAccessToken: async () => 'responsive-test',
-  logout: unavailable,
-})
+export const usePrivy = () => {
+  const [ready, setReady] = useState(
+    () => !new URLSearchParams(location.search).has('loading'),
+  )
+  useEffect(() => {
+    const restore = () => setReady(true)
+    window.addEventListener('test:privy-ready', restore)
+    return () => window.removeEventListener('test:privy-ready', restore)
+  }, [])
+  return {
+    ready,
+    authenticated: true,
+    user: {
+      id: 'responsive-test',
+      google: { name: 'mobile-layout-test-account@example.com' },
+      linkedAccounts: [
+        {
+          type: 'wallet',
+          chainType: 'solana',
+          walletClientType: 'privy',
+          address: walletAddress,
+        },
+      ],
+    },
+    getAccessToken: async () => 'responsive-test',
+    logout: unavailable,
+  }
+}
 export const useSigners = () => ({
   addSigners: unavailable,
   removeSigners: unavailable,
