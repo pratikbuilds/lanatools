@@ -109,9 +109,9 @@ function Hero() {
       <div className="grid items-center gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-14">
         <div>
           <h1 className="display text-[clamp(2.2rem,4.5vw,3.5rem)]">
-            Give your agents
+            Connect your agent
             <br />
-            <span className="text-lime">Solana tools.</span>
+            <span className="text-lime">to everything on Solana.</span>
           </h1>
           <div className="mt-6 max-w-[56ch] text-[14px] leading-6 text-paper">
             <p className="font-medium">
@@ -127,7 +127,7 @@ function Hero() {
             href="/sign-in"
             className="btn btn-primary group mt-8 h-14! gap-3! px-7! text-[16px]! max-sm:w-full"
           >
-            Connect your agent
+            Get started
             <span
               aria-hidden="true"
               className="transition-transform duration-200 ease-(--ease-out) group-hover:translate-x-1"
