@@ -55,6 +55,7 @@ function describeTransfer(input: SolTransferArguments): TransactionReview {
 export const solTransfer = defineTransactionOperation({
   arguments: solTransferArguments,
   describe: describeTransfer,
+  counterparty: (input) => input.recipient,
   build: buildSolTransfer,
   submission: {
     schema: z.undefined(),

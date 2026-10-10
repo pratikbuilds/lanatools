@@ -47,6 +47,8 @@ export type TransactionOperation<TContext extends TransactionContext> = {
   resubmit?: boolean
   supportedNetworks: readonly NetworkId[]
   describe: (input: unknown) => TransactionReview
+  /** The other party's address, when the operation has one, for ledgers to index. */
+  counterparty: (input: unknown) => string | null
   /** The review shown to the signer; may look up names. Falls back to describe. */
   review: (input: unknown, context: TContext) => Promise<TransactionReview>
   build: (
@@ -70,6 +72,8 @@ export function defineTransactionOperation<
   resubmit?: boolean
   supportedNetworks?: readonly NetworkId[]
   describe: (input: z.infer<z.ZodObject<TShape>>) => TransactionReview
+  /** The recipient of a transfer. Left out when there is no single other party. */
+  counterparty?: (input: z.infer<z.ZodObject<TShape>>) => string | null
   /** Optional richer review, such as token names, read when it is needed. */
   review?: (
     input: z.infer<z.ZodObject<TShape>>,
@@ -115,6 +119,8 @@ export function defineTransactionOperation<
     arguments: definition.arguments,
     supportedNetworks,
     describe: (input) => definition.describe(definition.arguments.parse(input)),
+    counterparty: (input) =>
+      definition.counterparty?.(definition.arguments.parse(input)) ?? null,
     review: (input, context) =>
       review(definition.arguments.parse(input), context),
     async build(input, account, context) {

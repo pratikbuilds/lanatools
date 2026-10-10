@@ -86,7 +86,7 @@ for (const width of [390, 1440]) {
   })
 }
 
-for (const pageName of ['Activity', 'Settings']) {
+for (const pageName of ['Activity', 'Settings', 'Transactions']) {
   test(`${pageName} reload shows its own account skeleton`, async ({
     page,
   }) => {

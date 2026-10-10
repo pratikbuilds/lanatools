@@ -369,3 +369,121 @@ export const TransactionResult = type({
   expiresAt: 'number',
 })
 export type TransactionResult = typeof TransactionResult.infer
+
+/**
+ * How the dashboard groups transaction statuses: what is still moving, what
+ * landed, what the chain rejected, and what can no longer proceed.
+ */
+export const TRANSACTION_STATUS_GROUPS = [
+  'pending',
+  'confirmed',
+  'failed',
+  'expired',
+] as const
+export const TransactionStatusGroup = type.enumerated(
+  ...TRANSACTION_STATUS_GROUPS,
+)
+export type TransactionStatusGroup = typeof TransactionStatusGroup.infer
+
+export function transactionStatusGroup(
+  status: TransactionStatus,
+): TransactionStatusGroup {
+  switch (status) {
+    case 'confirmed':
+      return 'confirmed'
+    case 'failed':
+      return 'failed'
+    case 'expired':
+    case 'unavailable':
+      return 'expired'
+    default:
+      return 'pending'
+  }
+}
+
+/**
+ * A transaction an agent prepared, as the dashboard lists it. Public fields
+ * only: never the arguments, the prepared bytes or execution metadata.
+ */
+export const AgentTransactionItem = type({
+  kind: "'agent'",
+  id: 'string',
+  tool: 'string',
+  delivery: TransactionDelivery,
+  status: TransactionStatus,
+  network: "'mainnet' | 'devnet'",
+  clientId: 'string',
+  clientName: 'string | null',
+  /** False once the user has disconnected the client. */
+  connected: 'boolean',
+  review: TransactionReview,
+  /** The signing wallet, once known. */
+  account: 'string | null',
+  /** The other party, such as a transfer's recipient; null for a swap. */
+  counterparty: 'string | null',
+  signature: 'string | null',
+  receipt: TransactionReceipt.or('null'),
+  /** The review page, while a link can still be signed there. */
+  reviewUrl: 'string | null',
+  /** A recorded error code, such as `chain_failed`. */
+  reason: 'string | null',
+  createdAt: 'number',
+  expiresAt: 'number',
+})
+export type AgentTransactionItem = typeof AgentTransactionItem.infer
+
+/** One asset moving into or out of the user's wallet, in base units. */
+export const WalletTransferItem = type({
+  kind: "'withdrawal' | 'deposit'",
+  id: 'string',
+  status: "'pending' | 'confirmed' | 'failed'",
+  network: "'mainnet' | 'devnet'",
+  /** A mint address, or 'native' for SOL. */
+  mint: 'string',
+  symbol: 'string | null',
+  decimals: 'number.integer >= 0 & number <= 255',
+  amountAtomic: 'string.integer',
+  counterparty: 'string',
+  signature: 'string',
+  slot: 'string | null',
+  /** The block time once known, otherwise when LanaTools sent it. */
+  createdAt: 'number',
+})
+export type WalletTransferItem = typeof WalletTransferItem.infer
+
+export const TransactionActivityItem =
+  AgentTransactionItem.or(WalletTransferItem)
+export type TransactionActivityItem = typeof TransactionActivityItem.infer
+
+export const TransactionsQuery = type({
+  'kind?': "'agent' | 'withdrawal' | 'deposit'",
+  'status?': TransactionStatusGroup,
+  'client?': 'string',
+  'delivery?': TransactionDelivery,
+  /** Exactly a signing wallet or counterparty address. */
+  'address?': 'string <= 64',
+  'before?': 'string',
+})
+export type TransactionsQuery = typeof TransactionsQuery.infer
+
+export const TransactionsPage = type({
+  items: TransactionActivityItem.array(),
+  /** Pass as `before` to read the next, older page; null on the last page. */
+  nextCursor: 'string | null',
+  /** Per status group, over every transaction the other filters select. */
+  counts: {
+    pending: 'number',
+    confirmed: 'number',
+    failed: 'number',
+    expired: 'number',
+  },
+})
+export type TransactionsPage = typeof TransactionsPage.infer
+
+/** What one chain sync of the wallet ledger did; `more` asks for another call. */
+export const TransactionsSync = type({
+  inserted: 'number',
+  settled: 'number',
+  more: 'boolean',
+})
+export type TransactionsSync = typeof TransactionsSync.infer

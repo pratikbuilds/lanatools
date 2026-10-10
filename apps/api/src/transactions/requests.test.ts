@@ -91,6 +91,7 @@ test('a grant with the tool scope creates an unsigned link intent', async () => 
     argumentsJson: JSON.stringify({ recipient, amountLamports: '10000000' }),
     delivery: 'link',
     account: null,
+    counterparty: recipient,
     candidateJson: null,
     signature: null,
     receiptJson: null,

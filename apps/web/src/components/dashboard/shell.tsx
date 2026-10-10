@@ -9,6 +9,7 @@ import { WalletAddressText } from './wallet-address'
 const DESTINATIONS = [
   { to: '/dashboard', label: 'Wallet', exact: true },
   { to: '/dashboard/activity', label: 'Activity', exact: false },
+  { to: '/dashboard/transactions', label: 'Transactions', exact: false },
   { to: '/dashboard/settings', label: 'Settings', exact: false },
 ] as const
 

@@ -97,7 +97,7 @@ function failed(code: keyof typeof ERRORS, message: string = ERRORS[code]) {
   } as const
 }
 
-function configuration(env: TransactionLinkEnv) {
+export function configuration(env: TransactionLinkEnv) {
   const network = readSolanaNetwork(env)
   const origin = new URL(env.WEB_ORIGIN)
   if (
@@ -201,6 +201,7 @@ export async function createTransactionRequest(
       return failed('embedded_unavailable')
     const db = drizzle(env.DB)
     const id = crypto.randomUUID()
+    const counterparty = tool.counterparty(args)
     // Names a review shows (such as token symbols) are looked up once, here.
     const review = await tool.review(args, {
       requestId: id,
@@ -213,11 +214,11 @@ export async function createTransactionRequest(
       insert into transaction_request
         (id, tool_name, arguments_json, network, creator_user_id,
          creator_client_id, creator_grant_id, idempotency_key, delivery,
-         review_json, account, created_at, updated_at, expires_at)
+         review_json, account, counterparty, created_at, updated_at, expires_at)
       select ${id}, ${name}, ${argumentsJson}, ${config.network},
         ${identity.userId}, ${identity.clientId}, ${identity.grantId}, ${idempotencyKey},
         ${delivery}, ${JSON.stringify(review)}, ${embedded?.wallet?.walletAddress ?? null},
-        ${now}, ${now}, ${now + 15 * 60_000}
+        ${counterparty}, ${now}, ${now}, ${now + 15 * 60_000}
       from mcp_grant where id = ${identity.grantId}
         and privy_user_id = ${identity.userId} and client_id = ${identity.clientId}
         and status = 'active'
@@ -341,6 +342,66 @@ export async function createTransactionRequest(
 }
 
 /** Read saved execution state and project link closure without changing the row. */
+export type TransactionRequestRow = typeof transactionRequest.$inferSelect
+
+/**
+ * The link a stored row describes, given whether its grant and wallet are
+ * still available. Pure, so the dashboard's list can project many rows
+ * without a lookup per row.
+ */
+export function projectTransactionLink(
+  row: TransactionRequestRow,
+  available: boolean,
+  now = Date.now(),
+  tools?: TransactionRegistry,
+): TransactionLink {
+  const review = row.candidateJson
+    ? publicTransaction(JSON.parse(row.candidateJson)).review
+    : row.reviewJson
+      ? TransactionReview.assert(JSON.parse(row.reviewJson))
+      : legacyReview()
+  function legacyReview() {
+    const tool = transactionOperation(row.toolName, tools)
+    if (!tool) throw new Error('Stored transaction tool is unavailable')
+    return tool.describe(tool.arguments.parse(JSON.parse(row.argumentsJson)))
+  }
+  const status =
+    !row.signature &&
+    (['open', 'preparing', 'ready', 'transaction_expired'].includes(
+      row.status,
+    ) ||
+      isLegacyBlockhashExpiry(row))
+      ? !available
+        ? 'unavailable'
+        : row.expiresAt <= now
+          ? 'expired'
+          : preparationLeaseExpired(row, now)
+            ? row.candidateJson
+              ? 'transaction_expired'
+              : 'open'
+            : isLegacyBlockhashExpiry(row)
+              ? 'transaction_expired'
+              : row.status
+      : row.status
+  return {
+    id: row.id,
+    tool: row.toolName,
+    network: row.network,
+    review,
+    status,
+    account:
+      preparationLeaseExpired(row, now) && !row.candidateJson
+        ? null
+        : row.account,
+    signature: row.signature,
+    receipt: row.receiptJson
+      ? TransactionReceipt.assert(JSON.parse(row.receiptJson))
+      : null,
+    createdAt: row.createdAt,
+    expiresAt: row.expiresAt,
+  }
+}
+
 export async function readTransactionLink(
   database: D1Database,
   id: string,
@@ -354,9 +415,6 @@ export async function readTransactionLink(
     .where(eq(transactionRequest.id, id))
     .get()
   if (!row) return null
-  const tool = transactionOperation(row.toolName, tools)
-  if (!tool) throw new Error('Stored transaction tool is unavailable')
-  const args = tool.arguments.parse(JSON.parse(row.argumentsJson))
   const grant = await db
     .select({ status: mcpGrant.status })
     .from(mcpGrant)
@@ -373,45 +431,12 @@ export async function readTransactionLink(
     !!row.signature ||
     (await embeddedWallet(database, row.creatorUserId))?.walletAddress ===
       row.account
-  const status =
-    !row.signature &&
-    (['open', 'preparing', 'ready', 'transaction_expired'].includes(
-      row.status,
-    ) ||
-      isLegacyBlockhashExpiry(row))
-      ? grant?.status !== 'active' || !walletAvailable
-        ? 'unavailable'
-        : row.expiresAt <= now
-          ? 'expired'
-          : preparationLeaseExpired(row, now)
-            ? row.candidateJson
-              ? 'transaction_expired'
-              : 'open'
-            : isLegacyBlockhashExpiry(row)
-              ? 'transaction_expired'
-              : row.status
-      : row.status
-  return {
-    id: row.id,
-    tool: row.toolName,
-    network: row.network,
-    review: row.candidateJson
-      ? publicTransaction(JSON.parse(row.candidateJson)).review
-      : row.reviewJson
-        ? TransactionReview.assert(JSON.parse(row.reviewJson))
-        : tool.describe(args),
-    status,
-    account:
-      preparationLeaseExpired(row, now) && !row.candidateJson
-        ? null
-        : row.account,
-    signature: row.signature,
-    receipt: row.receiptJson
-      ? TransactionReceipt.assert(JSON.parse(row.receiptJson))
-      : null,
-    createdAt: row.createdAt,
-    expiresAt: row.expiresAt,
-  }
+  return projectTransactionLink(
+    row,
+    grant?.status === 'active' && walletAvailable,
+    now,
+    tools,
+  )
 }
 
 export async function transactionStatus(
@@ -488,7 +513,8 @@ export const SendTransactionInput = z.strictObject({
     .regex(/^[A-Za-z0-9+/]+={0,2}$/),
 })
 
-const liveAccess = sql`exists (select 1 from mcp_grant
+/** The creator's grant is active and, for embedded delivery, its wallet still signs. */
+export const liveAccess = sql`exists (select 1 from mcp_grant
   where mcp_grant.id = transaction_request.creator_grant_id
   and mcp_grant.privy_user_id = transaction_request.creator_user_id
   and mcp_grant.client_id = transaction_request.creator_client_id

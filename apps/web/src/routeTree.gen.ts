@@ -17,6 +17,7 @@ import { Route as TxLinkIdRouteImport } from './routes/tx.$linkId'
 import { Route as AccountDashboardIndexRouteImport } from './routes/_account/dashboard/index'
 import { Route as AccountDashboardActivityRouteImport } from './routes/_account/dashboard/activity'
 import { Route as AccountDashboardSettingsRouteImport } from './routes/_account/dashboard/settings'
+import { Route as AccountDashboardTransactionsRouteImport } from './routes/_account/dashboard/transactions'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -59,6 +60,12 @@ const AccountDashboardSettingsRoute =
     path: '/settings',
     getParentRoute: () => AccountDashboardRoute,
   } as any)
+const AccountDashboardTransactionsRoute =
+  AccountDashboardTransactionsRouteImport.update({
+    id: '/transactions',
+    path: '/transactions',
+    getParentRoute: () => AccountDashboardRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -67,6 +74,7 @@ export interface FileRoutesByFullPath {
   '/tx/$linkId': typeof TxLinkIdRoute
   '/dashboard/activity': typeof AccountDashboardActivityRoute
   '/dashboard/settings': typeof AccountDashboardSettingsRoute
+  '/dashboard/transactions': typeof AccountDashboardTransactionsRoute
   '/dashboard/': typeof AccountDashboardIndexRoute
 }
 export interface FileRoutesByTo {
@@ -75,6 +83,7 @@ export interface FileRoutesByTo {
   '/tx/$linkId': typeof TxLinkIdRoute
   '/dashboard/activity': typeof AccountDashboardActivityRoute
   '/dashboard/settings': typeof AccountDashboardSettingsRoute
+  '/dashboard/transactions': typeof AccountDashboardTransactionsRoute
   '/dashboard': typeof AccountDashboardIndexRoute
 }
 export interface FileRoutesById {
@@ -86,6 +95,7 @@ export interface FileRoutesById {
   '/tx/$linkId': typeof TxLinkIdRoute
   '/_account/dashboard/activity': typeof AccountDashboardActivityRoute
   '/_account/dashboard/settings': typeof AccountDashboardSettingsRoute
+  '/_account/dashboard/transactions': typeof AccountDashboardTransactionsRoute
   '/_account/dashboard/': typeof AccountDashboardIndexRoute
 }
 export interface FileRouteTypes {
@@ -97,6 +107,7 @@ export interface FileRouteTypes {
     | '/tx/$linkId'
     | '/dashboard/activity'
     | '/dashboard/settings'
+    | '/dashboard/transactions'
     | '/dashboard/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -105,6 +116,7 @@ export interface FileRouteTypes {
     | '/tx/$linkId'
     | '/dashboard/activity'
     | '/dashboard/settings'
+    | '/dashboard/transactions'
     | '/dashboard'
   id:
     | '__root__'
@@ -115,6 +127,7 @@ export interface FileRouteTypes {
     | '/tx/$linkId'
     | '/_account/dashboard/activity'
     | '/_account/dashboard/settings'
+    | '/_account/dashboard/transactions'
     | '/_account/dashboard/'
   fileRoutesById: FileRoutesById
 }
@@ -182,18 +195,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AccountDashboardSettingsRouteImport
       parentRoute: typeof AccountDashboardRoute
     }
+    '/_account/dashboard/transactions': {
+      id: '/_account/dashboard/transactions'
+      path: '/transactions'
+      fullPath: '/dashboard/transactions'
+      preLoaderRoute: typeof AccountDashboardTransactionsRouteImport
+      parentRoute: typeof AccountDashboardRoute
+    }
   }
 }
 
 interface AccountDashboardRouteChildren {
   AccountDashboardActivityRoute: typeof AccountDashboardActivityRoute
   AccountDashboardSettingsRoute: typeof AccountDashboardSettingsRoute
+  AccountDashboardTransactionsRoute: typeof AccountDashboardTransactionsRoute
   AccountDashboardIndexRoute: typeof AccountDashboardIndexRoute
 }
 
 const AccountDashboardRouteChildren: AccountDashboardRouteChildren = {
   AccountDashboardActivityRoute: AccountDashboardActivityRoute,
   AccountDashboardSettingsRoute: AccountDashboardSettingsRoute,
+  AccountDashboardTransactionsRoute: AccountDashboardTransactionsRoute,
   AccountDashboardIndexRoute: AccountDashboardIndexRoute,
 }
 

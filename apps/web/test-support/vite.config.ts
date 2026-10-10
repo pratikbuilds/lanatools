@@ -16,6 +16,15 @@ export default defineConfig(() =>
     define: {
       'import.meta.env.VITE_PRIVY_APP_ID': JSON.stringify('responsive-test'),
     },
-    server: { host: '127.0.0.1', port: 4174, strictPort: true },
+    server: {
+      host: '127.0.0.1',
+      port: 4174,
+      strictPort: true,
+      // Prepare dashboard modules before tests hold authentication pending.
+      // Cold dev transforms otherwise outlast the skeleton visibility check.
+      warmup: {
+        clientFiles: ['./src/app.tsx', './src/components/dashboard/*.tsx'],
+      },
+    },
   }),
 )
