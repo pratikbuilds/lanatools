@@ -42,6 +42,18 @@ export async function mockDashboard(page: Page, empty = false) {
         network: 'devnet',
         sol: '100000000',
         usdc: '123456789000',
+        tokens: [
+          {
+            account: 'test-usdc',
+            mint: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
+            program: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+            amount: '123456789000',
+            decimals: 6,
+            name: 'USD Coin',
+            symbol: 'USDC',
+            image: null,
+          },
+        ],
       },
       '/api/mcp/clients': { clients: empty ? [] : [client] },
       '/api/payments/signer': { status: 'enabled', walletAddress },

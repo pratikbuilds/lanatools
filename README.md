@@ -15,7 +15,7 @@ TanStack Query, and Tailwind. Shared HTTP schemas live in `packages/contracts`.
 | `apps/api/src/mcp-grants.ts`            | Consent, grants and `authorizeGrant`, the one grant check        |
 | `packages/contracts/src/networks.ts`    | Shared Solana network definitions and environment selection      |
 | `apps/api/src/payments`                 | `call`: challenges, spending limits, signing and settlement      |
-| `apps/api/src/solana/usdc-transfer.ts`  | Withdrawals: the USDC transfer the user signs in the dashboard   |
+| `apps/api/src/solana/token-transfer.ts` | Withdrawals: token and SOL transfers signed in the dashboard     |
 | `apps/mcp`                              | OAuth and the MCP server; provider tools run in the API          |
 | `scripts/dev.ts`                        | Local setup: `bun run dev`, `dev:reset` and `dev:fund`           |
 

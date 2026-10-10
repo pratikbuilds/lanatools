@@ -83,6 +83,7 @@ export function assetSummary(value: unknown) {
       metadataText(info.symbol) ??
       metadataText(metadata.symbol) ??
       metadataText(extensions.symbol),
+    image: metadataText(record(record(asset.content).links).image),
     decimals,
     supply:
       rawSupply !== null && decimals !== null

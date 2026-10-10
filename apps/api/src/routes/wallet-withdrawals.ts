@@ -10,17 +10,17 @@ import { findUserWallet } from '../payments/signer-setup'
 import { paymentConfig } from '../solana/network'
 import {
   TransferError,
-  prepareUsdcTransfer,
+  prepareTokenTransfer,
   readSignedWithdrawal,
-  sendUsdcTransfer,
-} from '../solana/usdc-transfer'
+  sendWithdrawal,
+} from '../solana/token-transfer'
 import { privyAuth } from './privy-auth'
 
 /**
  * Withdrawals from the payment wallet, in two steps around the user's own
  * signature: `prepare` builds the transfer and `send` broadcasts the signed
  * one. Both work only on the signed-in user's own wallet, and `send` relays
- * nothing but a checked USDC withdrawal. The RPC is checked against the
+ * nothing but a checked token withdrawal. The RPC is checked against the
  * network before either, as for payments; the server never signs.
  */
 export const walletWithdrawals = new Hono<{
@@ -33,18 +33,21 @@ export const walletWithdrawals = new Hono<{
     if (
       body instanceof type.errors ||
       !isAddress(body.owner) ||
-      !isAddress(body.to)
+      !isAddress(body.to) ||
+      (body.mint !== 'native' && !isAddress(body.mint)) ||
+      (body.source !== undefined && !isAddress(body.source))
     )
       throw new HTTPException(400)
-    const { network, rpcUrl } = await paymentConfig(c.env)
+    const { rpcUrl } = await paymentConfig(c.env)
     return withUserErrors(async () => {
       await assertOwnWallet(c.env, c.get('userId'), body.owner)
       return c.json({
-        transaction: await prepareUsdcTransfer(createSolanaRpc(rpcUrl), {
+        transaction: await prepareTokenTransfer(createSolanaRpc(rpcUrl), {
           owner: address(body.owner),
           to: address(body.to),
           amount: BigInt(body.amount),
-          mint: address(network.usdcMint),
+          mint: body.mint === 'native' ? 'native' : address(body.mint),
+          ...(body.source ? { source: address(body.source) } : {}),
         }),
       } satisfies WithdrawalTransaction)
     })
@@ -52,15 +55,12 @@ export const walletWithdrawals = new Hono<{
   .post('/send', async (c) => {
     const body = WithdrawalTransaction(await c.req.json().catch(() => null))
     if (body instanceof type.errors) throw new HTTPException(400)
-    const { network, rpcUrl } = await paymentConfig(c.env)
+    const { rpcUrl } = await paymentConfig(c.env)
     return withUserErrors(async () => {
-      const withdrawal = await readSignedWithdrawal(
-        body.transaction,
-        address(network.usdcMint),
-      )
+      const withdrawal = await readSignedWithdrawal(body.transaction)
       await assertOwnWallet(c.env, c.get('userId'), withdrawal.payer)
       return c.json(
-        (await sendUsdcTransfer(
+        (await sendWithdrawal(
           createSolanaRpc(rpcUrl),
           withdrawal,
         )) satisfies WithdrawalReceipt,

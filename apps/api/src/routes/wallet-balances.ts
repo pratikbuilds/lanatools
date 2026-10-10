@@ -9,14 +9,15 @@ import {
   RPC_TIMEOUT_MS,
   solanaConfig,
 } from '../solana/network'
-import { usdcAccount } from '../solana/usdc-transfer'
+import { associatedTokenAccount } from '../solana/token-transfer'
+import { walletTokens } from '../solana/wallet-tokens'
 import { privyAuth } from './privy-auth'
 
 /**
- * Reads a wallet's SOL and USDC balances for the dashboard, so the browser
+ * Reads a wallet's SOL and token balances for the dashboard, so the browser
  * never needs an RPC URL and the provider key in it stays on the server.
  * USDC is read from the wallet's associated token account, the one a
- * withdrawal spends from, so what the dashboard shows can be withdrawn.
+ * agent payments spend from. The token list includes other owned accounts.
  */
 export const walletBalances = new Hono<{
   Bindings: McpEnv
@@ -31,12 +32,13 @@ export const walletBalances = new Hono<{
     const options = { abortSignal: AbortSignal.timeout(RPC_TIMEOUT_MS) }
     let sol: bigint
     let usdc: bigint
+    let tokens: Awaited<ReturnType<typeof walletTokens>>
     try {
-      const [balance, held] = await Promise.all([
+      const [balance, held, holdings] = await Promise.all([
         rpc
           .getBalance(address(owner), { commitment: 'confirmed' })
           .send(options),
-        usdcAccount(
+        associatedTokenAccount(
           address(owner),
           address(PAYMENT_NETWORKS[network.name].usdcMint),
         ).then((account) =>
@@ -45,7 +47,17 @@ export const walletBalances = new Hono<{
             commitment: 'confirmed',
           }),
         ),
+        walletTokens(rpc, address(owner), rpcUrl),
       ])
+      tokens = holdings
+      for (const token of tokens) {
+        if (token.mint === PAYMENT_NETWORKS[network.name].usdcMint) {
+          token.name = 'USD Coin'
+          token.symbol = 'USDC'
+          token.image ??=
+            'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png'
+        }
+      }
       sol = balance.value
       usdc = held.exists ? held.data.amount : 0n
     } catch {
@@ -56,5 +68,6 @@ export const walletBalances = new Hono<{
       network: network.name,
       sol: String(sol),
       usdc: String(usdc),
+      tokens,
     } satisfies WalletBalances)
   })
