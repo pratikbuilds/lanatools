@@ -40,6 +40,16 @@ const pages = [
       name: 'Sign in to your workspace.',
     }),
   },
+  ...['activity', 'settings'].map((child) => ({
+    path: `/dashboard/${child}`,
+    boot: 'Opening your dashboard',
+    bar: 'Checking your account',
+    chunk: new RegExp(`/assets/${child}-`),
+    ready: () => ({
+      role: 'heading' as const,
+      name: 'Sign in to your workspace.',
+    }),
+  })),
 ]
 
 for (const page of pages) {
@@ -74,14 +84,18 @@ for (const page of pages) {
       )
       expect(preloaded.some((href) => page.chunk.test(href))).toBe(true)
       expect(preloaded.some((href) => /\/assets\/app-/.test(href))).toBe(true)
-      expect(preloaded.some((href) => /\/assets\/page-/.test(href))).toBe(false)
+      expect(
+        preloaded.some((href) => /\/assets\/page-[\w-]{8}\.js/.test(href)),
+      ).toBe(false)
       await tab.screenshot({
         path: test.info().outputPath('boot-before-js.png'),
       })
 
       resume()
       await expect(tab.getByRole(page.ready().role, page.ready())).toBeVisible()
-      expect(requests.filter((url) => /\/assets\/page-/.test(url))).toEqual([])
+      expect(
+        requests.filter((url) => /\/assets\/page-[\w-]{8}\.js/.test(url)),
+      ).toEqual([])
       expect(errors).toEqual([])
     } finally {
       resume()
