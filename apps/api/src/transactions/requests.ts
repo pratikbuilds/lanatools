@@ -1,4 +1,8 @@
 import { and, eq, sql } from 'drizzle-orm'
+import {
+  TransactionNotSubmittedError,
+  TransactionPreparationError,
+} from '@lanatools/toolkit/transactions'
 import { isAddress } from '@solana/kit'
 import { readSolanaNetwork } from '@lanatools/contracts/networks'
 import { z } from 'zod'
@@ -13,6 +17,7 @@ import {
   transactionRpc,
   verifyRpcNetwork,
   verifySignedTransaction,
+  verifyTransactionMessage,
 } from './submission'
 import type { ChainObservation, TransactionRpc } from './submission'
 import { drizzle } from 'drizzle-orm/d1'
@@ -31,8 +36,16 @@ import {
   idempotencyKey as RequestKey,
 } from './tools'
 import { publicTransaction } from './adapter'
-import { embeddedWallet, privyEmbeddedSigner } from './embedded'
-import type { EmbeddedSigner, EmbeddedSignerEnv } from './embedded'
+import {
+  embeddedWallet,
+  privyEmbeddedSigner,
+  privyEmbeddedMessageSigner,
+} from './embedded'
+import type {
+  EmbeddedSigner,
+  EmbeddedSignerEnv,
+  EmbeddedMessageSigner,
+} from './embedded'
 import { PolicyDeniedError } from '../payments/privy-signer'
 import type { TransactionRegistry } from './tools'
 
@@ -49,6 +62,7 @@ const ERRORS = {
   insufficient_scope:
     'This client is not allowed to use this transaction tool. The user can allow it in LanaTools.',
   invalid_input: 'Invalid transaction tool or arguments.',
+  preparation_refused: 'This transaction could not be prepared.',
   conflict: 'This request key already belongs to a different transaction.',
   not_found: 'Transaction not found.',
   unavailable: 'Transactions are temporarily unavailable.',
@@ -258,6 +272,7 @@ export async function createTransactionRequest(
     }
     if (row.delivery === 'embedded' && embedded?.wallet && embedded.sign) {
       let signed: string
+      let messageSignature: string | undefined
       if (row.signature && row.candidateJson) {
         signed = restoreSignedTransaction(
           publicTransaction(JSON.parse(row.candidateJson)),
@@ -278,6 +293,15 @@ export async function createTransactionRequest(
         )
           return failed('embedded_unavailable')
         try {
+          if (prepared.result.messageToSign) {
+            const signMessage =
+              options.embeddedMessageSigner ?? privyEmbeddedMessageSigner(env)
+            if (!signMessage) return failed('embedded_unavailable')
+            messageSignature = await signMessage(
+              embedded.wallet,
+              prepared.result.messageToSign,
+            )
+          }
           signed = await embedded.sign(
             embedded.wallet,
             prepared.result.transaction,
@@ -293,7 +317,10 @@ export async function createTransactionRequest(
       const sent = await sendTransactionLink(
         env,
         row.id,
-        { transaction: signed },
+        {
+          transaction: signed,
+          ...(messageSignature ? { messageSignature } : {}),
+        },
         options,
       )
       if (!sent.ok) return sent
@@ -442,11 +469,18 @@ export type ExecutionOptions = {
   observation?: { attempts?: number; intervalMs?: number }
   /** Replaces the Privy signer, or null for a deployment without one. */
   embeddedSigner?: EmbeddedSigner | null
+  embeddedMessageSigner?: EmbeddedMessageSigner
 }
 export const PrepareTransactionInput = z.strictObject({
   account: z.string().refine(isAddress),
 })
 export const SendTransactionInput = z.strictObject({
+  messageSignature: z
+    .string()
+    .min(64)
+    .max(88)
+    .regex(/^[1-9A-HJ-NP-Za-km-z]+$/)
+    .optional(),
   transaction: z
     .string()
     .min(1)
@@ -712,7 +746,7 @@ export async function prepareTransactionLink(
       .returning({ id: transactionRequest.id })
     if (!persisted) throw new Error('Reservation no longer valid')
     return { ok: true, result: publicTransaction(candidate) }
-  } catch {
+  } catch (error) {
     if (reservation !== undefined) {
       // Keep the wallet for embedded requests and renewals; every cleanup is fenced.
       await drizzle(env.DB)
@@ -734,7 +768,9 @@ export async function prepareTransactionLink(
         .run()
         .catch(() => undefined)
     }
-    return failed('unavailable')
+    return error instanceof TransactionPreparationError
+      ? failed('preparation_refused', error.message)
+      : failed('unavailable')
   }
 }
 
@@ -760,6 +796,8 @@ export async function sendTransactionLink(
         parsed.data.transaction,
         candidate,
       )
+      if (!row.signature)
+        await verifyTransactionMessage(candidate, parsed.data.messageSignature)
     } catch {
       return failed('invalid_input')
     }
@@ -800,6 +838,7 @@ export async function sendTransactionLink(
       jupiterApiKey: env.JUPITER_API_KEY,
     })
     const db = drizzle(env.DB)
+    let acceptedHere = false
     if (row.signature) {
       const observed = await observeSubmission(rpc, extracted, { attempts: 1 })
       if (observed.status !== 'unknown') {
@@ -888,6 +927,7 @@ export async function sendTransactionLink(
           ),
         )
         .returning({ signature: transactionRequest.signature })
+      acceptedHere = !!accepted
       if (!accepted) {
         const current = await storedLink(env.DB, id)
         if (!current?.signature) {
@@ -924,12 +964,30 @@ export async function sendTransactionLink(
         ),
       )
       .get()
-    if (stillValid && relayAllowed) {
+    if (
+      stillValid &&
+      relayAllowed &&
+      (tool.resubmit !== false || acceptedHere)
+    ) {
       try {
-        const sent = await relay(parsed.data.transaction)
+        const sent = await relay(
+          parsed.data.transaction,
+          parsed.data.messageSignature,
+        )
         if (sent !== extracted)
           throw new Error('Submission returned a different signature')
-      } catch {
+      } catch (error) {
+        // A checked refusal is definitive only on the first submission attempt.
+        if (error instanceof TransactionNotSubmittedError && acceptedHere) {
+          await persistObservation(
+            env.DB,
+            id,
+            extracted,
+            { status: 'failed', receipt: null },
+            options.now ?? Date.now(),
+          )
+          return snapshot()
+        }
         // A lost response may follow a successful broadcast. Observe the signature.
       }
     }

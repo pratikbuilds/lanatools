@@ -282,6 +282,18 @@ function privyWithPolicies(
           ? {
               rules: [
                 {
+                  method: 'signMessage',
+                  action: 'ALLOW',
+                  conditions: [
+                    {
+                      field_source: 'message',
+                      field: 'content',
+                      operator: 'starts_with',
+                      value: 'phoenix-wallet-login-v1\n',
+                    },
+                  ],
+                },
+                {
                   conditions: [
                     {
                       field_source: 'solana_program_instruction',
@@ -343,6 +355,18 @@ test('the transaction policy allows exactly the transaction tool programs', asyn
     chain_type: 'solana',
     owner: { user_id: user },
     rules: [
+      {
+        method: 'signMessage',
+        action: 'ALLOW',
+        conditions: [
+          {
+            field_source: 'message',
+            field: 'content',
+            operator: 'starts_with',
+            value: 'phoenix-wallet-login-v1\n',
+          },
+        ],
+      },
       {
         method: 'signTransaction',
         action: 'ALLOW',
@@ -417,4 +441,30 @@ test('confirming needs both signers with their policies; a stale transaction pol
   )
   expect(replaced.signers[1]?.policyIds).toEqual(['tx-policy-2'])
   expect((await signerStatus(db, user, true)).status).toBe('pending')
+})
+
+test('dashboard status detects an old embedded policy and preserves removed access', async () => {
+  const user = await enabledUser()
+  await drizzle(db)
+    .update(paymentSigner)
+    .set({ transactionPolicyId: 'tx-old' })
+    .where(eq(paymentSigner.privyUserId, user))
+  const old = privyWithPolicies(
+    async () => ({ id: 'unused' }),
+    [],
+    ['11111111111111111111111111111111'],
+  )
+  expect((await signerStatus(db, user, true, old)).status).toBe('pending')
+  expect(
+    (
+      await signerStatus(
+        db,
+        user,
+        true,
+        privyWithPolicies(async () => ({ id: 'unused' }), []),
+      )
+    ).status,
+  ).toBe('enabled')
+  await disableSigner(db, user)
+  expect((await signerStatus(db, user, true, old)).status).toBe('disabled')
 })

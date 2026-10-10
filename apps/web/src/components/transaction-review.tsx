@@ -12,6 +12,7 @@ import {
   prepareTransactionLink,
   sendTransactionLink,
   signPreparedTransaction,
+  signPreparedMessage,
   TransactionLinkError,
 } from '#/lib/transaction-links'
 import {
@@ -101,9 +102,10 @@ function TransactionPage({
   query: UseQueryResult<TransactionLink, Error>
 }) {
   const client = useQueryClient()
-  const { publicKey, connected, signTransaction } = useWallet()
+  const { publicKey, connected, signTransaction, signMessage } = useWallet()
   const account = connected ? publicKey?.toBase58() : undefined
   const [prepared, setPrepared] = useState<PreparedTransaction | null>(null)
+  const messageSignature = useRef<string | undefined>(undefined)
   const signedBytes = useRef<string | null>(null)
   const actionLock = useRef(false)
   const [busy, setBusy] = useState<'prepare' | 'sign' | 'send' | null>(null)
@@ -159,6 +161,10 @@ function TransactionPage({
           )
         setPrepared(candidate)
         setBusy('sign')
+        messageSignature.current = await signPreparedMessage(
+          candidate,
+          signMessage,
+        )
         signedBytes.current = await signPreparedTransaction(
           candidate,
           account,
@@ -167,7 +173,11 @@ function TransactionPage({
       }
       if (!signedBytes.current) return
       setBusy('send')
-      const result = await sendTransactionLink(linkId, signedBytes.current)
+      const result = await sendTransactionLink(
+        linkId,
+        signedBytes.current,
+        messageSignature.current,
+      )
       await client.cancelQueries({ queryKey: ['transaction-link', linkId] })
       client.setQueryData<TransactionLink>(
         ['transaction-link', linkId],
@@ -195,6 +205,7 @@ function TransactionPage({
           refreshed.data &&
           !refreshed.data.signature
         ) {
+          messageSignature.current = undefined
           signedBytes.current = null
           setPrepared(null)
           if (cause.code === 'invalid_input')
@@ -311,7 +322,9 @@ function TransactionPage({
               )}
             {prepared && (
               <p className="tx-action-note">
-                Your wallet signs. LanaTools sends and confirms.
+                {prepared.messageToSign
+                  ? 'Your wallet signs a Phoenix login message, then the activation transaction. Phoenix co-signs and submits.'
+                  : 'Your wallet signs. LanaTools sends and confirms.'}
               </p>
             )}
           </div>

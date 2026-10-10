@@ -51,6 +51,31 @@ export async function submitSignedTransaction(
       { intervalMs },
     )
 
+  const sent = await relayReferralTransaction(
+    { ...prepared, submit },
+    signed,
+    opts,
+  )
+  if (sent.status !== 'submitted') return sent
+  return waitForConfirmation(opts.rpc, {
+    signature: sent.signature,
+    blockhash: sent.blockhash,
+    lastValidBlockHeight: prepared.lastValidBlockHeight,
+    intervalMs,
+  })
+}
+
+/** Submit once; the shared transaction service owns confirmation and retries. */
+export async function relayReferralTransaction(
+  prepared: {
+    wallet: Address
+    transaction: string
+    submit: Extract<Submit, { via: 'phoenix-referral' }>
+  },
+  signed: SignedTrade,
+  opts: PhoenixOpts,
+) {
+  const { submit } = prepared
   // Phoenix adds its onboarder's signature, so only the wallet's is needed.
   const { wire, signature, blockhash } = await readSigned(signed.transaction, {
     prepared: prepared.transaction,
@@ -74,7 +99,7 @@ export async function submitSignedTransaction(
   } catch (error) {
     // Nothing was sent: the transaction never left this process.
     return {
-      status: 'failed',
+      status: 'failed' as const,
       signature,
       error: `Phoenix login failed (${error instanceof PhoenixError ? error.message : 'unexpected error'}); nothing was sent`,
     }
@@ -98,28 +123,23 @@ export async function submitSignedTransaction(
   } catch (error) {
     // Phoenix may have submitted it before the answer was lost.
     return {
-      status: 'unknown',
+      status: 'unknown' as const,
       signature,
       error: `Phoenix did not confirm the submission (${error instanceof PhoenixError ? error.message : 'unexpected error'}); check the account before trying again`,
     }
   }
   if (response.status === 'already_activated')
     return {
-      status: 'failed',
+      status: 'failed' as const,
       signature,
       error: 'Phoenix says this account is already activated; nothing was sent',
     }
   if (response.signature && response.signature !== signature)
     return {
-      status: 'unknown',
+      status: 'unknown' as const,
       signature,
       error:
         'Phoenix reported a different transaction; check the account before trying again',
     }
-  return waitForConfirmation(opts.rpc, {
-    signature,
-    blockhash,
-    lastValidBlockHeight: prepared.lastValidBlockHeight,
-    intervalMs,
-  })
+  return { status: 'submitted' as const, signature, blockhash }
 }

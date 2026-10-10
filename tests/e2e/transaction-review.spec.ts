@@ -166,7 +166,11 @@ const unsignedTransaction =
 
 async function installWallet(
   page: Page,
-  options: { signing?: boolean; rejectConnection?: boolean } = {},
+  options: {
+    signing?: boolean
+    rejectConnection?: boolean
+    messageSigning?: boolean
+  } = {},
 ) {
   await page.addInitScript(
     ({ account, options: config }) => {
@@ -177,6 +181,7 @@ async function installWallet(
       const listeners = new Set<(properties: unknown) => void>()
       const features = [
         'solana:signAndSendTransaction',
+        ...(config.messageSigning ? ['solana:signMessage'] : []),
         ...(config.signing === false ? [] : ['solana:signTransaction']),
       ]
       const registeredAccount = {
@@ -245,6 +250,22 @@ async function installWallet(
                   },
                 },
               }),
+          ...(config.messageSigning
+            ? {
+                'solana:signMessage': {
+                  version: '1.0.0',
+                  signMessage: async (
+                    ...inputs: Array<{ message: Uint8Array }>
+                  ) => {
+                    calls.push('signMessage')
+                    return inputs.map(({ message }) => ({
+                      signedMessage: message,
+                      signature: new Uint8Array(64).fill(2),
+                    }))
+                  },
+                },
+              }
+            : {}),
           'solana:signAndSendTransaction': {
             version: '1.0.0',
             supportedTransactionVersions: ['legacy', 0],
@@ -1040,3 +1061,103 @@ test('Jupiter uses the shared mainnet connect, sign and Explorer flow', async ({
   expect(await walletCalls(page)).toEqual(['connect', 'signTransaction'])
   expect(errors).toEqual([])
 })
+
+for (const messageSigning of [true, false]) {
+  test(`Phoenix activation ${messageSigning ? 'signs login before the transaction' : 'requires message signing'}`, async ({
+    page,
+  }) => {
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    await installWallet(page, { messageSigning })
+    const review = {
+      ...link.review,
+      title: 'Activate a Phoenix account',
+      description:
+        'Activate your Phoenix account. Your wallet pays rent and fees in SOL.',
+      fields: [
+        {
+          label: 'Notice',
+          value:
+            'Phoenix co-signs and submits; the login signature moves no funds.',
+        },
+      ],
+    }
+    const phoenixLink = {
+      ...link,
+      tool: 'phoenix_activate_account',
+      network: 'mainnet',
+      review,
+    }
+    await page.route('**/api/transaction-links/public-review-test', (route) =>
+      route.fulfill({ json: phoenixLink }),
+    )
+    await page.route(
+      '**/api/transaction-links/public-review-test/transaction',
+      (route) =>
+        route.fulfill({
+          json: {
+            transaction: unsignedTransaction,
+            account: walletAccount,
+            network: 'mainnet',
+            review,
+            blockhash: '11111111111111111111111111111111',
+            lastValidBlockHeight: '1234',
+            messageToSign: `phoenix-wallet-login-v1\nwallet:${walletAccount}\nnonce:browser-test\nexpires_at:2099-01-01T00:00:00Z`,
+          },
+        }),
+    )
+    const submissions: unknown[] = []
+    await page.route(
+      '**/api/transaction-links/public-review-test/send',
+      (route) => {
+        submissions.push(route.request().postDataJSON())
+        return route.fulfill({
+          json: {
+            ...phoenixLink,
+            status: 'confirmed',
+            signature: 'activation-signature',
+            receipt: {
+              signature: 'activation-signature',
+              slot: '1234',
+              commitment: 'confirmed',
+            },
+          },
+        })
+      },
+    )
+    await page.goto('/tx/public-review-test')
+    await expect(
+      page.getByRole('heading', { name: 'Activate a Phoenix account' }),
+    ).toBeVisible()
+    await page
+      .getByRole('button', { name: 'Connect wallet', exact: true })
+      .click()
+    await page.getByRole('button', { name: /Test Solana Wallet/ }).click()
+    await page.getByRole('button', { name: 'Sign & send' }).click()
+    if (messageSigning) {
+      await expect(
+        page.getByRole('heading', { name: 'Transaction confirmed' }),
+      ).toBeVisible()
+      expect(await walletCalls(page)).toEqual([
+        'connect',
+        'signMessage',
+        'signTransaction',
+      ])
+      expect(submissions).toEqual([
+        {
+          transaction: expect.any(String),
+          messageSignature: expect.stringMatching(
+            /^[1-9A-HJ-NP-Za-km-z]{64,88}$/,
+          ),
+        },
+      ])
+    } else {
+      await expect(page.getByRole('alert')).toContainText(
+        'needs a wallet that can sign login messages',
+      )
+      expect(await walletCalls(page)).toEqual(['connect'])
+      expect(submissions).toEqual([])
+    }
+    expect(errors).toEqual([])
+  })
+}

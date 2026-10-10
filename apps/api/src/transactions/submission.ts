@@ -11,7 +11,7 @@ import {
   signatureBytes,
   verifySignature,
 } from '@solana/kit'
-import type { Blockhash, GetAccountInfoApi, Rpc } from '@solana/kit'
+import type { Blockhash, SolanaRpcApi, Rpc } from '@solana/kit'
 import { solanaRpcConnection } from '@solana/kit-plugin-rpc'
 import type {
   PreparedTransaction,
@@ -22,7 +22,7 @@ import type { NetworkId } from '@lanatools/contracts/networks'
 
 export type TransactionRpc = {
   /** Account reads for builders that inspect mints and token accounts. */
-  accounts: Rpc<GetAccountInfoApi>
+  accounts: Rpc<SolanaRpcApi>
   genesisHash: () => Promise<string>
   latestBlockhash: () => Promise<{
     blockhash: Blockhash
@@ -103,14 +103,17 @@ export async function verifySignedTransaction(
   )
     throw new Error('Transaction message changed')
   const required = Object.keys(unsigned.signatures)
+  const coSigners = candidate.coSigners ?? []
   if (
-    required.length !== 1 ||
+    required.length !== 1 + coSigners.length ||
+    !required.slice(1).every((signer) => coSigners.includes(signer)) ||
     required[0] !== candidate.account ||
     Object.keys(signed.signatures).length !== required.length
   )
     throw new Error('Unsupported required signers')
   for (const signer of required) {
     const bytes = signed.signatures[address(signer)]
+    if (coSigners.includes(signer) && bytes === null) continue
     if (
       !bytes ||
       !(await verifySignature(
@@ -180,4 +183,24 @@ export async function observeSubmission(
       await new Promise((resolve) => setTimeout(resolve, intervalMs))
   }
   return { status: 'unknown', receipt: null }
+}
+
+/** Verify the server-prepared login challenge before accepting a transaction. */
+export async function verifyTransactionMessage(
+  candidate: PreparedTransaction,
+  messageSignature?: string,
+) {
+  if (!candidate.messageToSign) {
+    if (messageSignature) throw new Error('Unexpected message signature')
+    return
+  }
+  if (
+    !messageSignature ||
+    !(await verifySignature(
+      await getPublicKeyFromAddress(address(candidate.account)),
+      signatureBytes(getBase58Encoder().encode(messageSignature)),
+      new TextEncoder().encode(candidate.messageToSign),
+    ))
+  )
+    throw new Error('Invalid login message signature')
 }

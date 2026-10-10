@@ -26,6 +26,7 @@ export const TOOL_SCOPES = [
   'payments:pay',
   'jupiter:read',
   'phoenix:read',
+  'phoenix:trade',
   'solana:transfer',
 ] as const
 export type ToolScope = (typeof TOOL_SCOPES)[number]
@@ -329,6 +330,8 @@ export const PreparedTransaction = type({
   review: TransactionReview,
   blockhash: 'string',
   lastValidBlockHeight: 'string',
+  'coSigners?': 'string[]',
+  'messageToSign?': 'string',
 })
 export type PreparedTransaction = typeof PreparedTransaction.infer
 

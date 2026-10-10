@@ -1,5 +1,6 @@
 import { and, eq, isNotNull } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
+import { getBase58Decoder, getBase64Encoder } from '@solana/kit'
 import { PrivyClient } from '@privy-io/node'
 import type { D1Database } from '@cloudflare/workers-types'
 import { paymentSigner } from '../db/schema'
@@ -77,6 +78,52 @@ export function privyEmbeddedSigner(
     } catch (error) {
       if (isPolicyDenial(error))
         throw new PolicyDeniedError('Privy policy denied the transaction', {
+          cause: error,
+        })
+      throw error
+    }
+  }
+}
+
+export type EmbeddedMessageSigner = (
+  wallet: EmbeddedWallet,
+  message: string,
+) => Promise<string>
+
+/** Phoenix login only; messages come from the stored, checked preparation. */
+export function privyEmbeddedMessageSigner(
+  env: EmbeddedSignerEnv,
+): EmbeddedMessageSigner | null {
+  const { PRIVY_APP_ID, PRIVY_APP_SECRET, PRIVY_TRANSACTION_SIGNER_KEY } = env
+  if (!PRIVY_APP_ID || !PRIVY_APP_SECRET || !PRIVY_TRANSACTION_SIGNER_KEY)
+    return null
+  const privy = new PrivyClient({
+    appId: PRIVY_APP_ID,
+    appSecret: PRIVY_APP_SECRET,
+  })
+  return async ({ walletId, walletAddress }, message) => {
+    if (
+      !message.startsWith(
+        `phoenix-wallet-login-v1\nwallet:${walletAddress}\nnonce:`,
+      )
+    )
+      throw new Error('Unsupported wallet login message')
+    try {
+      const result = await privy
+        .wallets()
+        .solana()
+        .signMessage(walletId, {
+          message: new TextEncoder().encode(message),
+          authorization_context: {
+            authorization_private_keys: [PRIVY_TRANSACTION_SIGNER_KEY],
+          },
+        })
+      return getBase58Decoder().decode(
+        getBase64Encoder().encode(result.signature),
+      )
+    } catch (error) {
+      if (isPolicyDenial(error))
+        throw new PolicyDeniedError('Privy policy denied Phoenix login', {
           cause: error,
         })
       throw error

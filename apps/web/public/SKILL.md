@@ -54,6 +54,7 @@ with `/register`, `/authorize` and `/token`.
 
 - `account:read` is on every grant and lets you call `whoami`.
 - `helius:read`, `jupiter:read`, `phoenix:read` read Solana data.
+- `phoenix:trade` permits Phoenix activation, collateral and trades on mainnet through `link`, `local` or `embedded` delivery. Local activation also needs the base58 signature of `messageToSign` as `messageSignature`. Phoenix supplies its co-signature and submits. Retry accepted Phoenix requests only to check status; reconcile unknown results before creating another request.
 - `payments:pay` calls paid endpoints from the user's wallet, within the
   spending limit they set for you.
 

@@ -108,3 +108,35 @@ The user connects and signs in their wallet. The agreed mainnet swap completed
 on October 9, 2026. The saved receipt and an independent RPC status check
 confirmed finalization at slot 454798245 with no chain error. Other wallet
 and routing combinations remain unverified by this live test.
+
+## Phoenix
+
+All seven `phoenix_*` trade tools use the same link, local and embedded paths:
+activate account, deposit, withdraw, market order, limit order, cancel orders,
+and close position. They require `phoenix:trade`, a separate opt-in from
+`phoenix:read`, and a mainnet deployment with a matching RPC. Their checked
+builders, unsigned simulation, accounts and submission routing stay in
+`packages/phoenix/src/trade/operation.ts`. No caller can select the network.
+
+Activation returns `messageToSign` and the expected `coSigners` in its prepared
+transaction. The wallet signs the exact UTF-8 message and partially signs the
+transaction. Local callers pass the base58 `messageSignature` alongside the
+base64 transaction to `send_transaction`. The review page does both signature
+prompts; embedded delivery uses Privy's transaction key for both. The stored
+challenge is verified before accepting the transaction. Only Phoenix's prepared
+onboarder may supply the missing co-signature. Phoenix logs in, co-signs and
+submits; LanaTools observes the wallet's persisted transaction signature.
+Already-activated wallets receive an actionable preparation refusal with no
+transaction to sign and no funds spent.
+
+Phoenix submissions are attempted once per request, including under concurrent
+calls. Retrying an accepted request only checks its signature. An unknown result
+must be reconciled before a new request is created. Login failures are definitive
+non-submissions; a lost activation response remains unknown. Orders past their
+slot deadline are refused before relay. Chain confirmation does not prove a full
+fill or a completed queued withdrawal; query `phoenix_get_account` afterwards.
+
+The dashboard detects stale embedded transaction policies on its next visit
+and refreshes them through the normal LanaTools access setup. It adds Phoenix and Ember programs plus a message
+rule restricted to the `phoenix-wallet-login-v1\n` prefix. Payment policies are
+unchanged. The browser and local paths do not need a Privy signer.

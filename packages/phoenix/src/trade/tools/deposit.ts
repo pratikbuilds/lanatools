@@ -1,7 +1,6 @@
 import { address } from '@solana/kit'
 import { z } from 'zod'
 import { PhoenixError } from '../../client'
-import { Wallet } from '../../tool'
 import { usdc } from '../../units'
 import { fetchAccount, tokenBalance } from '../chain'
 import { checkCollateral } from '../checks'
@@ -24,7 +23,7 @@ export const deposit = defineTradeTool({
     "Prepares a deposit of the wallet's USDC into its Phoenix cross-margin account, as collateral for perps.",
     'Returns an unsigned transaction and its simulation; nothing is signed or sent.',
   ].join(' '),
-  input: z.object({ wallet: Wallet, amount: USDCAmount }).strict(),
+  arguments: z.object({ amount: USDCAmount }).strict(),
   async prepare({ phoenix, rpc }, input) {
     const wallet = address(input.wallet)
     const amount = toUSDCUnits(input.amount)

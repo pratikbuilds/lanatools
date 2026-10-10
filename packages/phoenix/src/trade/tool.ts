@@ -4,6 +4,7 @@ import type {
   Instruction,
 } from '@solana/kit'
 import type { z } from 'zod'
+import { Wallet } from '../tool'
 import { PhoenixError, createPhoenixClient } from '../client'
 import type { PhoenixClient, PhoenixErrorCode, PhoenixOpts } from '../client'
 import { checkInstructions } from './checks'
@@ -93,10 +94,23 @@ export type TradeTool<TSchema extends z.ZodObject = z.ZodObject> = {
   ) => Promise<Prepared>
 }
 
-export function defineTradeTool<TSchema extends z.ZodObject>(
-  tool: TradeTool<TSchema>,
-) {
-  return tool
+export function defineTradeTool<TShape extends z.ZodRawShape>(tool: {
+  name: string
+  title: string
+  description: string
+  arguments: z.ZodObject<TShape>
+  programs?: readonly Address[]
+  prepare: (
+    context: TradeContext,
+    input: z.output<z.ZodObject<TShape>> & { wallet: string },
+  ) => Promise<Prepared>
+}) {
+  return {
+    ...tool,
+    input: tool.arguments.safeExtend({ wallet: Wallet } as Parameters<
+      typeof tool.arguments.safeExtend<{ wallet: typeof Wallet }>
+    >[0]),
+  }
 }
 
 export type PreparedTransaction = Described &

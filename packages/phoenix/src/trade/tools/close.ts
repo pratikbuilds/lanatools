@@ -1,7 +1,6 @@
 import { address } from '@solana/kit'
 import { z } from 'zod'
 import { PhoenixError } from '../../client'
-import { Wallet } from '../../tool'
 import { fromLots } from '../../units'
 import { fractionOfLots } from '../price'
 import { defineTradeTool } from '../tool'
@@ -24,9 +23,8 @@ export const closePosition = defineTradeTool({
     'It fills now up to a worst price, set by maxSlippageBps or limitPrice (exactly one, no default); whatever cannot fill is cancelled.',
     'Returns an unsigned transaction and its simulation; nothing is signed or sent.',
   ].join(' '),
-  input: z
+  arguments: z
     .object({
-      wallet: Wallet,
       symbol: MarketSymbol,
       fraction: z
         .number()

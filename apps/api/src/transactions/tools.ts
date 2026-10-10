@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { isAddress } from '@solana/kit'
+import { phoenixTransactionTools } from '@lanatools/phoenix/trade'
 import { jupiterSwapTool } from '@lanatools/jupiter'
 import type { ToolScope } from '@lanatools/contracts'
 import { solTransfer } from './sol-transfer'
@@ -21,6 +22,22 @@ export type TransactionTool = {
 }
 
 export const transactionTools: Readonly<Record<string, TransactionTool>> = {
+  ...Object.fromEntries(
+    phoenixTransactionTools.map((tool) => [
+      tool.name,
+      {
+        title: tool.title,
+        description: tool.description,
+        scope: 'phoenix:trade' as const,
+        programs: tool.programs,
+        operation: bindTransaction(tool.transaction, (context) => ({
+          network: context.network,
+          rpc: context.rpc.accounts,
+          fees: { computeUnitMargin: 0.2, microLamportsPerComputeUnit: 0n },
+        })),
+      },
+    ]),
+  ),
   solana_transfer: {
     title: 'Send SOL',
     description:

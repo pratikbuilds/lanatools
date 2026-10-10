@@ -44,15 +44,30 @@ async function policyAllowsPrograms(
   programs: readonly string[],
 ) {
   const policy = await privy.policies().get(policyId)
-  return policy.rules.some((rule) =>
-    rule.conditions.some(
-      (condition) =>
-        'field' in condition &&
-        condition.field === 'programId' &&
-        Array.isArray(condition.value) &&
-        condition.value.length === programs.length &&
-        programs.every((program) => condition.value.includes(program)),
-    ),
+  return (
+    policy.rules.some(
+      (rule) =>
+        rule.method === 'signMessage' &&
+        rule.action === 'ALLOW' &&
+        rule.conditions.some(
+          (condition) =>
+            'field_source' in condition &&
+            condition.field_source === 'message' &&
+            condition.field === 'content' &&
+            condition.operator === 'starts_with' &&
+            condition.value === 'phoenix-wallet-login-v1\n',
+        ),
+    ) &&
+    policy.rules.some((rule) =>
+      rule.conditions.some(
+        (condition) =>
+          'field' in condition &&
+          condition.field === 'programId' &&
+          Array.isArray(condition.value) &&
+          condition.value.length === programs.length &&
+          programs.every((program) => condition.value.includes(program)),
+      ),
+    )
   )
 }
 
@@ -69,6 +84,19 @@ function createTransactionPolicy(privy: PrivyClient, userId: string) {
     chain_type: 'solana',
     owner: { user_id: userId },
     rules: [
+      {
+        name: 'Allow Phoenix wallet login',
+        method: 'signMessage',
+        action: 'ALLOW',
+        conditions: [
+          {
+            field_source: 'message',
+            field: 'content',
+            operator: 'starts_with',
+            value: 'phoenix-wallet-login-v1\n',
+          },
+        ],
+      },
       {
         name: 'Allow LanaTools transaction programs',
         method: 'signTransaction',
@@ -110,6 +138,7 @@ export async function signerStatus(
   database: D1Database,
   userId: string,
   transactionSigner = false,
+  privy?: PrivyClient,
 ): Promise<PaymentSignerStatus> {
   const row = await drizzle(database)
     .select()
@@ -118,7 +147,15 @@ export async function signerStatus(
     .get()
   if (!row) return { status: 'none', walletAddress: null }
   const outdated =
-    transactionSigner && row.status === 'enabled' && !row.transactionPolicyId
+    transactionSigner &&
+    row.status === 'enabled' &&
+    (!row.transactionPolicyId ||
+      (privy !== undefined &&
+        !(await policyAllowsPrograms(
+          privy,
+          row.transactionPolicyId,
+          transactionPrograms(),
+        ))))
   return {
     status: outdated ? 'pending' : row.status,
     walletAddress: row.walletAddress,

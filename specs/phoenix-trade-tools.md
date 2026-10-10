@@ -1,6 +1,6 @@
 # Phoenix trade tools: tech spec
 
-Status: built 2026-10-09. All seven tools and the script ran on mainnet (Phase 6 run log below). API/MCP wiring comes next, separately.
+Status: built 2026-10-09. All seven tools and the script ran on mainnet (Phase 6 run log below). API/MCP wiring is implemented through the shared transaction operations; see `apps/api/src/transactions/README.md` for delivery and activation signing.
 Background: [research-phoenix-transactions.md](research-phoenix-transactions.md).
 
 ## 1. Goal and scope
@@ -38,7 +38,7 @@ tool is done.
 3. Trade tools are **not** added to the existing `phoenix` provider.
    `apps/api` registers every tool in that provider with MCP, and marks all of
    them read-only. Trade tools are exported as a separate `phoenixTrade` set
-   that nothing in `apps/` imports.
+   used by the separate transaction registry in `apps/api`.
 4. Trade code has its own entry point, `@lanatools/phoenix/trade`. The
    package root (`@lanatools/phoenix`, which `apps/api` imports) stays
    read-only, so it never loads Rise into the API Worker.

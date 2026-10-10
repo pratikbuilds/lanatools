@@ -133,7 +133,7 @@ export function createServer(
   // Each transaction tool prepares one intent; the agent picks how it is
   // signed with `delivery`. Only embedded delivery signs and sends at once.
   const signing =
-    'delivery "link": share the returned reviewUrl; the user signs there and LanaTools sends; arguments are visible on that page. delivery "local": pass wallet; sign result.transaction.transaction (base64) with that wallet before lastValidBlockHeight and pass it to send_transaction; do not broadcast it yourself. delivery "embedded": LanaTools signs with the user\'s LanaTools wallet and sends it immediately, with no user approval; use it only when the user asked for that. Reuse idempotencyKey to retry the same intent. Read the outcome with get_transaction_status.'
+    'delivery "link": share the returned reviewUrl; the user signs there and LanaTools sends; arguments are visible on that page. delivery "local": pass wallet; sign result.transaction.transaction (base64) with that wallet before lastValidBlockHeight and pass it to send_transaction; do not broadcast it yourself. If messageToSign is present, also sign its exact UTF-8 bytes and pass the base58 signature as messageSignature. Activation needs only your wallet signature on the transaction; Phoenix adds its co-signature. delivery "embedded": LanaTools signs with the user\'s LanaTools wallet and sends it immediately, with no user approval; use it only when the user asked for that. Reuse idempotencyKey to retry the same intent. Read the outcome with get_transaction_status.'
   for (const [name, tool] of Object.entries(transactionTools).filter(
     ([, each]) => allows(each.scope),
   ))
@@ -174,6 +174,14 @@ export function createServer(
         'Send a transaction prepared with delivery "local" after your wallet signed it. Pass its id and the signed transaction as base64. LanaTools checks it is the exact prepared transaction signed by that wallet, sends it, and returns the shared result. Resending the same signed bytes is safe.',
       inputSchema: z.object({
         id: z.string().min(1).max(64),
+        messageSignature: z
+          .string()
+          .min(64)
+          .max(88)
+          .optional()
+          .describe(
+            'Base58 signature of the prepared messageToSign, required for Phoenix activation',
+          ),
         transaction: z
           .string()
           .min(1)
@@ -187,11 +195,12 @@ export function createServer(
         openWorldHint: true,
       },
     },
-    ({ id, transaction }) =>
+    ({ id, transaction, messageSignature }) =>
       withGrant(null, async (grant) => {
         try {
           const outcome = await dependencies.api.sendTransaction(grant, id, {
             transaction,
+            ...(messageSignature ? { messageSignature } : {}),
           })
           if (!outcome.ok && outcome.error.code === 'unauthorized')
             dependencies.revokeClient(grant)
