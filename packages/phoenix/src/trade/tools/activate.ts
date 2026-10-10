@@ -1,7 +1,6 @@
 import { address } from '@solana/kit'
 import { z } from 'zod'
 import { PhoenixError } from '../../client'
-import { Wallet } from '../../tool'
 import { fromLots } from '../../units'
 import { fetchAccount } from '../chain'
 import { checkActivation } from '../checks'
@@ -29,9 +28,8 @@ export const activateAccount = defineTradeTool({
     'The wallet also signs a login message for Phoenix, which moves no funds.',
     'Returns an unsigned transaction and its simulation; nothing is signed or sent.',
   ].join(' '),
-  input: z
+  arguments: z
     .object({
-      wallet: Wallet,
       referralCode: z
         .string()
         .trim()

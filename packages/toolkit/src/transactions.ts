@@ -20,6 +20,8 @@ export function publicTransaction(value: unknown): PreparedTransaction {
     review,
     blockhash,
     lastValidBlockHeight,
+    coSigners,
+    messageToSign,
   } = PreparedTransaction.assert(value)
   return {
     transaction,
@@ -28,11 +30,21 @@ export function publicTransaction(value: unknown): PreparedTransaction {
     review,
     blockhash,
     lastValidBlockHeight,
+    ...(coSigners ? { coSigners } : {}),
+    ...(messageToSign ? { messageToSign } : {}),
   }
 }
 
+/** A checked refusal before any transaction was broadcast. */
+export class TransactionNotSubmittedError extends Error {}
+
+/** An actionable preparation refusal, safe to show to the caller. */
+export class TransactionPreparationError extends Error {}
+
 export type TransactionOperation<TContext extends TransactionContext> = {
   arguments: z.ZodObject
+  /** False for operations that submit at most once and only observe on retries. */
+  resubmit?: boolean
   supportedNetworks: readonly NetworkId[]
   describe: (input: unknown) => TransactionReview
   /** The other party's address, when the operation has one, for ledgers to index. */
@@ -47,7 +59,7 @@ export type TransactionOperation<TContext extends TransactionContext> = {
   relay: (
     candidate: unknown,
     context: TContext,
-  ) => (signedTransaction: string) => Promise<string>
+  ) => (signedTransaction: string, messageSignature?: string) => Promise<string>
 }
 
 /** An operation owns preparation and relay; each caller owns lifecycle policy. */
@@ -57,6 +69,7 @@ export function defineTransactionOperation<
   TExecution,
 >(definition: {
   arguments: z.ZodObject<TShape>
+  resubmit?: boolean
   supportedNetworks?: readonly NetworkId[]
   describe: (input: z.infer<z.ZodObject<TShape>>) => TransactionReview
   /** The recipient of a transfer. Left out when there is no single other party. */
@@ -79,6 +92,7 @@ export function defineTransactionOperation<
       candidate: PreparedTransaction,
       execution: TExecution,
       context: TContext,
+      messageSignature?: string,
     ) => Promise<string>
   }
 }): TransactionOperation<TContext> {
@@ -99,6 +113,9 @@ export function defineTransactionOperation<
       .catch(() => definition.describe(args))
   }
   return {
+    ...(definition.resubmit === undefined
+      ? {}
+      : { resubmit: definition.resubmit }),
     arguments: definition.arguments,
     supportedNetworks,
     describe: (input) => definition.describe(definition.arguments.parse(input)),
@@ -129,8 +146,14 @@ export function defineTransactionOperation<
       const execution = definition.submission.schema.parse(
         z.object({ execution: z.unknown().optional() }).parse(value).execution,
       )
-      return (wire) =>
-        definition.submission.send(wire, candidate, execution, context)
+      return (wire, messageSignature) =>
+        definition.submission.send(
+          wire,
+          candidate,
+          execution,
+          context,
+          messageSignature,
+        )
     },
   }
 }

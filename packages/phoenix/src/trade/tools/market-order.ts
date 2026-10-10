@@ -2,7 +2,6 @@ import { address } from '@solana/kit'
 import type { Address } from '@solana/kit'
 import { z } from 'zod'
 import { PhoenixError } from '../../client'
-import { Wallet } from '../../tool'
 import { checkOrder } from '../checks'
 import {
   limitRounding,
@@ -150,9 +149,8 @@ export const marketOrder = defineTradeTool({
     'It fills now against the book up to a worst price, set by maxSlippageBps or limitPrice (exactly one, no default); whatever cannot fill at that price is cancelled, so partial fills are possible.',
     'Size is in tokens. Returns an unsigned transaction and its simulation; nothing is signed or sent.',
   ].join(' '),
-  input: z
+  arguments: z
     .object({
-      wallet: Wallet,
       symbol: MarketSymbol,
       side: OrderSide,
       size: Size,

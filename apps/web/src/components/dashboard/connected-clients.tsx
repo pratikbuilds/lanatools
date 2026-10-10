@@ -21,6 +21,7 @@ const TOOL_LABELS: Record<string, string> = {
   'payments:pay': 'Pay within its limit',
   'jupiter:read': 'Jupiter',
   'phoenix:read': 'Phoenix',
+  'phoenix:trade': 'Phoenix trading',
   'solana:transfer': 'SOL and token transfers',
 }
 

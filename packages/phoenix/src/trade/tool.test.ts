@@ -41,7 +41,7 @@ function tool(prepare: () => Promise<Prepared>) {
     name: 'phoenix_test',
     title: 'Test',
     description: 'Test tool',
-    input: z.object({ size: z.string() }),
+    arguments: z.object({ size: z.string() }),
     prepare,
   })
 }
@@ -59,7 +59,7 @@ test('a tool result is checked, simulated and returned unsigned', async () => {
   const { rpc, calls } = rpcFor()
   const outcome = await runTradeTool(
     tool(async () => prepared()),
-    { size: '0.1' },
+    { wallet: WALLET, size: '0.1' },
     { rpc, fees: FEES },
   )
   expect(outcome).toMatchObject({
@@ -108,7 +108,7 @@ test('instructions that fail the checks are never simulated', async () => {
     tool(async () =>
       prepared([phoenixInstruction(undefined, { program: system })]),
     ),
-    { size: '0.1' },
+    { wallet: WALLET, size: '0.1' },
     { rpc, fees: FEES },
   )
   expect(outcome).toMatchObject({ ok: false, error: { code: 'check_failed' } })
@@ -122,7 +122,7 @@ test('Phoenix errors pass through; anything else becomes a safe error', async ()
       tool(async () => {
         throw new PhoenixError('not_activated', 'Activate first')
       }),
-      { size: '0.1' },
+      { wallet: WALLET, size: '0.1' },
       { rpc, fees: FEES },
     ),
   ).toEqual({
@@ -142,7 +142,7 @@ test('Phoenix errors pass through; anything else becomes a safe error', async ()
         tool(async () => {
           throw new Error('https://rpc.example/?api-key=secret')
         }),
-        { size: '0.1' },
+        { wallet: WALLET, size: '0.1' },
         { rpc, fees: FEES },
       ),
     ).toEqual({
@@ -173,7 +173,7 @@ test('a failed simulation leaves nothing to sign and says why', async () => {
   })
   const outcome = await runTradeTool(
     tool(async () => prepared()),
-    { size: '0.1' },
+    { wallet: WALLET, size: '0.1' },
     { rpc, fees: FEES },
   )
   expect(outcome).toEqual({
@@ -236,7 +236,7 @@ test('a whole transaction is checked, then simulated exactly as built', async ()
   const transaction = prebuilt()
   const outcome = await runTradeTool(
     tool(async () => whole(transaction)),
-    { size: '0.1' },
+    { wallet: WALLET, size: '0.1' },
     { rpc, fees: FEES },
   )
   expect(outcome).toMatchObject({
@@ -258,7 +258,7 @@ test('a whole transaction someone else pays for, or with another signer, is neve
     expect(
       await runTradeTool(
         tool(async () => whole(transaction)),
-        { size: '0.1' },
+        { wallet: WALLET, size: '0.1' },
         { rpc, fees: FEES },
       ),
     ).toMatchObject({ ok: false, error: { code: 'check_failed' } })

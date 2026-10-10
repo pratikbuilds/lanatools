@@ -1,5 +1,9 @@
 import { PreparedTransaction, TransactionLink } from '@lanatools/contracts'
-import { getBase64Decoder, getBase64Encoder } from '@solana/kit'
+import {
+  getBase58Decoder,
+  getBase64Decoder,
+  getBase64Encoder,
+} from '@solana/kit'
 import { VersionedTransaction } from '@solana/web3.js'
 
 export class TransactionLinkError extends Error {
@@ -91,8 +95,14 @@ export async function prepareTransactionLink(
 export async function sendTransactionLink(
   id: string,
   transaction: string,
+  messageSignature?: string,
 ): Promise<TransactionLink> {
-  return TransactionLink.assert(await request(id, '/send', { transaction }))
+  return TransactionLink.assert(
+    await request(id, '/send', {
+      transaction,
+      ...(messageSignature ? { messageSignature } : {}),
+    }),
+  )
 }
 
 export async function signPreparedTransaction(
@@ -127,4 +137,19 @@ export async function signPreparedTransaction(
   if (!signed.signatures[0]?.some((byte) => byte !== 0))
     throw new Error('The wallet did not return a signed transaction.')
   return getBase64Decoder().decode(signed.serialize())
+}
+
+/** Sign the exact login challenge before asking for a transaction signature. */
+export async function signPreparedMessage(
+  prepared: PreparedTransaction,
+  signMessage: ((message: Uint8Array) => Promise<Uint8Array>) | undefined,
+): Promise<string | undefined> {
+  if (!prepared.messageToSign) return undefined
+  if (!signMessage)
+    throw new Error(
+      'Phoenix activation needs a wallet that can sign login messages. Choose another wallet.',
+    )
+  return getBase58Decoder().decode(
+    await signMessage(new TextEncoder().encode(prepared.messageToSign)),
+  )
 }

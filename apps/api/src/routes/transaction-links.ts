@@ -20,6 +20,7 @@ export type TransactionLinksEnv = TransactionExecutionEnv & {
 
 function errorStatus(code: string) {
   if (code === 'invalid_input') return 400
+  if (code === 'preparation_refused') return 422
   if (code === 'not_found') return 404
   if (
     code === 'conflict' ||

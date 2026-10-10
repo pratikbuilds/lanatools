@@ -32,6 +32,7 @@ export const paymentSignerRoutes = new Hono<{
         c.env.DB,
         c.get('userId'),
         Boolean(c.env.PRIVY_TRANSACTION_SIGNER_ID),
+        c.env.PRIVY_TRANSACTION_SIGNER_ID ? privyClient(c.env) : undefined,
       )) satisfies PaymentSignerStatus,
     ),
   )

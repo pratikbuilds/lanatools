@@ -1,7 +1,6 @@
 import { address } from '@solana/kit'
 import { z } from 'zod'
 import { PhoenixError } from '../../client'
-import { Wallet } from '../../tool'
 import { fromLots } from '../../units'
 import { checkCancel } from '../checks'
 import { MAX_CANCEL_IDS, cancelInstruction } from '../rise'
@@ -22,9 +21,8 @@ export const cancelOrders = defineTradeTool({
     'Give orderIds (from phoenix_get_account) to cancel those orders, or omit them to cancel every resting order the account has in the market.',
     'Returns an unsigned transaction and its simulation; nothing is signed or sent.',
   ].join(' '),
-  input: z
+  arguments: z
     .object({
-      wallet: Wallet,
       symbol: MarketSymbol,
       orderIds: z
         .array(z.string().trim().regex(/^\d+$/, 'Expected an order ID'))

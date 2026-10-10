@@ -120,8 +120,10 @@ Starts with the Privy proof in §6.
 
 ### Phase 3: Phoenix
 
-Wrap the six single-signer trade tools as `TransactionOperation`s that return
-`TransactionResult`. Activation (co-signer plus login message) comes last.
+Implemented for all seven Phoenix trade tools, including activation. They return
+`TransactionResult` and require the separate `phoenix:trade` scope. Activation
+adds a prepared login message and a checked Phoenix co-signer; see
+`apps/api/src/transactions/README.md` for the signing and retry contract.
 
 ## 6. Privy findings (2026-10-09)
 

@@ -3,6 +3,7 @@
  * A separate entry point (`@lanatools/phoenix/trade`) so that importing the
  * read tools never loads the Rise SDK.
  */
+import { phoenixTransactionTool } from './operation'
 import { PhoenixError } from '../client'
 import type { z } from 'zod'
 import { runTradeTool } from './tool'
@@ -25,6 +26,17 @@ export const phoenixTrade = [
   closePosition,
   withdraw,
 ] as const
+
+export const phoenixTransactionTools = [
+  phoenixTransactionTool(activateAccount),
+  phoenixTransactionTool(deposit),
+  phoenixTransactionTool(marketOrder),
+  phoenixTransactionTool(limitOrder),
+  phoenixTransactionTool(cancelOrders),
+  phoenixTransactionTool(closePosition),
+  phoenixTransactionTool(withdraw),
+]
+export type { PhoenixTransactionContext } from './operation'
 
 type Runner = (input: unknown, opts: TradeOpts) => Promise<TradeOutcome>
 

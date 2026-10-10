@@ -2,7 +2,6 @@ import { address } from '@solana/kit'
 import { z } from 'zod'
 import { PhoenixError } from '../../client'
 import { TraderState } from '../../schemas'
-import { Wallet } from '../../tool'
 import { usdc } from '../../units'
 import { checkCollateral } from '../checks'
 import { toUSDCUnits } from '../price'
@@ -18,7 +17,7 @@ export const withdraw = defineTradeTool({
     "Prepares a withdrawal of collateral from the wallet's Phoenix cross-margin account back to its USDC.",
     "Withdrawals go through Phoenix's queue. Returns an unsigned transaction and its simulation; nothing is signed or sent.",
   ].join(' '),
-  input: z.object({ wallet: Wallet, amount: USDCAmount }).strict(),
+  arguments: z.object({ amount: USDCAmount }).strict(),
   async prepare({ phoenix }, input) {
     const wallet = address(input.wallet)
     const amount = toUSDCUnits(input.amount)

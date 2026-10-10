@@ -23,6 +23,11 @@ export const TOOL_FAMILIES: Record<
     title: 'Phoenix',
     detail: 'Read perps markets, order books and candles',
   },
+  'phoenix:trade': {
+    title: 'Phoenix trading',
+    detail:
+      'Activate Phoenix, deposit and withdraw collateral, and trade perpetuals. Your LanaTools wallet can sign without further approval or an amount limit.',
+  },
   'solana:transfer': {
     title: 'Transfers',
     detail:

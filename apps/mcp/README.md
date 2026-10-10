@@ -371,3 +371,37 @@ followed by `bun run deploy:api`. Normal API builds already apply migrations
 before deployment. Supply `VITE_PRIVY_APP_ID` when building MCP locally.
 
 Schema-invalid MCP arguments are rejected before any API call, as required by ADI-211, and therefore have no activity row. The ledger records every API-authorized invocation, including provider or configuration failures; authorization refusals are not attributed to a caller-supplied identity.
+
+## Phoenix transactions
+
+Enable **Phoenix trading** (`phoenix:trade`) to use `phoenix_activate_account`,
+`phoenix_deposit`, `phoenix_withdraw`, `phoenix_market_order`,
+`phoenix_limit_order`, `phoenix_cancel_orders` and `phoenix_close_position`.
+The existing `phoenix:read` permission remains read-only. Transactions support
+mainnet only and all three delivery modes. Embedded delivery signs and sends
+immediately with the user's LanaTools wallet; it requires refreshed wallet
+access and does not apply an amount limit.
+
+For example, call `phoenix_market_order` with:
+
+```json
+{
+  "symbol": "SOL",
+  "side": "buy",
+  "size": "0.1",
+  "maxSlippageBps": 50,
+  "delivery": "link",
+  "idempotencyKey": "phoenix-sol-buy-1"
+}
+```
+
+For `local`, also pass `wallet`; sign the returned base64 transaction and pass
+it with the request `id` to `send_transaction`. Activation additionally returns
+`messageToSign`: sign those exact UTF-8 bytes and pass the base58 signature as
+`messageSignature`. Partially sign the activation transaction with your wallet;
+Phoenix adds its onboarder signature and submits it. Do not broadcast it yourself.
+
+For Phoenix, repeated sends only observe an accepted signature. Never start a
+new request to retry an unknown trade or activation without reconciling the old
+signature. Confirmed transactions may be partial fills or queued withdrawals;
+read `phoenix_get_account` to check the resulting account state.

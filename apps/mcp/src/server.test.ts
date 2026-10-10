@@ -366,6 +366,13 @@ test('each client sees the catalog and only the tool families it was given', asy
   const phoenix = await list(['account:read', 'phoenix:read'])
   expect(count(phoenix, 'phoenix_')).toBeGreaterThan(0)
   expect(count(phoenix, 'jupiter_')).toBe(0)
+  expect(phoenix).not.toContain('phoenix_market_order')
+  expect(phoenix).not.toContain('phoenix_activate_account')
+  const trading = await list(['account:read', 'phoenix:trade'])
+  expect(count(trading, 'phoenix_')).toBe(7)
+  expect(trading).toContain('phoenix_activate_account')
+  expect(trading).toContain('phoenix_market_order')
+  expect(trading).not.toContain('phoenix_get_account')
 
   const pay = await list(['account:read', 'payments:pay'])
   expect(pay).toContain('call')

@@ -1,6 +1,5 @@
 import { address } from '@solana/kit'
 import { z } from 'zod'
-import { Wallet } from '../../tool'
 import { checkOrder } from '../checks'
 import { limitRounding, priceToTicks, ticksToPrice, toBaseLots } from '../price'
 import { orderInstruction } from '../rise'
@@ -29,9 +28,8 @@ export const limitOrder = defineTradeTool({
     'With postOnly it never takes liquidity: if it would fill at once, Phoenix rejects it.',
     'Size is in tokens. Returns an unsigned transaction and its simulation; nothing is signed or sent.',
   ].join(' '),
-  input: z
+  arguments: z
     .object({
-      wallet: Wallet,
       symbol: MarketSymbol,
       side: OrderSide,
       size: Size,
