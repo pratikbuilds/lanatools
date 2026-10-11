@@ -29,6 +29,12 @@ import {
   verifyRpcNetwork,
 } from './submission'
 import { settleWalletTransfer } from './wallet-transfers'
+import {
+  needsTradeFacts,
+  settleTradeFacts,
+  tradeFactsReader,
+} from './trade-facts'
+import type { TradeFactsReader } from './trade-facts'
 
 /** Transactions fetched per request; the dashboard asks for older ones on scroll. */
 export const TRANSACTIONS_PAGE_SIZE = 50
@@ -335,7 +341,7 @@ export async function readTransaction(
   env: TransactionExecutionEnv,
   userId: string,
   id: string,
-  options: ExecutionOptions = {},
+  options: ExecutionOptions & { tradeFacts?: TradeFactsReader } = {},
 ): Promise<TransactionActivityItem | null> {
   const now = options.now ?? Date.now()
   const owned = and(
@@ -352,7 +358,29 @@ export async function readTransaction(
     )
     if (['ready', 'submitting', 'unknown'].includes(link.status))
       await observeTransactionLink(env, id, options)
-    const fresh = await agentQuery(env.DB).where(owned).get()
+    let fresh = await agentQuery(env.DB).where(owned).get()
+    // A confirmed trade learns what actually filled the first time it is
+    // read here; until then it shows the review's estimates.
+    const current =
+      fresh && projectTransactionLink(fresh.row, true, now, options.tools)
+    if (
+      fresh &&
+      current?.status === 'confirmed' &&
+      needsTradeFacts(current.review.trade, current.receipt)
+    ) {
+      try {
+        await settleTradeFacts(
+          env.DB,
+          fresh.row,
+          current.review.trade,
+          options.tradeFacts ??
+            tradeFactsReader(options.rpc ?? transactionRpc(env.SOLANA_RPC_URL)),
+        )
+        fresh = await agentQuery(env.DB).where(owned).get()
+      } catch {
+        // Not readable yet; the next read tries again.
+      }
+    }
     return fresh
       ? agentItem(fresh, configuration(env).webOrigin, now, options.tools)
       : null

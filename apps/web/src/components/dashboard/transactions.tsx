@@ -10,6 +10,7 @@ import type {
   PerpTrade,
   SwapTrade,
   TransactionActivityItem,
+  TransactionReceipt,
   TransactionStatusGroup,
   TransactionsPage as Page,
 } from '@lanatools/contracts'
@@ -35,6 +36,7 @@ import {
 } from '#/lib/transactions'
 import type { TransactionsFilter } from '#/lib/transactions'
 import {
+  awaitingFacts,
   formatUSD,
   orderTicket,
   perpNotional,
@@ -476,7 +478,8 @@ function Amount({
 }) {
   const amounts = transactionAmounts(item)
   const trade = tradeOf(item)
-  const notional = trade && perpNotional(trade)
+  const facts = item.kind === 'agent' ? item.receipt : null
+  const notional = trade && perpNotional(trade, facts)
   if (notional && !amounts.out && !amounts.in)
     return (
       <span
@@ -498,7 +501,7 @@ function Amount({
         </span>
         {amounts.in && !muted && (
           <span className="text-[12px] font-medium text-live">
-            {statusGroup(item) === 'confirmed' ? '≈ ' : ''}+
+            {facts?.received ? '' : '≈ '}+
             <Unit value={amounts.in} />
           </span>
         )}
@@ -583,7 +586,8 @@ function LiveTransactionDetail({
   const fresh = useQuery({
     queryKey: ['transaction', userId, item.id],
     queryFn: () => getTransaction(getAccessToken, item.id),
-    enabled: pending,
+    // A confirmed trade may not know what filled yet; reading it asks.
+    enabled: pending || awaitingFacts(item),
     refetchInterval: (query) =>
       query.state.data && statusGroup(query.state.data) !== 'pending'
         ? false
@@ -591,9 +595,13 @@ function LiveTransactionDetail({
   })
   const current = fresh.data ?? item
   useEffect(() => {
-    if (fresh.data && fresh.data.status !== item.status)
+    if (
+      fresh.data &&
+      (fresh.data.status !== item.status ||
+        awaitingFacts(item) !== awaitingFacts(fresh.data))
+    )
       void queryClient.invalidateQueries({ queryKey: ['transactions', userId] })
-  }, [fresh.data, item.status, queryClient, userId])
+  }, [fresh.data, item, queryClient, userId])
   return (
     <TransactionDetail
       item={current}
@@ -641,7 +649,7 @@ export function TransactionDetail({
   const facts: Array<[string, ReactNode]> = []
   if (item.kind === 'agent') {
     if (trade?.kind === 'swap') {
-      const rate = swapRate(trade)
+      const rate = swapRate(trade, item.receipt)
       if (rate) facts.push(['Rate', rate])
       if (trade.receive.minimum)
         facts.push([
@@ -699,7 +707,12 @@ export function TransactionDetail({
         )}
       </p>
       {trade?.kind === 'swap' ? (
-        <SwapFlow trade={trade} done={group === 'confirmed'} gone={gone} />
+        <SwapFlow
+          trade={trade}
+          received={item.kind === 'agent' ? item.receipt?.received : undefined}
+          done={group === 'confirmed'}
+          gone={gone}
+        />
       ) : (
         main && (
           <p
@@ -709,15 +722,23 @@ export function TransactionDetail({
           </p>
         )
       )}
-      {order?.notionalUsd && (
+      {order && item.kind === 'agent' && item.receipt?.fill ? (
         <p className="mb-1 font-mono text-[13px] font-medium text-fg-2">
-          {formatUSD(order.notionalUsd)} notional
-          {order.orderType === 'limit' && order.limitPrice
-            ? ` at ${formatUSD(order.limitPrice)} each`
-            : order.bestPrice
-              ? ` at the best price, ${formatUSD(order.bestPrice)}`
-              : ''}
+          Filled {item.receipt.fill.size} at{' '}
+          {formatUSD(item.receipt.fill.price)} each,{' '}
+          {perpNotional(order, item.receipt)} notional
         </p>
+      ) : (
+        order?.notionalUsd && (
+          <p className="mb-1 font-mono text-[13px] font-medium text-fg-2">
+            {formatUSD(order.notionalUsd)} notional
+            {order.orderType === 'limit' && order.limitPrice
+              ? ` at ${formatUSD(order.limitPrice)} each`
+              : order.bestPrice
+                ? ` at the best price, ${formatUSD(order.bestPrice)}`
+                : ''}
+          </p>
+        )
       )}
       {amounts.in && amounts.out && trade?.kind !== 'swap' && (
         <p className="mb-1 font-mono text-[1.1rem] font-semibold tracking-tight">
@@ -736,7 +757,7 @@ export function TransactionDetail({
       </p>
       {trade?.kind === 'perp' && item.kind === 'agent' && (
         <>
-          {order && <OrderTicket trade={order} />}
+          {order && <OrderTicket trade={order} facts={item.receipt} />}
           {item.review.fields
             .filter((field) => field.label === 'Notice')
             .map((field) => (
@@ -764,10 +785,13 @@ export function TransactionDetail({
 /** What a swap paid and what came back, each with its token's logo. */
 function SwapFlow({
   trade,
+  received,
   done,
   gone,
 }: {
   trade: SwapTrade
+  /** The signer's actual net output, once read after confirmation. */
+  received: { amount: string } | undefined
   done: boolean
   gone: boolean
 }) {
@@ -778,13 +802,16 @@ function SwapFlow({
       amount: trade.pay.amount,
     },
     {
-      label: done
-        ? 'You received, estimated'
-        : gone
-          ? 'Would have received'
-          : 'You receive, estimated',
+      label: received
+        ? 'You received'
+        : done
+          ? 'You received, estimated'
+          : gone
+            ? 'Would have received'
+            : 'You receive, estimated',
       token: trade.receive,
-      amount: trade.receive.estimated ?? trade.receive.minimum,
+      amount:
+        received?.amount ?? trade.receive.estimated ?? trade.receive.minimum,
     },
   ]
   return (
@@ -817,7 +844,9 @@ function SwapFlow({
             >
               {leg.amount ? (
                 <>
-                  {index && leg.amount === trade.receive.estimated ? '≈ ' : ''}
+                  {index && !received && leg.amount === trade.receive.estimated
+                    ? '≈ '
+                    : ''}
                   {leg.amount}{' '}
                   <span className="text-[14px]">{leg.token.symbol}</span>
                 </>
@@ -833,8 +862,14 @@ function SwapFlow({
 }
 
 /** A perp order's terms, as an exchange's order ticket lays them out. */
-function OrderTicket({ trade }: { trade: PerpTrade }) {
-  const rows = orderTicket(trade)
+function OrderTicket({
+  trade,
+  facts,
+}: {
+  trade: PerpTrade
+  facts: TransactionReceipt | null
+}) {
+  const rows = orderTicket(trade, facts)
   const long = trade.side === 'buy'
   return (
     <div className="d-inset mt-4">

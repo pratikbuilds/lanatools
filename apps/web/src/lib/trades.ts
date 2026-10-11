@@ -2,7 +2,11 @@ import type {
   PerpTrade,
   SwapTrade,
   TransactionActivityItem,
+  TransactionReceipt,
 } from '@lanatools/contracts'
+
+/** What actually happened, once the API has read it after confirmation. */
+type Facts = Pick<TransactionReceipt, 'received' | 'fill'> | null | undefined
 
 /**
  * How the dashboard says what a swap or perp transaction trades, from the
@@ -12,6 +16,21 @@ import type {
 
 export function tradeOf(item: TransactionActivityItem) {
   return item.kind === 'agent' ? item.review.trade : undefined
+}
+
+/**
+ * A confirmed trade whose actual amounts the API has not read yet: a swap's
+ * output or a perp order's fill.
+ */
+export function awaitingFacts(item: TransactionActivityItem) {
+  const trade = tradeOf(item)
+  if (item.kind !== 'agent' || !trade || item.status !== 'confirmed')
+    return false
+  if (trade.kind === 'swap') return !item.receipt?.received
+  return (
+    (trade.action === 'order' || trade.action === 'close') &&
+    !item.receipt?.fill
+  )
 }
 
 /** Phoenix names a market by its base, "SOL"; traders read "SOL-PERP". */
@@ -62,9 +81,9 @@ const STABLECOINS = new Set(['USDC', 'USDT', 'PYUSD', 'USDS'])
  * "1 SOL ≈ 109.52 USDC", once quoted: the price of the token that is not a
  * dollar stablecoin, which is how people quote it.
  */
-export function swapRate(trade: SwapTrade) {
+export function swapRate(trade: SwapTrade, facts?: Facts) {
   const paid = Number(trade.pay.amount)
-  const received = Number(trade.receive.estimated)
+  const received = Number(facts?.received?.amount ?? trade.receive.estimated)
   if (!(paid > 0) || !(received > 0)) return null
   const invert =
     STABLECOINS.has(trade.pay.symbol) && !STABLECOINS.has(trade.receive.symbol)
@@ -74,7 +93,7 @@ export function swapRate(trade: SwapTrade) {
   const shown = Number(rate.toPrecision(6)).toLocaleString('en-US', {
     maximumFractionDigits: 9,
   })
-  return `1 ${base} ≈ ${shown} ${quote}`
+  return `1 ${base} ${facts?.received ? '=' : '≈'} ${shown} ${quote}`
 }
 
 /** A market order's price bound, as the person signing would say it. */
@@ -84,10 +103,19 @@ export function worstPriceText(trade: PerpTrade) {
 }
 
 /** The second line of a row: the venue and the one term that matters. */
-export function tradeDetail(trade: SwapTrade | PerpTrade, confirmed: boolean) {
+export function tradeDetail(
+  trade: SwapTrade | PerpTrade,
+  confirmed: boolean,
+  facts?: Facts,
+) {
   if (trade.kind === 'swap') {
-    const rate = swapRate(trade)
+    const rate = swapRate(trade, facts)
     return rate ? `Jupiter · ${rate}` : 'Jupiter'
+  }
+  const fill = facts?.fill
+  if (fill && (trade.action === 'order' || trade.action === 'close')) {
+    const realized = Number(fill.realizedPnlUsdc)
+    return `Phoenix · Filled at ${formatUSD(fill.price)}${realized ? `, realized ${formatUSD(realized, { signed: true })}` : ''}`
   }
   switch (trade.action) {
     case 'order':
@@ -116,17 +144,20 @@ export function tradeDetail(trade: SwapTrade | PerpTrade, confirmed: boolean) {
  * none (its margin stays in Phoenix), so it has no amounts; see
  * `perpNotional`.
  */
-export function tradeAmounts(trade: SwapTrade | PerpTrade): {
+export function tradeAmounts(
+  trade: SwapTrade | PerpTrade,
+  facts?: Facts,
+): {
   out: string | null
   in: string | null
 } {
-  if (trade.kind === 'swap')
+  if (trade.kind === 'swap') {
+    const received = facts?.received?.amount ?? trade.receive.estimated
     return {
       out: `${trade.pay.amount} ${trade.pay.symbol}`,
-      in: trade.receive.estimated
-        ? `${trade.receive.estimated} ${trade.receive.symbol}`
-        : null,
+      in: received ? `${received} ${trade.receive.symbol}` : null,
     }
+  }
   if (trade.action === 'deposit' && trade.amountUsdc)
     return { out: `${trade.amountUsdc} USDC`, in: null }
   if (trade.action === 'withdraw' && trade.amountUsdc)
@@ -134,14 +165,24 @@ export function tradeAmounts(trade: SwapTrade | PerpTrade): {
   return { out: null, in: null }
 }
 
-/** An order's size in dollars, shown unsigned since no wallet money moves. */
-export function perpNotional(trade: SwapTrade | PerpTrade) {
-  if (trade.kind !== 'perp' || !trade.notionalUsd) return null
-  return formatUSD(trade.notionalUsd)
+/**
+ * An order's size in dollars, shown unsigned since no wallet money moves:
+ * what filled once known, else the estimate at the best price.
+ */
+export function perpNotional(trade: SwapTrade | PerpTrade, facts?: Facts) {
+  if (trade.kind !== 'perp') return null
+  const fill = facts?.fill
+  if (fill) return formatUSD(Number(fill.size) * Number(fill.price))
+  return trade.notionalUsd ? formatUSD(trade.notionalUsd) : null
 }
 
 /** The order ticket in a perp drawer: label and value, in reading order. */
-export function orderTicket(trade: PerpTrade): Array<[string, string]> {
+export function orderTicket(
+  trade: PerpTrade,
+  facts?: Facts,
+): Array<[string, string]> {
+  const fill = facts?.fill
+  const realized = fill ? Number(fill.realizedPnlUsdc) : 0
   const rows: Array<[string, string | undefined]> = [
     ['Market', trade.symbol && perpMarket(trade.symbol)],
     [
@@ -156,9 +197,21 @@ export function orderTicket(trade: PerpTrade): Array<[string, string]> {
     ['Size', trade.size && `${trade.size} ${trade.symbol ?? ''}`.trim()],
     ['Limit price', trade.limitPrice && formatUSD(trade.limitPrice)],
     ['Worst price', worstPriceText(trade) ?? undefined],
-    ['Best price', trade.bestPrice && formatUSD(trade.bestPrice)],
-    ['Notional', trade.notionalUsd && formatUSD(trade.notionalUsd)],
-    ['Taker fee', trade.feeUsd && formatUSD(trade.feeUsd)],
+    ['Filled', fill && `${fill.size} ${trade.symbol ?? ''}`.trim()],
+    ['Fill price', fill && formatUSD(fill.price)],
+    [
+      'Best price',
+      fill ? undefined : trade.bestPrice && formatUSD(trade.bestPrice),
+    ],
+    ['Notional', perpNotional(trade, facts) ?? undefined],
+    [
+      fill ? 'Fee paid' : 'Taker fee',
+      fill ? formatUSD(fill.feeUsdc) : trade.feeUsd && formatUSD(trade.feeUsd),
+    ],
+    [
+      'Realized PnL',
+      realized ? formatUSD(realized, { signed: true }) : undefined,
+    ],
     ['Closes', trade.closing && `Your ${trade.closing}`],
     [
       'Reduce only',

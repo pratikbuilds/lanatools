@@ -383,10 +383,23 @@ export const TRANSACTION_DELIVERIES = ['link', 'local', 'embedded'] as const
 export const TransactionDelivery = type.enumerated(...TRANSACTION_DELIVERIES)
 export type TransactionDelivery = typeof TransactionDelivery.infer
 
+/**
+ * Chain evidence for a sent transaction. A confirmed trade may also carry
+ * what actually happened, read once after confirmation: `received` is a
+ * swap's net output to the signer, `fill` a perp order's fills on Phoenix.
+ * Amounts are decimal strings.
+ */
 export const TransactionReceipt = type({
   signature: 'string',
   slot: 'string',
   commitment: "'confirmed' | 'finalized'",
+  'received?': { mint: 'string', amount: 'string' },
+  'fill?': {
+    size: 'string',
+    price: 'string',
+    feeUsdc: 'string',
+    realizedPnlUsdc: 'string',
+  },
 })
 export type TransactionReceipt = typeof TransactionReceipt.infer
 

@@ -133,3 +133,35 @@ test('USD keeps cents, and sub-cent fees keep their digits', () => {
   expect(formatUSD(-0.42)).toBe('−$0.42')
   expect(formatUSD(4.05, { signed: true })).toBe('+$4.05')
 })
+
+test('once read after confirmation, actual amounts replace estimates', () => {
+  const received = { mint: SOL, amount: '0.009101' }
+  expect(tradeAmounts(swap, { received })).toEqual({
+    out: '1 USDC',
+    in: '0.009101 SOL',
+  })
+  expect(swapRate(swap, { received })).toBe('1 SOL = 109.878 USDC')
+  const fill = {
+    size: '0.1',
+    price: '109.64',
+    feeUsdc: '0.0038',
+    realizedPnlUsdc: '0',
+  }
+  expect(tradeDetail(buy, true, { fill })).toBe('Phoenix · Filled at $109.64')
+  expect(perpNotional(buy, { fill })).toBe('$10.96')
+  expect(orderTicket(buy, { fill })).toEqual([
+    ['Market', 'SOL-PERP'],
+    ['Type', 'Market, fill or cancel'],
+    ['Size', '0.1 SOL'],
+    ['Worst price', 'at most $110.15'],
+    ['Filled', '0.1 SOL'],
+    ['Fill price', '$109.64'],
+    ['Notional', '$10.96'],
+    ['Fee paid', '$0.0038'],
+    ['Reduce only', 'No'],
+  ])
+  const close = perp({ action: 'close', symbol: 'SOL', side: 'sell' })
+  expect(
+    tradeDetail(close, true, { fill: { ...fill, realizedPnlUsdc: '4.05' } }),
+  ).toBe('Phoenix · Filled at $109.64, realized +$4.05')
+})

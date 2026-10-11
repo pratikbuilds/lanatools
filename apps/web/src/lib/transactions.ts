@@ -185,7 +185,7 @@ export function transactionAmounts(item: TransactionActivityItem): {
       ? { out: null, in: amount }
       : { out: amount, in: null }
   }
-  if (item.review.trade) return tradeAmounts(item.review.trade)
+  if (item.review.trade) return tradeAmounts(item.review.trade, item.receipt)
   return {
     out: field(item, ['You pay', 'Amount']),
     in: field(item, ['Estimated receive', 'You receive']),
@@ -196,16 +196,19 @@ export function transactionAmounts(item: TransactionActivityItem): {
 export function transactionDetail(item: TransactionActivityItem) {
   if (statusGroup(item) === 'failed')
     return { text: 'Rejected by the chain. Nothing moved.', bad: true }
+  if (item.kind === 'agent' && item.review.trade)
+    return {
+      text: tradeDetail(
+        item.review.trade,
+        statusGroup(item) === 'confirmed',
+        item.receipt,
+      ),
+      bad: false,
+    }
   if (item.kind === 'deposit')
     return { text: `From ${shortAddress(item.counterparty)}`, bad: false }
   if (item.kind === 'withdrawal')
     return { text: `To ${shortAddress(item.counterparty)}`, bad: false }
-  const trade = tradeOf(item)
-  if (trade)
-    return {
-      text: tradeDetail(trade, statusGroup(item) === 'confirmed'),
-      bad: false,
-    }
   if (item.counterparty)
     return { text: `To ${shortAddress(item.counterparty)}`, bad: false }
   const received = transactionAmounts(item).in

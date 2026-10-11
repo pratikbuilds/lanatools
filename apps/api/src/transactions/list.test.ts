@@ -537,3 +537,75 @@ test('a trading tool’s trade summary reaches the feed with its review', async 
   const item = (await list()).items.find((each) => each.id === id)
   expect(item?.kind === 'agent' && item.review.trade).toEqual(trade)
 })
+
+test('a confirmed perp order learns its fill when read, once Phoenix has it', async () => {
+  const grant = await connect('client-a')
+  const receipt = { signature: SIGNATURE, slot: '42', commitment: 'finalized' }
+  const id = await request(grant, {
+    toolName: 'phoenix_market_order',
+    argumentsJson: JSON.stringify({ symbol: 'SOL', side: 'buy', size: '0.1' }),
+    network: 'mainnet',
+    delivery: 'embedded',
+    counterparty: null,
+    status: 'confirmed',
+    signature: SIGNATURE,
+    account: WALLET,
+    receiptJson: JSON.stringify(receipt),
+    reviewJson: JSON.stringify({
+      title: 'Place a Phoenix market order',
+      description: 'd',
+      actionLabel: 'Place',
+      fields: [],
+      trade: {
+        kind: 'perp',
+        venue: 'phoenix',
+        action: 'order',
+        symbol: 'SOL',
+        side: 'buy',
+        size: '0.1',
+      },
+    }),
+  })
+  const asked: string[] = []
+  let indexed = false
+  const tradeFacts = {
+    transaction: () => Promise.reject(new Error('not a swap')),
+    fills: async (wallet: string, symbol: string) => {
+      asked.push(`${wallet} ${symbol}`)
+      return indexed
+        ? [
+            {
+              size: 0.1,
+              price: 109.6,
+              feeUsdc: 0.0038,
+              realizedPnlUsdc: 0,
+              signature: SIGNATURE,
+            },
+          ]
+        : []
+    },
+  }
+  // Not indexed yet: the receipt stays as it was.
+  expect(
+    await readTransaction(env(), user, id, { now: NOON, tradeFacts }),
+  ).toMatchObject({ receipt })
+  indexed = true
+  expect(
+    await readTransaction(env(), user, id, { now: NOON, tradeFacts }),
+  ).toMatchObject({
+    receipt: {
+      ...receipt,
+      fill: {
+        size: '0.1',
+        price: '109.6',
+        feeUsdc: '0.0038',
+        realizedPnlUsdc: '0',
+      },
+    },
+  })
+  // Stored: the next read neither asks again nor loses it.
+  await readTransaction(env(), user, id, { now: NOON, tradeFacts })
+  expect(asked).toEqual([`${WALLET} SOL`, `${WALLET} SOL`])
+  const [listed] = (await list()).items
+  expect(listed?.kind === 'agent' && listed.receipt?.fill?.price).toBe('109.6')
+})

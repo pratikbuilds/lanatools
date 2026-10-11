@@ -297,3 +297,40 @@ test('a perp drawer shows the order ticket, notices and the account link', () =>
   // Raw tool keys are not shown once the trade says the same thing.
   expect(html).not.toContain('limitPrice')
 })
+
+test('a read fill and swap output replace the estimates', () => {
+  const filled: TransactionActivityItem = {
+    ...perpOrder,
+    receipt: {
+      signature: SIGNATURE,
+      slot: '1',
+      commitment: 'finalized',
+      fill: {
+        size: '0.1',
+        price: '109.64',
+        feeUsdc: '0.0038',
+        realizedPnlUsdc: '0',
+      },
+    },
+  }
+  expect(rows([filled])).toContain('Phoenix · Filled at $109.64')
+  expect(detail(filled)).toContain(
+    'Filled 0.1 at $109.64 each, $10.96 notional',
+  )
+  const swapped: TransactionActivityItem = {
+    ...tradedSwap,
+    receipt: {
+      signature: SIGNATURE,
+      slot: '1',
+      commitment: 'finalized',
+      received: {
+        mint: 'So11111111111111111111111111111111111111112',
+        amount: '0.009101',
+      },
+    },
+  }
+  const row = rows([swapped])
+  expect(row).toContain('+0.009101')
+  expect(row).not.toContain('≈ +')
+  expect(detail(swapped)).toContain('>You received<')
+})
