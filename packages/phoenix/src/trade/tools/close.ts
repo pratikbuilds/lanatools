@@ -10,6 +10,7 @@ import {
   Price,
   SlippageBps,
   crossAccount,
+  perpTrade,
   requireActivated,
   tradableMarket,
 } from './shared'
@@ -94,6 +95,7 @@ export const closePosition = defineTradeTool({
         position: `${direction} ${fromLots(positionLots.toString(), decimals)}`,
         closing: size,
       },
+      trade: perpTrade('close', { ...order.terms, closing: direction }),
       warnings: order.warnings,
     }
   },

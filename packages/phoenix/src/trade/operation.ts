@@ -14,6 +14,7 @@ import {
   TransactionPreparationError,
 } from '@lanatools/toolkit/transactions'
 import type { TransactionContext } from '@lanatools/toolkit/transactions'
+import { PerpTrade } from '@lanatools/contracts'
 import { TRADE_PROGRAMS } from './checks'
 import { runTradeTool } from './tool'
 import type { TradeOpts, TradeTool } from './tool'
@@ -38,6 +39,75 @@ const Execution = z.strictObject({
   ]),
 })
 
+type Arguments = Record<string, unknown>
+const text = (value: unknown) => (typeof value === 'string' ? value : undefined)
+const flag = (value: unknown) =>
+  typeof value === 'boolean' ? value : undefined
+const side = (value: unknown) =>
+  value === 'buy' || value === 'sell' ? value : undefined
+
+/**
+ * What each tool asks for, as trade data, before Phoenix's book is read. The
+ * prepared transaction replaces it with the tool's own, exact terms.
+ */
+const INTENTS: Record<string, (input: Arguments) => Arguments> = {
+  phoenix_activate_account: () => ({ action: 'activate' }),
+  phoenix_deposit: (input) => ({
+    action: 'deposit',
+    amountUsdc: text(input.amount),
+  }),
+  phoenix_withdraw: (input) => ({
+    action: 'withdraw',
+    amountUsdc: text(input.amount),
+  }),
+  phoenix_market_order: (input) => ({
+    action: 'order',
+    orderType: 'market',
+    symbol: text(input.symbol),
+    side: side(input.side),
+    size: text(input.size),
+    worstPrice: text(input.limitPrice),
+    reduceOnly: flag(input.reduceOnly),
+  }),
+  phoenix_limit_order: (input) => ({
+    action: 'order',
+    orderType: 'limit',
+    symbol: text(input.symbol),
+    side: side(input.side),
+    size: text(input.size),
+    limitPrice: text(input.price),
+    postOnly: flag(input.postOnly),
+    reduceOnly: flag(input.reduceOnly),
+  }),
+  phoenix_cancel_orders: (input) => ({
+    action: 'cancel',
+    symbol: text(input.symbol),
+    cancelled: Array.isArray(input.orderIds)
+      ? input.orderIds.length
+      : undefined,
+  }),
+  phoenix_close_position: (input) => ({
+    action: 'close',
+    orderType: 'market',
+    symbol: text(input.symbol),
+    worstPrice: text(input.limitPrice),
+    reduceOnly: true,
+  }),
+}
+
+function intendedTrade(tool: string, input: Arguments) {
+  const intent = INTENTS[tool]
+  if (!intent) return undefined
+  const terms = Object.entries(intent(input)).filter(
+    ([, value]) => value !== undefined,
+  )
+  return PerpTrade.assert({
+    kind: 'perp',
+    venue: 'phoenix',
+    ...Object.fromEntries(terms),
+  })
+}
+
 /** Adapt the checked trade builders to every LanaTools signing path. */
 export function phoenixTransactionTool<TSchema extends z.ZodObject>(
   tool: TradeTool<TSchema> & { arguments: z.ZodObject },
@@ -58,19 +128,23 @@ export function phoenixTransactionTool<TSchema extends z.ZodObject>(
       arguments: tool.arguments,
       supportedNetworks: ['mainnet'],
       resubmit: false,
-      describe: (input) => ({
-        title: tool.title,
-        description: activation
-          ? 'Activate your Phoenix account. Your wallet pays rent and fees in SOL and signs a Phoenix login message. Phoenix co-signs and submits.'
-          : 'Use your Phoenix cross-margin account. Exact terms are checked and simulated when prepared. Network fees are paid in SOL.',
-        actionLabel: tool.title,
-        fields: Object.entries(input)
-          .filter(([, value]) => value !== undefined)
-          .map(([label, value]) => ({
-            label,
-            value: Array.isArray(value) ? value.join(', ') : String(value),
-          })),
-      }),
+      describe: (input) => {
+        const trade = intendedTrade(tool.name, input)
+        return {
+          title: tool.title,
+          description: activation
+            ? 'Activate your Phoenix account. Your wallet pays rent and fees in SOL and signs a Phoenix login message. Phoenix co-signs and submits.'
+            : 'Use your Phoenix cross-margin account. Exact terms are checked and simulated when prepared. Network fees are paid in SOL.',
+          actionLabel: tool.title,
+          fields: Object.entries(input)
+            .filter(([, value]) => value !== undefined)
+            .map(([label, value]) => ({
+              label,
+              value: Array.isArray(value) ? value.join(', ') : String(value),
+            })),
+          ...(trade ? { trade } : {}),
+        }
+      },
       async build(input, account, context: PhoenixTransactionContext, review) {
         const outcome = await runTradeTool(
           tool,
@@ -124,6 +198,7 @@ export function phoenixTransactionTool<TSchema extends z.ZodObject>(
           review: {
             ...review,
             description: result.summary,
+            trade: result.trade,
             fields: [
               ...Object.entries(result.details).map(([label, value]) => ({
                 label,

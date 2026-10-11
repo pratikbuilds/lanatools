@@ -1,7 +1,7 @@
 import { defineTransactionOperation } from '@lanatools/toolkit/transactions'
 import type { TransactionContext } from '@lanatools/toolkit/transactions'
 import { SOLANA_NETWORKS } from '@lanatools/contracts/networks'
-import type { TransactionReview } from '@lanatools/contracts'
+import type { SwapTrade, TransactionReview } from '@lanatools/contracts'
 import type { JupiterClientOptions } from './client'
 import { SwapArguments } from './inputs'
 import { JupiterClient } from './jupiter-client'
@@ -67,9 +67,25 @@ async function tokenLabels(
 
 type SwapIntent = z.infer<typeof argumentsSchema>
 
-function describeSwap(input: SwapIntent, label: Labels = fallbackLabel) {
+function describeSwap(
+  input: SwapIntent,
+  label: Labels = fallbackLabel,
+): TransactionReview {
   const pay = label(input.inputMint)
   const receive = label(input.outputMint)
+  const trade: SwapTrade = {
+    kind: 'swap',
+    venue: 'jupiter',
+    pay: { mint: input.inputMint, ...pay, amount: input.amount },
+    receive: {
+      mint: input.outputMint,
+      ...receive,
+      ...(input.minOutputAmount === undefined
+        ? {}
+        : { minimum: input.minOutputAmount }),
+    },
+    maxSlippageBps: input.maxSlippageBps,
+  }
   return {
     title: `Swap ${pay.symbol} for ${receive.symbol}`,
     description:
@@ -96,6 +112,7 @@ function describeSwap(input: SwapIntent, label: Labels = fallbackLabel) {
             },
           ]),
     ],
+    trade,
   }
 }
 
@@ -180,7 +197,8 @@ export const JUPITER_SWAP_PROGRAMS = [
 
 /**
  * The prepared review: the receive line becomes the quote's estimate, keeping
- * the symbol and logo the review already resolved.
+ * the symbol and logo the review already resolved. The trade takes the
+ * quote's amounts too.
  */
 function withQuote(
   review: TransactionReview,
@@ -191,8 +209,23 @@ function withQuote(
 ): TransactionReview {
   const receive = review.fields.find((field) => field.label === 'You receive')
   const symbol = receive?.value ?? ''
+  const trade = review.trade?.kind === 'swap' ? review.trade : undefined
   return {
     ...review,
+    ...(trade
+      ? {
+          trade: {
+            ...trade,
+            receive: {
+              ...trade.receive,
+              estimated: swap.expectedOutput.decimal,
+              ...(swap.minimumOutput
+                ? { minimum: swap.minimumOutput.decimal }
+                : {}),
+            },
+          },
+        }
+      : {}),
     fields: [
       ...review.fields.filter(
         (field) =>

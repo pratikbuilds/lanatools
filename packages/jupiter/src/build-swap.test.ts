@@ -143,7 +143,32 @@ test('the swap tool owns the shared operation and selects its signer at executio
         { label: 'Estimated receive', value: '0.123456789 SOL' },
         { label: 'Minimum receive', value: '0.12 SOL' },
       ]),
+      trade: {
+        kind: 'swap',
+        venue: 'jupiter',
+        pay: {
+          mint: usdc,
+          symbol: 'USDC',
+          amount: '10.000001',
+          icon: 'https://example.com/usdc.png',
+        },
+        receive: {
+          mint: sol,
+          symbol: 'SOL',
+          estimated: '0.123456789',
+          minimum: '0.12',
+        },
+        maxSlippageBps: 50,
+      },
     },
+  })
+  // Before preparation the trade carries only what the agent asked for.
+  expect(operation.describe(arguments_).trade).toEqual({
+    kind: 'swap',
+    venue: 'jupiter',
+    pay: { mint: usdc, symbol: 'USDC', amount: '10.000001' },
+    receive: { mint: sol, symbol: 'SOL', minimum: '0.12' },
+    maxSlippageBps: 50,
   })
   const order = calls.find((call) => call.pathname === '/swap/v2/order')
   expect(order?.searchParams.get('taker')).toBe(wallet)

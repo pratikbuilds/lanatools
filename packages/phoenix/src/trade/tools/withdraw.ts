@@ -9,6 +9,7 @@ import { withdrawInstructions } from '../rise'
 import { ExchangeKeys, ExchangeStatus } from '../schemas'
 import { defineTradeTool } from '../tool'
 import { USDCAmount } from './deposit'
+import { perpTrade } from './shared'
 
 export const withdraw = defineTradeTool({
   name: 'phoenix_withdraw',
@@ -61,6 +62,7 @@ export const withdraw = defineTradeTool({
         amountUsdc: usdc(amount.toString()),
         collateralUsdc: usdc(collateral.toString()),
       },
+      trade: perpTrade('withdraw', { amountUsdc: usdc(amount.toString()) }),
       warnings: [
         "Withdrawals go through Phoenix's queue and may be delayed or dropped.",
         'Open positions keep their margin; Phoenix rejects a withdrawal that would leave too little.',

@@ -292,9 +292,73 @@ export const WithdrawalReceipt = type({
 })
 export type WithdrawalReceipt = typeof WithdrawalReceipt.infer
 
+const TradeToken = type({ mint: 'string', symbol: 'string', 'icon?': 'string' })
+
+/**
+ * A Jupiter swap. Amounts are decimal token units as strings. `estimated`
+ * and `minimum` come from the quote once the transaction is prepared; a
+ * minimum the agent asked for is known before.
+ */
+export const SwapTrade = type({
+  kind: "'swap'",
+  venue: "'jupiter'",
+  pay: TradeToken.and({ amount: 'string' }),
+  receive: TradeToken.and({ 'estimated?': 'string', 'minimum?': 'string' }),
+  maxSlippageBps: 'number',
+})
+export type SwapTrade = typeof SwapTrade.infer
+
+export const PERP_ACTIONS = [
+  'order',
+  'close',
+  'deposit',
+  'withdraw',
+  'cancel',
+  'activate',
+] as const
+
+/**
+ * A Phoenix perps action. Prices and amounts are decimal USD or token
+ * strings. Before preparation only what the agent asked for is known; the
+ * prepared transaction adds the book's prices, notional and fee.
+ */
+export const PerpTrade = type({
+  kind: "'perp'",
+  venue: "'phoenix'",
+  action: type.enumerated(...PERP_ACTIONS),
+  /** Market, e.g. "SOL". */
+  'symbol?': 'string',
+  'side?': "'buy' | 'sell'",
+  'orderType?': "'market' | 'limit'",
+  /** Size in tokens. */
+  'size?': 'string',
+  /** A limit order's price. */
+  'limitPrice?': 'string',
+  /** A market order's worst price: the most a buy pays, the least a sell takes. */
+  'worstPrice?': 'string',
+  /** Best opposite price when prepared. */
+  'bestPrice?': 'string',
+  'notionalUsd?': 'string',
+  'feeUsd?': 'string',
+  'reduceOnly?': 'boolean',
+  'postOnly?': 'boolean',
+  /** Deposit or withdrawal amount. */
+  'amountUsdc?': 'string',
+  /** The side of the position a close reduces. */
+  'closing?': "'long' | 'short'",
+  /** How many resting orders a cancel removes, when known. */
+  'cancelled?': 'number',
+})
+export type PerpTrade = typeof PerpTrade.infer
+
+/** What a transaction trades, for ledgers that show it as a trade. */
+export const TradeSummary = SwapTrade.or(PerpTrade)
+export type TradeSummary = typeof TradeSummary.infer
+
 /**
  * Fixed intent before preparation; a builder later supplies exact terms. A
- * field's `icon` is an https image URL, such as a token logo.
+ * field's `icon` is an https image URL, such as a token logo. `trade` is the
+ * same intent as data, for tools that trade.
  */
 export const TransactionReview = type({
   title: 'string',
@@ -305,6 +369,7 @@ export const TransactionReview = type({
     value: 'string',
     'icon?': 'string',
   }).array(),
+  'trade?': TradeSummary,
 })
 export type TransactionReview = typeof TransactionReview.infer
 

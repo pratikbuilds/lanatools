@@ -10,6 +10,7 @@ import {
   MarketSymbol,
   crossAccount,
   marketConfig,
+  perpTrade,
   requireActivated,
 } from './shared'
 
@@ -86,6 +87,10 @@ export const cancelOrders = defineTradeTool({
           describe(order),
         ]),
       ),
+      trade: perpTrade('cancel', {
+        symbol: market.symbol,
+        cancelled: chosen.length,
+      }),
       warnings: wanted
         ? []
         : [

@@ -4,6 +4,7 @@ import type {
   Instruction,
 } from '@solana/kit'
 import type { z } from 'zod'
+import type { PerpTrade } from '@lanatools/contracts'
 import { Wallet } from '../tool'
 import { PhoenixError, createPhoenixClient } from '../client'
 import type { PhoenixClient, PhoenixErrorCode, PhoenixOpts } from '../client'
@@ -55,6 +56,8 @@ type Described = {
   /** One line for a person, e.g. "Buy 0.10 SOL at up to $117.30 (market, IOC)". */
   summary: string
   details: Record<string, string>
+  /** The same terms as data, for ledgers that show the trade. */
+  trade: PerpTrade
   warnings: string[]
   /**
    * Market and close orders: Phoenix ignores the order after this slot (and

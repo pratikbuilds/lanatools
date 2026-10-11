@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, expect, test } from 'bun:test'
 import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
 import { TransactionsPage } from '@lanatools/contracts'
+import type { PerpTrade } from '@lanatools/contracts'
 import { SOLANA_NETWORKS } from '@lanatools/contracts/networks'
 import { mcpGrant, transactionRequest, walletTransfer } from '../db/schema'
 import { testDatabase } from '../test-database'
@@ -489,4 +490,34 @@ test('retired transaction tools retain their stored review in history', async ()
   })
   const page = await listTransactions(env(), user, { limit: 50 }, { now: NOON })
   expect(page.items.find((item) => item.id === id)).toMatchObject({ review })
+})
+
+test('a trading tool’s trade summary reaches the feed with its review', async () => {
+  const grant = await connect('client-a')
+  const trade: PerpTrade = {
+    kind: 'perp',
+    venue: 'phoenix',
+    action: 'order',
+    symbol: 'SOL',
+    side: 'buy',
+    orderType: 'market',
+    size: '0.1',
+    worstPrice: '110.15',
+    notionalUsd: '10.96',
+  }
+  const id = await request(grant, {
+    toolName: 'phoenix_market_order',
+    argumentsJson: JSON.stringify({ symbol: 'SOL', side: 'buy', size: '0.1' }),
+    network: 'mainnet',
+    counterparty: null,
+    reviewJson: JSON.stringify({
+      title: 'Place a Phoenix market order',
+      description: 'd',
+      actionLabel: 'Place',
+      fields: [],
+      trade,
+    }),
+  })
+  const item = (await list()).items.find((each) => each.id === id)
+  expect(item?.kind === 'agent' && item.review.trade).toEqual(trade)
 })

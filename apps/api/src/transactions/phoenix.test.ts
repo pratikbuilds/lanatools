@@ -231,6 +231,17 @@ const row = (id: string) =>
     .where(eq(transactionRequest.id, id))
     .get()
 
+/** The trade each tool reports, before and after Phoenix's book is read. */
+const ACTIONS = {
+  phoenix_activate_account: 'activate',
+  phoenix_deposit: 'deposit',
+  phoenix_withdraw: 'withdraw',
+  phoenix_market_order: 'order',
+  phoenix_limit_order: 'order',
+  phoenix_cancel_orders: 'cancel',
+  phoenix_close_position: 'close',
+} as const
+
 const cases = [
   ['phoenix_activate_account', {}],
   ['phoenix_deposit', { amount: '1' }],
@@ -345,6 +356,11 @@ for (const [tool, args] of cases)
         } else expect(final.status).toBe('confirmed')
         expect(f.sent()).toBe(1)
         const saved = await row(result.result.id)
+        const trade = { kind: 'perp', venue: 'phoenix', action: ACTIONS[tool] }
+        expect(JSON.parse(saved!.reviewJson!).trade).toMatchObject(trade)
+        expect(JSON.parse(saved!.candidateJson!).review.trade).toMatchObject(
+          'symbol' in args ? { ...trade, symbol: 'SOL' } : trade,
+        )
         expect(saved?.candidateJson).not.toContain('never-persist-this-token')
         expect(JSON.parse(saved!.candidateJson!).transaction).not.toEqual(
           await signed(JSON.parse(saved!.candidateJson!).transaction),
