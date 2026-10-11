@@ -1,102 +1,23 @@
-import { beforeEach, expect, mock, test } from 'bun:test'
+import { beforeEach, expect, test } from 'bun:test'
 import { z } from 'zod'
+import {
+  GRANT_ID,
+  USER_ID,
+  api,
+  challenge,
+  env,
+  exchange as exchangeFor,
+  grant,
+  postToken,
+  register,
+  resetWorker,
+  send,
+} from './test-worker'
 
 const MOBILE_REDIRECT = 'lanatools://oauth/callback'
-const USER_ID = 'did:privy:user-1'
-const GRANT_ID = '3665bb2c-0930-485a-97e2-3a431b5888d2'
-
-/** Enough of Workers KV for OAuthProvider: values, metadata and listing. */
-function memoryKV() {
-  const entries = new Map<string, { value: string; metadata?: unknown }>()
-  return {
-    async get(key: string, options?: string | { type?: string }) {
-      const value = entries.get(key)?.value
-      if (value === undefined) return null
-      const type = typeof options === 'string' ? options : options?.type
-      return type === 'json' ? JSON.parse(value) : value
-    },
-    async put(key: string, value: string, options?: { metadata?: unknown }) {
-      entries.set(key, { value, metadata: options?.metadata })
-    },
-    async delete(key: string) {
-      entries.delete(key)
-    },
-    async list(options: { prefix?: string } = {}) {
-      const keys = [...entries]
-        .filter(([name]) => name.startsWith(options.prefix ?? ''))
-        .map(([name, { metadata }]) => ({ name, metadata }))
-      return { keys, list_complete: true, cacheStatus: null }
-    },
-  }
-}
-
-let active = true
-const api = {
-  recordConsent: mock(async (_input: unknown) => {}),
-  verifyPrivyToken: mock(async (token: string) => {
-    if (token !== 'privy-valid') throw new Error('Invalid Privy token')
-    return USER_ID
-  }),
-  prepareGrant: mock(async () => ({ grantId: GRANT_ID })),
-  activateGrant: mock(
-    async (
-      _handle: string,
-      _identity: unknown,
-      _toolScopes: string[],
-      _limitMicroUsd: number | null,
-    ) => {},
-  ),
-  whoami: mock(async () =>
-    active ? { userId: USER_ID, clientId: 'client' } : null,
-  ),
-}
-const env = {
-  MCP_ORIGIN: 'http://localhost:8788',
-  FIRST_PARTY_CLIENT_IDS: '',
-  OAUTH_KV: memoryKV(),
-  API: api,
-}
-mock.module('cloudflare:workers', () => ({
-  WorkerEntrypoint: class {},
-  env,
-}))
-const { default: provider } = await import('./index')
-
-const ctx = {
-  waitUntil() {},
-  passThroughOnException() {},
-  props: {},
-} as unknown as ExecutionContext
-
-function send(path: string, init?: RequestInit) {
-  return provider.fetch(
-    new Request(new URL(path, env.MCP_ORIGIN), init),
-    env as never,
-    ctx,
-  )
-}
-
-async function register(name: string, redirect: string) {
-  const response = await send('/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      client_name: name,
-      redirect_uris: [redirect],
-      token_endpoint_auth_method: 'none',
-    }),
-  })
-  expect(response.status).toBe(201)
-  return z.object({ client_id: z.string() }).parse(await response.json())
-    .client_id
-}
 
 const mobile = await register('LanaTools Mobile', MOBILE_REDIRECT)
 const thirdParty = await register('Other Client', MOBILE_REDIRECT)
-const verifier = crypto.randomUUID() + crypto.randomUUID()
-const challenge = Buffer.from(
-  await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)),
-).toString('base64url')
 
 function authorize(
   body: Record<string, unknown> = {},
@@ -131,33 +52,15 @@ async function approvedCode() {
     .parse(await response.json()).code
 }
 
-function postToken(params: Record<string, string>) {
-  return send('/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ client_id: mobile, ...params }),
-  })
-}
-
-const Tokens = z.object({
-  access_token: z.string(),
-  refresh_token: z.string(),
-  scope: z.string(),
-})
-
-async function exchange(code: string) {
-  const response = await postToken({
-    grant_type: 'authorization_code',
-    code,
-    redirect_uri: MOBILE_REDIRECT,
-    code_verifier: verifier,
-  })
-  expect(response.status).toBe(200)
-  return Tokens.parse(await response.json())
+function exchange(code: string) {
+  return exchangeFor(mobile, MOBILE_REDIRECT, code)
 }
 
 function refresh(refreshToken: string) {
-  return postToken({ grant_type: 'refresh_token', refresh_token: refreshToken })
+  return postToken(mobile, {
+    grant_type: 'refresh_token',
+    refresh_token: refreshToken,
+  })
 }
 
 async function expectRefused(response: Response, status: number) {
@@ -169,9 +72,8 @@ async function expectRefused(response: Response, status: number) {
 }
 
 beforeEach(() => {
-  active = true
+  resetWorker()
   env.FIRST_PARTY_CLIENT_IDS = ` unlisted-client, ${mobile} `
-  for (const method of Object.values(api)) method.mockClear()
 })
 
 test('an approved request returns a code that exchanges for tokens', async () => {
@@ -199,7 +101,7 @@ test('an approved request returns a code that exchanges for tokens', async () =>
 
 test('a revoked grant cannot refresh its tokens', async () => {
   const tokens = await exchange(await approvedCode())
-  active = false
+  grant.active = false
   const response = await refresh(tokens.refresh_token)
   expect(response.status).toBe(400)
   expect(await response.json()).toMatchObject({ error: 'invalid_grant' })
@@ -283,4 +185,18 @@ test('unexpected failures return a JSON 500', async () => {
   const response = await authorize()
   expect(response.status).toBe(500)
   expect(await response.json()).toHaveProperty('error')
+})
+
+test('an empty state comes back empty', async () => {
+  const response = await authorize({ state: '' })
+  expect(response.status).toBe(200)
+  expect(await response.json()).toMatchObject({ state: '' })
+})
+
+test('a body that is not JSON is refused', async () => {
+  const response = await send('/first-party/authorize', {
+    method: 'POST',
+    body: 'not json',
+  })
+  await expectRefused(response, 400)
 })
