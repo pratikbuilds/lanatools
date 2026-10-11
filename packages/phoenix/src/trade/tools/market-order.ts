@@ -27,6 +27,7 @@ import {
   bestTicks,
   fineUsd,
   orderVerb,
+  perpTrade,
   requireActivated,
   tradableMarket,
   unitsOf,
@@ -114,6 +115,17 @@ export async function immediateOrder(
       expiresAfterSlot: String(spec.lastValidSlot),
       reduceOnly: String(reduceOnly),
     },
+    terms: {
+      symbol: market.symbol,
+      side,
+      orderType: 'market' as const,
+      size,
+      worstPrice: limitPrice,
+      bestPrice,
+      notionalUsd: usd(notional),
+      feeUsd: fineUsd(notional * market.takerFee),
+      reduceOnly,
+    },
     warnings: [
       // D2: 150 slots of about 400 ms.
       `This order expires about a minute after it was prepared (slot ${spec.lastValidSlot}); after that it is not sent, and must be prepared again.`,
@@ -196,6 +208,7 @@ export const marketOrder = defineTradeTool({
       position: order.position,
       summary: `Market ${verb}: ${input.size} ${market.symbol} perp now, ${bound} $${order.limitPrice} each; any part that cannot fill at that price is cancelled`,
       details: order.details,
+      trade: perpTrade('order', order.terms),
       warnings: order.warnings,
     }
   },

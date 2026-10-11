@@ -102,6 +102,61 @@ for (const width of [390, 1440]) {
   })
 }
 
+for (const width of [390, 1440]) {
+  test(`swaps and perps read as trades and open their own drawers at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    await mockDashboard(page)
+    await page.goto(`${dashboardURL}/dashboard/transactions`)
+    const rows = page.getByRole('list').first()
+    await expect(rows.getByText('Swap USDC → SOL')).toBeVisible()
+    await expect(rows.getByText('Buy 0.1 SOL-PERP')).toBeVisible()
+    await expect(
+      rows.getByText('Phoenix · Market, at most $110.15'),
+    ).toBeVisible()
+    await expect(rows.getByText('Deposit to Phoenix')).toBeVisible()
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(width + 1)
+    await page.screenshot({
+      path: test.info().outputPath('trades.png'),
+      fullPage: true,
+    })
+
+    await rows.getByRole('button', { name: /Buy 0\.1 SOL-PERP/ }).click()
+    const order = page.getByRole('dialog', {
+      name: 'Transaction: Buy 0.1 SOL-PERP',
+    })
+    await expect(order.getByText('Market, fill or cancel')).toBeVisible()
+    await expect(order.getByText('$0.003836')).toBeVisible()
+    await expect(
+      order.getByRole('link', { name: /Open account/ }),
+    ).toHaveAttribute('href', /\/dashboard\/perps\//)
+    await page.screenshot({ path: test.info().outputPath('perp-drawer.png') })
+    await order.getByRole('button', { name: 'Close', exact: true }).click()
+
+    await rows.getByRole('button', { name: /Swap USDC → SOL/ }).click()
+    const swapDrawer = page.getByRole('dialog', {
+      name: 'Transaction: Swap USDC → SOL',
+    })
+    await expect(swapDrawer.getByText('You paid')).toBeVisible()
+    await expect(swapDrawer.getByText('1 SOL ≈ 109.529 USDC')).toBeVisible()
+    await page.screenshot({ path: test.info().outputPath('swap-drawer.png') })
+
+    const kinds = page.getByRole('combobox', { name: 'Filter by kind' })
+    const perps = page.waitForRequest((request) =>
+      request.url().includes('kind=perp'),
+    )
+    await kinds.selectOption('perp')
+    await perps
+    expect(errors).toEqual([])
+  })
+}
+
 test('an empty wallet explains what will appear', async ({ page }) => {
   await mockDashboard(page, true)
   await page.goto(`${dashboardURL}/dashboard/transactions`)

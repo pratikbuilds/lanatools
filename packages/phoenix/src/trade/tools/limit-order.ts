@@ -13,6 +13,7 @@ import {
   Size,
   bestTicks,
   orderVerb,
+  perpTrade,
   requireActivated,
   tradableMarket,
   unitsOf,
@@ -92,6 +93,17 @@ export const limitOrder = defineTradeTool({
         postOnly: String(input.postOnly),
         reduceOnly: String(input.reduceOnly),
       },
+      trade: perpTrade('order', {
+        symbol: market.symbol,
+        side: input.side,
+        orderType: 'limit',
+        size: input.size,
+        limitPrice: price,
+        ...(opposite === null ? {} : { bestPrice: oppositePrice }),
+        notionalUsd: usd(Number(input.size) * Number(price)),
+        postOnly: input.postOnly,
+        reduceOnly: input.reduceOnly,
+      }),
       warnings: crosses
         ? [
             input.postOnly

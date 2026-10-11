@@ -52,6 +52,7 @@ const prepared = (instructions = [phoenixInstruction()]): Prepared => ({
   instructions,
   summary: 'Buy 0.1 SOL',
   details: { size: '0.1' },
+  trade: { kind: 'perp', venue: 'phoenix', action: 'order', size: '0.1' },
   warnings: [],
 })
 
@@ -183,6 +184,7 @@ test('a failed simulation leaves nothing to sign and says why', async () => {
       wallet: WALLET,
       summary: 'Buy 0.1 SOL',
       details: { size: '0.1' },
+      trade: { kind: 'perp', venue: 'phoenix', action: 'order', size: '0.1' },
       warnings: [],
       simulation: {
         ok: false,
@@ -228,6 +230,7 @@ const whole = (transaction: string): Prepared => ({
   submit: { via: 'rpc' },
   summary: 'Activate',
   details: {},
+  trade: { kind: 'perp', venue: 'phoenix', action: 'activate' },
   warnings: [],
 })
 

@@ -292,9 +292,73 @@ export const WithdrawalReceipt = type({
 })
 export type WithdrawalReceipt = typeof WithdrawalReceipt.infer
 
+const TradeToken = type({ mint: 'string', symbol: 'string', 'icon?': 'string' })
+
+/**
+ * A Jupiter swap. Amounts are decimal token units as strings. `estimated`
+ * and `minimum` come from the quote once the transaction is prepared; a
+ * minimum the agent asked for is known before.
+ */
+export const SwapTrade = type({
+  kind: "'swap'",
+  venue: "'jupiter'",
+  pay: TradeToken.and({ amount: 'string' }),
+  receive: TradeToken.and({ 'estimated?': 'string', 'minimum?': 'string' }),
+  maxSlippageBps: 'number',
+})
+export type SwapTrade = typeof SwapTrade.infer
+
+export const PERP_ACTIONS = [
+  'order',
+  'close',
+  'deposit',
+  'withdraw',
+  'cancel',
+  'activate',
+] as const
+
+/**
+ * A Phoenix perps action. Prices and amounts are decimal USD or token
+ * strings. Before preparation only what the agent asked for is known; the
+ * prepared transaction adds the book's prices, notional and fee.
+ */
+export const PerpTrade = type({
+  kind: "'perp'",
+  venue: "'phoenix'",
+  action: type.enumerated(...PERP_ACTIONS),
+  /** Market, e.g. "SOL". */
+  'symbol?': 'string',
+  'side?': "'buy' | 'sell'",
+  'orderType?': "'market' | 'limit'",
+  /** Size in tokens. */
+  'size?': 'string',
+  /** A limit order's price. */
+  'limitPrice?': 'string',
+  /** A market order's worst price: the most a buy pays, the least a sell takes. */
+  'worstPrice?': 'string',
+  /** Best opposite price when prepared. */
+  'bestPrice?': 'string',
+  'notionalUsd?': 'string',
+  'feeUsd?': 'string',
+  'reduceOnly?': 'boolean',
+  'postOnly?': 'boolean',
+  /** Deposit or withdrawal amount. */
+  'amountUsdc?': 'string',
+  /** The side of the position a close reduces. */
+  'closing?': "'long' | 'short'",
+  /** How many resting orders a cancel removes, when known. */
+  'cancelled?': 'number',
+})
+export type PerpTrade = typeof PerpTrade.infer
+
+/** What a transaction trades, for ledgers that show it as a trade. */
+export const TradeSummary = SwapTrade.or(PerpTrade)
+export type TradeSummary = typeof TradeSummary.infer
+
 /**
  * Fixed intent before preparation; a builder later supplies exact terms. A
- * field's `icon` is an https image URL, such as a token logo.
+ * field's `icon` is an https image URL, such as a token logo. `trade` is the
+ * same intent as data, for tools that trade.
  */
 export const TransactionReview = type({
   title: 'string',
@@ -305,6 +369,7 @@ export const TransactionReview = type({
     value: 'string',
     'icon?': 'string',
   }).array(),
+  'trade?': TradeSummary,
 })
 export type TransactionReview = typeof TransactionReview.infer
 
@@ -318,10 +383,23 @@ export const TRANSACTION_DELIVERIES = ['link', 'local', 'embedded'] as const
 export const TransactionDelivery = type.enumerated(...TRANSACTION_DELIVERIES)
 export type TransactionDelivery = typeof TransactionDelivery.infer
 
+/**
+ * Chain evidence for a sent transaction. A confirmed trade may also carry
+ * what actually happened, read once after confirmation: `received` is a
+ * swap's net output to the signer, `fill` a perp order's fills on Phoenix.
+ * Amounts are decimal strings.
+ */
 export const TransactionReceipt = type({
   signature: 'string',
   slot: 'string',
   commitment: "'confirmed' | 'finalized'",
+  'received?': { mint: 'string', amount: 'string' },
+  'fill?': {
+    size: 'string',
+    price: 'string',
+    feeUsdc: 'string',
+    realizedPnlUsdc: 'string',
+  },
 })
 export type TransactionReceipt = typeof TransactionReceipt.infer
 
@@ -458,7 +536,8 @@ export const TransactionActivityItem =
 export type TransactionActivityItem = typeof TransactionActivityItem.infer
 
 export const TransactionsQuery = type({
-  'kind?': "'agent' | 'withdrawal' | 'deposit'",
+  /** `swap` and `perp` narrow agent transactions to Jupiter or Phoenix tools. */
+  'kind?': "'agent' | 'swap' | 'perp' | 'withdrawal' | 'deposit'",
   'status?': TransactionStatusGroup,
   'client?': 'string',
   'delivery?': TransactionDelivery,
@@ -489,3 +568,96 @@ export const TransactionsSync = type({
   more: 'boolean',
 })
 export type TransactionsSync = typeof TransactionsSync.infer
+
+/**
+ * A wallet's Phoenix perps account, as the dashboard shows it. Money is
+ * decimal USD strings, sizes decimal tokens. Liquidation prices are
+ * Phoenix's own; null when Phoenix has none for the position.
+ */
+export const PhoenixPosition = type({
+  /** Market, e.g. "SOL". */
+  symbol: 'string',
+  subaccount: 'number',
+  marginMode: "'cross' | 'isolated'",
+  side: "'long' | 'short'",
+  size: 'string',
+  entryPrice: 'string | null',
+  markPrice: 'string | null',
+  valueUsd: 'string | null',
+  unrealizedPnlUsd: 'string | null',
+  liquidationPrice: 'string | null',
+  fundingUsdc: 'string',
+})
+export type PhoenixPosition = typeof PhoenixPosition.infer
+
+export const PhoenixOrder = type({
+  symbol: 'string',
+  subaccount: 'number',
+  orderId: 'string',
+  side: "'buy' | 'sell'",
+  type: 'string',
+  price: 'string',
+  size: 'string',
+  reduceOnly: 'boolean',
+})
+export type PhoenixOrder = typeof PhoenixOrder.infer
+
+export const PhoenixAccount = type({
+  wallet: 'string',
+  /** False when the wallet has never opened a Phoenix account. */
+  exists: 'boolean',
+  /** Collateral plus unrealized PnL, as Phoenix margins it. */
+  accountValueUsd: 'string',
+  collateralUsdc: 'string',
+  unrealizedPnlUsd: 'string',
+  maintenanceMarginUsd: 'string',
+  /** Position value over account value; null with nothing in the account. */
+  leverage: 'string | null',
+  /** Phoenix's word for the account's margin health, e.g. "healthy". */
+  riskState: 'string | null',
+  positions: PhoenixPosition.array(),
+  orders: PhoenixOrder.array(),
+})
+export type PhoenixAccount = typeof PhoenixAccount.infer
+
+/** Candle intervals the chart offers, longest first; Phoenix's timeframes. */
+export const PHOENIX_CANDLE_INTERVALS = ['1d', '4h', '1h', '15m'] as const
+export const PhoenixCandleInterval = type.enumerated(
+  ...PHOENIX_CANDLE_INTERVALS,
+)
+export type PhoenixCandleInterval = typeof PhoenixCandleInterval.infer
+
+/** OHLC candles for one market; `time` is Unix seconds. */
+export const PhoenixCandles = type({
+  symbol: 'string',
+  interval: PhoenixCandleInterval,
+  candles: type({
+    time: 'number',
+    open: 'number',
+    high: 'number',
+    low: 'number',
+    close: 'number',
+  }).array(),
+})
+export type PhoenixCandles = typeof PhoenixCandles.infer
+
+/**
+ * A wallet's Phoenix fills, newest first. `placedBy` names the signed-in
+ * user's client when one of their LanaTools transactions placed it.
+ */
+export const PhoenixFills = type({
+  fills: type({
+    /** Unix milliseconds. */
+    time: 'number',
+    symbol: 'string',
+    side: "'buy' | 'sell'",
+    size: 'string',
+    price: 'string',
+    feeUsdc: 'string',
+    realizedPnlUsdc: 'string',
+    signature: 'string | null',
+    placedBy: 'string | null',
+  }).array(),
+  nextCursor: 'string | null',
+})
+export type PhoenixFills = typeof PhoenixFills.infer

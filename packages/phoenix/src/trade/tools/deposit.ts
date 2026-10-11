@@ -8,7 +8,7 @@ import { toUSDCUnits } from '../price'
 import { depositInstructions, usdcAccountAddress } from '../rise'
 import { ExchangeKeys } from '../schemas'
 import { defineTradeTool } from '../tool'
-import { requireActivated } from './shared'
+import { perpTrade, requireActivated } from './shared'
 
 /** A USDC amount as the agent types it. */
 export const USDCAmount = z
@@ -50,6 +50,7 @@ export const deposit = defineTradeTool({
         amountUsdc: usdc(amount.toString()),
         walletUsdc: usdc(balance.toString()),
       },
+      trade: perpTrade('deposit', { amountUsdc: usdc(amount.toString()) }),
       warnings: [],
     }
   },

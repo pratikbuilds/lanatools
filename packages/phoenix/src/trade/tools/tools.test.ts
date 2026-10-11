@@ -185,6 +185,7 @@ test('a deposit needs an activated account and enough USDC', async () => {
       status: 'ready',
       summary: 'Deposit 2.5 USDC into the Phoenix cross-margin account',
       details: { amountUsdc: '2.5', walletUsdc: '5' },
+      trade: { kind: 'perp', action: 'deposit', amountUsdc: '2.5' },
       submit: { via: 'rpc' },
     },
   })
@@ -242,6 +243,7 @@ test('a withdrawal is checked against collateral and warns about the queue', asy
       summary:
         'Withdraw 5 USDC from the Phoenix cross-margin account to the wallet',
       details: { amountUsdc: '5', collateralUsdc: '5' },
+      trade: { kind: 'perp', action: 'withdraw', amountUsdc: '5' },
       warnings: [
         "Withdrawals go through Phoenix's queue and may be delayed or dropped.",
         'Open positions keep their margin; Phoenix rejects a withdrawal that would leave too little.',

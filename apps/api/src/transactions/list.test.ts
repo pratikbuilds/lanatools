@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, expect, test } from 'bun:test'
 import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
 import { TransactionsPage } from '@lanatools/contracts'
+import type { PerpTrade } from '@lanatools/contracts'
 import { SOLANA_NETWORKS } from '@lanatools/contracts/networks'
 import { mcpGrant, transactionRequest, walletTransfer } from '../db/schema'
 import { testDatabase } from '../test-database'
@@ -316,14 +317,30 @@ test('kind, client, delivery and address narrow the feed', async () => {
     counterparty: RECIPIENT,
     createdAt: NOON - 4 * MINUTE,
   })
+  const perp = await request(grant, {
+    toolName: 'phoenix_market_order',
+    argumentsJson: JSON.stringify({ symbol: 'SOL', side: 'buy', size: '1' }),
+    reviewJson: JSON.stringify({
+      title: 'Place a Phoenix market order',
+      description: 'd',
+      actionLabel: 'Place',
+      fields: [],
+    }),
+    delivery: 'link',
+    counterparty: null,
+    createdAt: NOON - 5 * MINUTE,
+  })
   const ids = async (filter: Partial<TransactionsFilter>) =>
     (await list(filter)).items.map((i) => i.id)
-  expect(await ids({})).toEqual([swap, send, deposit, withdrawal])
-  expect(await ids({ kind: 'agent' })).toEqual([swap, send])
+  expect(await ids({})).toEqual([swap, send, deposit, withdrawal, perp])
+  expect(await ids({ kind: 'agent' })).toEqual([swap, send, perp])
+  expect(await ids({ kind: 'swap' })).toEqual([swap])
+  expect(await ids({ kind: 'perp' })).toEqual([perp])
   expect(await ids({ kind: 'deposit' })).toEqual([deposit])
   expect(await ids({ kind: 'withdrawal' })).toEqual([withdrawal])
   expect(await ids({ client: 'client-b' })).toEqual([send])
   expect(await ids({ delivery: 'embedded' })).toEqual([swap])
+  expect(await ids({ kind: 'perp', delivery: 'embedded' })).toEqual([])
   // The signing wallet, the recipient and the user's own wallet all match.
   expect(await ids({ address: OTHER })).toEqual([send, deposit])
   expect(await ids({ address: RECIPIENT })).toEqual([send, withdrawal])
@@ -489,4 +506,109 @@ test('retired transaction tools retain their stored review in history', async ()
   })
   const page = await listTransactions(env(), user, { limit: 50 }, { now: NOON })
   expect(page.items.find((item) => item.id === id)).toMatchObject({ review })
+})
+
+test('a trading tool’s trade summary reaches the feed with its review', async () => {
+  const grant = await connect('client-a')
+  const trade: PerpTrade = {
+    kind: 'perp',
+    venue: 'phoenix',
+    action: 'order',
+    symbol: 'SOL',
+    side: 'buy',
+    orderType: 'market',
+    size: '0.1',
+    worstPrice: '110.15',
+    notionalUsd: '10.96',
+  }
+  const id = await request(grant, {
+    toolName: 'phoenix_market_order',
+    argumentsJson: JSON.stringify({ symbol: 'SOL', side: 'buy', size: '0.1' }),
+    network: 'mainnet',
+    counterparty: null,
+    reviewJson: JSON.stringify({
+      title: 'Place a Phoenix market order',
+      description: 'd',
+      actionLabel: 'Place',
+      fields: [],
+      trade,
+    }),
+  })
+  const item = (await list()).items.find((each) => each.id === id)
+  expect(item?.kind === 'agent' && item.review.trade).toEqual(trade)
+})
+
+test('a confirmed perp order learns its fill when read, once Phoenix has it', async () => {
+  const grant = await connect('client-a')
+  const receipt = { signature: SIGNATURE, slot: '42', commitment: 'finalized' }
+  const id = await request(grant, {
+    toolName: 'phoenix_market_order',
+    argumentsJson: JSON.stringify({ symbol: 'SOL', side: 'buy', size: '0.1' }),
+    network: 'mainnet',
+    delivery: 'embedded',
+    counterparty: null,
+    status: 'confirmed',
+    signature: SIGNATURE,
+    account: WALLET,
+    receiptJson: JSON.stringify(receipt),
+    reviewJson: JSON.stringify({
+      title: 'Place a Phoenix market order',
+      description: 'd',
+      actionLabel: 'Place',
+      fields: [],
+      trade: {
+        kind: 'perp',
+        venue: 'phoenix',
+        action: 'order',
+        orderType: 'market',
+        symbol: 'SOL',
+        side: 'buy',
+        size: '0.1',
+      },
+    }),
+  })
+  const asked: string[] = []
+  let indexed = false
+  const tradeFacts = {
+    transaction: () => Promise.reject(new Error('not a swap')),
+    fills: async (wallet: string, symbol: string, since: number) => {
+      asked.push(`${wallet} ${symbol} ${since}`)
+      return indexed
+        ? [
+            {
+              time: '2026-10-10T12:00:01Z',
+              size: 0.1,
+              price: 109.6,
+              feeUsdc: 0.0038,
+              realizedPnlUsdc: 0,
+              signature: SIGNATURE,
+            },
+          ]
+        : []
+    },
+  }
+  // Not indexed yet: the receipt stays as it was.
+  expect(
+    await readTransaction(env(), user, id, { now: NOON, tradeFacts }),
+  ).toMatchObject({ receipt })
+  indexed = true
+  expect(
+    await readTransaction(env(), user, id, { now: NOON, tradeFacts }),
+  ).toMatchObject({
+    receipt: {
+      ...receipt,
+      fill: {
+        size: '0.1',
+        price: '109.6',
+        feeUsdc: '0.0038',
+        realizedPnlUsdc: '0',
+      },
+    },
+  })
+  // Stored: the next read neither asks again nor loses it.
+  await readTransaction(env(), user, id, { now: NOON, tradeFacts })
+  // Paged back no further than the request's creation.
+  expect(asked).toEqual([`${WALLET} SOL ${NOON}`, `${WALLET} SOL ${NOON}`])
+  const [listed] = (await list()).items
+  expect(listed?.kind === 'agent' && listed.receipt?.fill?.price).toBe('109.6')
 })

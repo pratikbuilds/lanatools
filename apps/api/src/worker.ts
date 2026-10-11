@@ -6,6 +6,7 @@ import { activity } from './routes/activity'
 import { transactions } from './routes/transactions'
 import { mcpClients } from './routes/mcp-clients'
 import { paymentSignerRoutes } from './routes/payment-signer'
+import { phoenixRoutes } from './routes/phoenix'
 import { walletBalances } from './routes/wallet-balances'
 import { walletWithdrawals } from './routes/wallet-withdrawals'
 import { earlyAccess } from './routes/early-access'
@@ -29,5 +30,6 @@ app.route('/api/mcp/clients', mcpClients)
 app.route('/api/payments/signer', paymentSignerRoutes)
 app.route('/api/wallet/balances', walletBalances)
 app.route('/api/wallet/withdrawals', walletWithdrawals)
+app.route('/api/phoenix', phoenixRoutes())
 
 export default app

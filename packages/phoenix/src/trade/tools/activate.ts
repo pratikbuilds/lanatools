@@ -13,6 +13,7 @@ import {
 import { ActivationPermission, AuthNonce, ExchangeKeys } from '../schemas'
 import { defineTradeTool } from '../tool'
 import { messageOf, rpcTimeout } from '../transaction'
+import { perpTrade } from './shared'
 
 /** LanaTools' Phoenix referral code; every activation uses it by default. */
 export const LANATOOLS_REFERRAL_CODE = '4L2RQ06K'
@@ -105,6 +106,7 @@ export const activateAccount = defineTradeTool({
         registers: register ? 'yes' : 'no, already registered',
         walletSol: fromLots(sol.toString(), SOL_DECIMALS),
       },
+      trade: perpTrade('activate'),
       warnings: [
         'Phoenix co-signs and submits this transaction; the wallet also signs a login message for Phoenix, which moves no funds.',
         ...(sol === 0n

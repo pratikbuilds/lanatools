@@ -1,5 +1,11 @@
 import { expect, test } from 'bun:test'
 import { renderToString } from 'react-dom/server'
+import {
+  RouterContextProvider,
+  createMemoryHistory,
+  createRouter,
+} from '@tanstack/react-router'
+import { routeTree } from '#/routeTree.gen'
 import type { TransactionActivityItem } from '@lanatools/contracts'
 import { DashboardSessionProvider } from './session'
 import { TransactionDetail, TransactionRows } from './transactions'
@@ -102,12 +108,20 @@ function rows(items: TransactionActivityItem[]) {
   )
 }
 
+// The drawer links to other dashboard pages, so it renders inside a router.
+const router = createRouter({
+  routeTree,
+  history: createMemoryHistory({ initialEntries: ['/dashboard/transactions'] }),
+})
+
 function detail(item: TransactionActivityItem) {
   return text(
     renderToString(
-      <DashboardSessionProvider value={session}>
-        <TransactionDetail item={item} onClose={() => {}} now={now} />
-      </DashboardSessionProvider>,
+      <RouterContextProvider router={router}>
+        <DashboardSessionProvider value={session}>
+          <TransactionDetail item={item} onClose={() => {}} now={now} />
+        </DashboardSessionProvider>
+      </RouterContextProvider>,
     ),
   )
 }
@@ -181,4 +195,156 @@ test('a failed swap is struck through with its error code', () => {
   expect(html).toContain('The chain rejected this transaction. Nothing moved.')
   expect(html).toContain('chain_failed')
   expect(html).toContain('line-through')
+})
+
+const tradedSwap: TransactionActivityItem = {
+  ...swap,
+  id: 'swap-3',
+  network: 'mainnet',
+  review: {
+    ...swap.review,
+    trade: {
+      kind: 'swap',
+      venue: 'jupiter',
+      pay: {
+        mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+        symbol: 'USDC',
+        amount: '1',
+        icon: 'https://example.com/usdc.png',
+      },
+      receive: {
+        mint: 'So11111111111111111111111111111111111111112',
+        symbol: 'SOL',
+        estimated: '0.00913',
+        minimum: '0.00908',
+      },
+      maxSlippageBps: 50,
+    },
+  },
+}
+const perpOrder: TransactionActivityItem = {
+  ...swap,
+  id: 'perp-1',
+  tool: 'phoenix_market_order',
+  network: 'mainnet',
+  review: {
+    title: 'Place a Phoenix market order',
+    description: 'Market buy (long): 0.1 SOL perp now',
+    actionLabel: 'Place a Phoenix market order',
+    fields: [
+      { label: 'limitPrice', value: '110.15' },
+      { label: 'Notice', value: 'This order expires about a minute after.' },
+    ],
+    trade: {
+      kind: 'perp',
+      venue: 'phoenix',
+      action: 'order',
+      symbol: 'SOL',
+      side: 'buy',
+      orderType: 'market',
+      size: '0.1',
+      worstPrice: '110.15',
+      bestPrice: '109.6',
+      notionalUsd: '10.96',
+      feeUsd: '0.003836',
+      reduceOnly: false,
+    },
+  },
+}
+const phoenixDeposit: TransactionActivityItem = {
+  ...perpOrder,
+  id: 'perp-2',
+  tool: 'phoenix_deposit',
+  review: {
+    ...perpOrder.review,
+    fields: [],
+    trade: {
+      kind: 'perp',
+      venue: 'phoenix',
+      action: 'deposit',
+      amountUsdc: '250',
+    },
+  },
+}
+
+test('a swap row shows what it paid with what came back under it', () => {
+  const html = rows([tradedSwap])
+  expect(html).toContain('Swap USDC → SOL')
+  expect(html).toContain('Jupiter · 1 SOL ≈ 109.529 USDC')
+  expect(html).toContain('−1')
+  expect(html).toContain('≈ +0.00913')
+})
+
+test('a perp row reads as the trade, with an unsigned notional', () => {
+  const html = rows([perpOrder, phoenixDeposit])
+  expect(html).toContain('Buy 0.1 SOL-PERP')
+  expect(html).toContain('Phoenix · Market, at most $110.15')
+  expect(html).toContain('$10.96')
+  expect(html).toContain('notional')
+  expect(html).not.toContain('Place a Phoenix market order')
+  // Collateral leaving the wallet is wallet money.
+  expect(html).toContain('Deposit to Phoenix')
+  expect(html).toContain('−250')
+})
+
+test('a swap drawer shows the two legs with token logos', () => {
+  const html = detail(tradedSwap)
+  expect(html).toContain('You paid')
+  expect(html).toContain('You received, estimated')
+  expect(html).toContain('https://example.com/usdc.png')
+  expect(html).toContain('0.00913')
+  expect(html).toContain('Minimum receive')
+  expect(html).toContain('0.00908 SOL')
+  expect(html).toContain('Route')
+})
+
+test('a perp drawer shows the order ticket, notices and the account link', () => {
+  const html = detail(perpOrder)
+  expect(html).toContain('0.1 SOL')
+  expect(html).toContain('$10.96 notional at the best price, $109.60')
+  expect(html).toContain('Market, fill or cancel')
+  expect(html).toContain('at most $110.15')
+  expect(html).toContain('$0.003836')
+  expect(html).toContain('This order expires about a minute after.')
+  expect(html).toContain(`/dashboard/perps/${WALLET}`)
+  expect(html).toContain('Open account →')
+  // Raw tool keys are not shown once the trade says the same thing.
+  expect(html).not.toContain('limitPrice')
+})
+
+test('a read fill and swap output replace the estimates', () => {
+  const filled: TransactionActivityItem = {
+    ...perpOrder,
+    receipt: {
+      signature: SIGNATURE,
+      slot: '1',
+      commitment: 'finalized',
+      fill: {
+        size: '0.1',
+        price: '109.64',
+        feeUsdc: '0.0038',
+        realizedPnlUsdc: '0',
+      },
+    },
+  }
+  expect(rows([filled])).toContain('Phoenix · Filled at $109.64')
+  expect(detail(filled)).toContain(
+    'Filled 0.1 at $109.64 each, $10.96 notional',
+  )
+  const swapped: TransactionActivityItem = {
+    ...tradedSwap,
+    receipt: {
+      signature: SIGNATURE,
+      slot: '1',
+      commitment: 'finalized',
+      received: {
+        mint: 'So11111111111111111111111111111111111111112',
+        amount: '0.009101',
+      },
+    },
+  }
+  const row = rows([swapped])
+  expect(row).toContain('+0.009101')
+  expect(row).not.toContain('≈ +')
+  expect(detail(swapped)).toContain('>You received<')
 })

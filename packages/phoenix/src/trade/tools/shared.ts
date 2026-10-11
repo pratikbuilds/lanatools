@@ -8,6 +8,7 @@ import { bookTicks } from '../price'
 import type { MarketUnits, Side } from '../price'
 import { PHOENIX_PROGRAM, activationOf, traderAccountAddress } from '../rise'
 import { OrderMarket, TraderBook } from '../schemas'
+import type { PerpTrade } from '@lanatools/contracts'
 import type { TradeContext } from '../tool'
 
 /** Inputs and reads several trade tools share. */
@@ -123,6 +124,14 @@ export function orderVerb(side: Side, reduceOnly: boolean) {
       ? 'buy to reduce a short position'
       : 'sell to reduce a long position'
   return side === 'buy' ? 'buy (long)' : 'sell (short)'
+}
+
+/** A prepared action's terms as data, for ledgers. */
+export function perpTrade(
+  action: PerpTrade['action'],
+  terms: Omit<PerpTrade, 'kind' | 'venue' | 'action'> = {},
+): PerpTrade {
+  return { kind: 'perp', venue: 'phoenix', action, ...terms }
 }
 
 /** USD to the cent, for notional. */

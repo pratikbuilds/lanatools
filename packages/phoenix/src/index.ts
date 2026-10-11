@@ -12,6 +12,7 @@ import {
 } from './tools/markets'
 
 export { PHOENIX_API_URL } from './client'
+export { readPhoenixAccount } from './account-view'
 export type { PhoenixFetch, PhoenixOpts } from './client'
 export type { PhoenixTool } from './tool'
 

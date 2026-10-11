@@ -1,4 +1,4 @@
-import { and, desc, eq, or, sql } from 'drizzle-orm'
+import { and, desc, eq, like, or, sql } from 'drizzle-orm'
 import type { SQL } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
@@ -29,6 +29,12 @@ import {
   verifyRpcNetwork,
 } from './submission'
 import { settleWalletTransfer } from './wallet-transfers'
+import {
+  needsTradeFacts,
+  settleTradeFacts,
+  tradeFactsReader,
+} from './trade-facts'
+import type { TradeFactsReader } from './trade-facts'
 
 /** Transactions fetched per request; the dashboard asks for older ones on scroll. */
 export const TRANSACTIONS_PAGE_SIZE = 50
@@ -81,13 +87,23 @@ const WALLET_STATUS: Record<TransactionStatusGroup, SQL | undefined> = {
   expired: sql`0`,
 }
 
+/** Agent kinds that are one family of trading tools. */
+const TOOL_FAMILIES = {
+  swap: eq(transactionRequest.toolName, 'jupiter_swap'),
+  // Every Phoenix trade tool is named phoenix_*; no other tool starts so.
+  perp: like(transactionRequest.toolName, 'phoenix_%'),
+}
+
 function agentSelected(
   userId: string,
   filter: Omit<TransactionsFilter, 'status' | 'before' | 'limit'>,
 ) {
-  if (filter.kind !== undefined && filter.kind !== 'agent') return null
+  if (filter.kind === 'withdrawal' || filter.kind === 'deposit') return null
   return and(
     eq(transactionRequest.creatorUserId, userId),
+    filter.kind === 'swap' || filter.kind === 'perp'
+      ? TOOL_FAMILIES[filter.kind]
+      : undefined,
     filter.client === undefined
       ? undefined
       : eq(transactionRequest.creatorClientId, filter.client),
@@ -108,7 +124,12 @@ function walletSelected(
   filter: Omit<TransactionsFilter, 'status' | 'before' | 'limit'>,
 ) {
   // Wallet transfers have no client or signing method to match.
-  if (filter.kind === 'agent') return null
+  if (
+    filter.kind === 'agent' ||
+    filter.kind === 'swap' ||
+    filter.kind === 'perp'
+  )
+    return null
   if (filter.client !== undefined || filter.delivery !== undefined) return null
   return and(
     eq(walletTransfer.privyUserId, userId),
@@ -320,7 +341,7 @@ export async function readTransaction(
   env: TransactionExecutionEnv,
   userId: string,
   id: string,
-  options: ExecutionOptions = {},
+  options: ExecutionOptions & { tradeFacts?: TradeFactsReader } = {},
 ): Promise<TransactionActivityItem | null> {
   const now = options.now ?? Date.now()
   const owned = and(
@@ -337,7 +358,29 @@ export async function readTransaction(
     )
     if (['ready', 'submitting', 'unknown'].includes(link.status))
       await observeTransactionLink(env, id, options)
-    const fresh = await agentQuery(env.DB).where(owned).get()
+    let fresh = await agentQuery(env.DB).where(owned).get()
+    // A confirmed trade learns what actually filled the first time it is
+    // read here; until then it shows the review's estimates.
+    const current =
+      fresh && projectTransactionLink(fresh.row, true, now, options.tools)
+    if (
+      fresh &&
+      current?.status === 'confirmed' &&
+      needsTradeFacts(current.review.trade, current.receipt)
+    ) {
+      try {
+        await settleTradeFacts(
+          env.DB,
+          fresh.row,
+          current.review.trade,
+          options.tradeFacts ??
+            tradeFactsReader(options.rpc ?? transactionRpc(env.SOLANA_RPC_URL)),
+        )
+        fresh = await agentQuery(env.DB).where(owned).get()
+      } catch {
+        // Not readable yet; the next read tries again.
+      }
+    }
     return fresh
       ? agentItem(fresh, configuration(env).webOrigin, now, options.tools)
       : null

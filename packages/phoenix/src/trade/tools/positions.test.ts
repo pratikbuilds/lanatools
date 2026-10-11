@@ -132,6 +132,7 @@ test('without IDs every resting order in the market is cancelled', async () => {
       // is not ours to cancel here.
       summary: 'Cancel all 2 resting SOL orders in the cross-margin account',
       details: { 'order 7': 'bid 0.1 at $50', 'order 9': 'bid 0.1 at $51' },
+      trade: { action: 'cancel', symbol: 'SOL', cancelled: 2 },
       warnings: [
         'This cancels every resting order the account has in this market when it lands, including any placed after this was prepared.',
       ],
@@ -203,6 +204,14 @@ test('closing part of a long is a reduce-only sell of that share', async () => {
       summary:
         'Close 0.12 of the 0.25 SOL long: market sell now, receiving at least $114.58 each; reduce-only, so it can never open a short',
       details: { position: 'long 0.25', closing: '0.12' },
+      trade: {
+        action: 'close',
+        side: 'sell',
+        size: '0.12',
+        worstPrice: '114.58',
+        reduceOnly: true,
+        closing: 'long',
+      },
     },
   })
 })

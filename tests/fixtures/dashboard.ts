@@ -1,6 +1,9 @@
 import type { Page } from '@playwright/test'
 import type {
   McpClient,
+  PhoenixAccount,
+  PhoenixCandles,
+  PhoenixFills,
   ToolActivityItem,
   TransactionActivityItem,
 } from '../../packages/contracts/src/index'
@@ -70,9 +73,92 @@ const swap: TransactionActivityItem = {
   createdAt: Date.now() - 2 * minute,
   expiresAt: Date.now() + 13 * minute,
 }
+/** Jupiter and Phoenix transactions that carry their typed trade. */
+const trading: TransactionActivityItem[] = [
+  {
+    ...swap,
+    id: 'swap-traded',
+    network: 'mainnet',
+    review: {
+      ...swap.review,
+      trade: {
+        kind: 'swap',
+        venue: 'jupiter',
+        pay: {
+          mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+          symbol: 'USDC',
+          amount: '1',
+        },
+        receive: {
+          mint: 'So11111111111111111111111111111111111111112',
+          symbol: 'SOL',
+          estimated: '0.00913',
+          minimum: '0.00908',
+        },
+        maxSlippageBps: 50,
+      },
+    },
+    createdAt: Date.now() - 3 * minute,
+  },
+  {
+    ...swap,
+    id: 'perp-buy',
+    tool: 'phoenix_market_order',
+    network: 'mainnet',
+    review: {
+      title: 'Place a Phoenix market order',
+      description:
+        'Market buy (long): 0.1 SOL perp now, paying at most $110.15 each',
+      actionLabel: 'Place a Phoenix market order',
+      fields: [
+        {
+          label: 'Notice',
+          value:
+            'This order expires about a minute after it was prepared; after that it is not sent.',
+        },
+      ],
+      trade: {
+        kind: 'perp',
+        venue: 'phoenix',
+        action: 'order',
+        symbol: 'SOL',
+        side: 'buy',
+        orderType: 'market',
+        size: '0.1',
+        worstPrice: '110.15',
+        bestPrice: '109.6',
+        notionalUsd: '10.96',
+        feeUsd: '0.003836',
+        reduceOnly: false,
+      },
+    },
+    createdAt: Date.now() - 4 * minute,
+  },
+  {
+    ...swap,
+    id: 'perp-deposit',
+    tool: 'phoenix_deposit',
+    network: 'mainnet',
+    review: {
+      title: 'Deposit USDC into Phoenix',
+      description: 'Deposit 250 USDC into the Phoenix cross-margin account',
+      actionLabel: 'Deposit USDC into Phoenix',
+      fields: [],
+      trade: {
+        kind: 'perp',
+        venue: 'phoenix',
+        action: 'deposit',
+        amountUsdc: '250',
+      },
+    },
+    createdAt: Date.now() - 6 * minute,
+  },
+]
+
 /** A mixed day of agent transactions, a deposit and withdrawals. */
 export const transactions: TransactionActivityItem[] = [
   swap,
+  ...trading,
   {
     kind: 'deposit',
     id: 'deposit-usdc',
@@ -179,6 +265,108 @@ export const transactions: TransactionActivityItem[] = [
   },
 ]
 
+/** The embedded wallet's Phoenix account: a SOL long, an ETH short, one order. */
+export const phoenixAccount: PhoenixAccount = {
+  wallet: walletAddress,
+  exists: true,
+  accountValueUsd: '1270.85',
+  collateralUsdc: '1250',
+  unrealizedPnlUsd: '20.85',
+  maintenanceMarginUsd: '210.4',
+  leverage: '0.89',
+  riskState: 'healthy',
+  positions: [
+    {
+      symbol: 'SOL',
+      subaccount: 0,
+      marginMode: 'cross',
+      side: 'long',
+      size: '1.6',
+      entryPrice: '106.8',
+      markPrice: '109.52',
+      valueUsd: '175.23',
+      unrealizedPnlUsd: '4.35',
+      liquidationPrice: '80.4',
+      fundingUsdc: '-0.08',
+    },
+    {
+      symbol: 'ETH',
+      subaccount: 0,
+      marginMode: 'cross',
+      side: 'short',
+      size: '0.25',
+      entryPrice: '2560',
+      markPrice: '2504.2',
+      valueUsd: '626.05',
+      unrealizedPnlUsd: '13.95',
+      liquidationPrice: '3270',
+      fundingUsdc: '-0.21',
+    },
+  ],
+  orders: [
+    {
+      symbol: 'ETH',
+      subaccount: 0,
+      orderId: '81204',
+      side: 'sell',
+      type: 'limit',
+      price: '2590',
+      size: '0.5',
+      reduceOnly: false,
+    },
+  ],
+}
+
+/** A wallet that never traded on Phoenix. */
+export const emptyPhoenixWallet = 'DRpbCBMxVnDK7maPM5tGv6MvB3v1sRMC86PZ8okm21hy'
+
+/** A day of 15-minute candles drifting around `mark`. */
+function phoenixCandles(symbol: string, mark: number): PhoenixCandles {
+  const end = Math.floor(Date.now() / 900_000) * 900
+  const candles = Array.from({ length: 96 }, (_, index) => {
+    const close =
+      mark * (1 + Math.sin(index / 7) * 0.01 + (index - 95) * 0.0001)
+    const open =
+      mark * (1 + Math.sin((index - 1) / 7) * 0.01 + (index - 96) * 0.0001)
+    return {
+      time: end - (95 - index) * 900,
+      open,
+      high: Math.max(open, close) * 1.001,
+      low: Math.min(open, close) * 0.999,
+      close,
+    }
+  })
+  return { symbol, interval: '15m', candles }
+}
+
+export const phoenixFills: PhoenixFills = {
+  fills: [
+    {
+      time: Date.now() - 4 * minute,
+      symbol: 'SOL',
+      side: 'buy',
+      size: '0.1',
+      price: '109.6',
+      feeUsdc: '0.0038',
+      realizedPnlUsdc: '0',
+      signature,
+      placedBy: client.clientName,
+    },
+    {
+      time: Date.now() - 2 * 24 * 60 * minute,
+      symbol: 'ETH',
+      side: 'sell',
+      size: '0.25',
+      price: '2560',
+      feeUsdc: '0.32',
+      realizedPnlUsdc: '0',
+      signature: null,
+      placedBy: null,
+    },
+  ],
+  nextCursor: null,
+}
+
 export async function mockDashboard(page: Page, empty = false) {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname
@@ -225,6 +413,32 @@ export async function mockDashboard(page: Page, empty = false) {
       route.request().method() === 'POST'
     ) {
       await route.fulfill({ json: { inserted: 0, settled: 0, more: false } })
+      return
+    }
+    const phoenix = /^\/api\/phoenix\/(account|candles|fills)\/([^/]+)$/.exec(
+      path,
+    )
+    if (phoenix) {
+      const [, kind, key] = phoenix
+      const own = key === walletAddress
+      await route.fulfill({
+        json:
+          kind === 'account'
+            ? own
+              ? phoenixAccount
+              : {
+                  ...phoenixAccount,
+                  wallet: key,
+                  exists: false,
+                  positions: [],
+                  orders: [],
+                }
+            : kind === 'candles'
+              ? phoenixCandles(key ?? 'SOL', key === 'ETH' ? 2504.2 : 109.52)
+              : own
+                ? phoenixFills
+                : { fills: [], nextCursor: null },
+      })
       return
     }
     const one = /^\/api\/transactions\/([^/]+)$/.exec(path)?.[1]
