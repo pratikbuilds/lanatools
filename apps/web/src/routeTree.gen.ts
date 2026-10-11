@@ -19,6 +19,8 @@ import { Route as AccountDashboardActivityRouteImport } from './routes/_account/
 import { Route as AccountDashboardPaymentsRouteImport } from './routes/_account/dashboard/payments'
 import { Route as AccountDashboardSettingsRouteImport } from './routes/_account/dashboard/settings'
 import { Route as AccountDashboardTransactionsRouteImport } from './routes/_account/dashboard/transactions'
+import { Route as AccountDashboardPerpsIndexRouteImport } from './routes/_account/dashboard/perps.index'
+import { Route as AccountDashboardPerpsAddressRouteImport } from './routes/_account/dashboard/perps.$address'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -73,6 +75,18 @@ const AccountDashboardTransactionsRoute =
     path: '/transactions',
     getParentRoute: () => AccountDashboardRoute,
   } as any)
+const AccountDashboardPerpsIndexRoute =
+  AccountDashboardPerpsIndexRouteImport.update({
+    id: '/perps/',
+    path: '/perps/',
+    getParentRoute: () => AccountDashboardRoute,
+  } as any)
+const AccountDashboardPerpsAddressRoute =
+  AccountDashboardPerpsAddressRouteImport.update({
+    id: '/perps/$address',
+    path: '/perps/$address',
+    getParentRoute: () => AccountDashboardRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -84,6 +98,8 @@ export interface FileRoutesByFullPath {
   '/dashboard/settings': typeof AccountDashboardSettingsRoute
   '/dashboard/transactions': typeof AccountDashboardTransactionsRoute
   '/dashboard/': typeof AccountDashboardIndexRoute
+  '/dashboard/perps/$address': typeof AccountDashboardPerpsAddressRoute
+  '/dashboard/perps/': typeof AccountDashboardPerpsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -94,6 +110,8 @@ export interface FileRoutesByTo {
   '/dashboard/settings': typeof AccountDashboardSettingsRoute
   '/dashboard/transactions': typeof AccountDashboardTransactionsRoute
   '/dashboard': typeof AccountDashboardIndexRoute
+  '/dashboard/perps/$address': typeof AccountDashboardPerpsAddressRoute
+  '/dashboard/perps': typeof AccountDashboardPerpsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -107,6 +125,8 @@ export interface FileRoutesById {
   '/_account/dashboard/settings': typeof AccountDashboardSettingsRoute
   '/_account/dashboard/transactions': typeof AccountDashboardTransactionsRoute
   '/_account/dashboard/': typeof AccountDashboardIndexRoute
+  '/_account/dashboard/perps/$address': typeof AccountDashboardPerpsAddressRoute
+  '/_account/dashboard/perps/': typeof AccountDashboardPerpsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -120,6 +140,8 @@ export interface FileRouteTypes {
     | '/dashboard/settings'
     | '/dashboard/transactions'
     | '/dashboard/'
+    | '/dashboard/perps/$address'
+    | '/dashboard/perps/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -130,6 +152,8 @@ export interface FileRouteTypes {
     | '/dashboard/settings'
     | '/dashboard/transactions'
     | '/dashboard'
+    | '/dashboard/perps/$address'
+    | '/dashboard/perps'
   id:
     | '__root__'
     | '/'
@@ -142,6 +166,8 @@ export interface FileRouteTypes {
     | '/_account/dashboard/settings'
     | '/_account/dashboard/transactions'
     | '/_account/dashboard/'
+    | '/_account/dashboard/perps/$address'
+    | '/_account/dashboard/perps/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -222,6 +248,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AccountDashboardTransactionsRouteImport
       parentRoute: typeof AccountDashboardRoute
     }
+    '/_account/dashboard/perps/': {
+      id: '/_account/dashboard/perps/'
+      path: '/perps'
+      fullPath: '/dashboard/perps/'
+      preLoaderRoute: typeof AccountDashboardPerpsIndexRouteImport
+      parentRoute: typeof AccountDashboardRoute
+    }
+    '/_account/dashboard/perps/$address': {
+      id: '/_account/dashboard/perps/$address'
+      path: '/perps/$address'
+      fullPath: '/dashboard/perps/$address'
+      preLoaderRoute: typeof AccountDashboardPerpsAddressRouteImport
+      parentRoute: typeof AccountDashboardRoute
+    }
   }
 }
 
@@ -231,6 +271,8 @@ interface AccountDashboardRouteChildren {
   AccountDashboardSettingsRoute: typeof AccountDashboardSettingsRoute
   AccountDashboardTransactionsRoute: typeof AccountDashboardTransactionsRoute
   AccountDashboardIndexRoute: typeof AccountDashboardIndexRoute
+  AccountDashboardPerpsAddressRoute: typeof AccountDashboardPerpsAddressRoute
+  AccountDashboardPerpsIndexRoute: typeof AccountDashboardPerpsIndexRoute
 }
 
 const AccountDashboardRouteChildren: AccountDashboardRouteChildren = {
@@ -239,6 +281,8 @@ const AccountDashboardRouteChildren: AccountDashboardRouteChildren = {
   AccountDashboardSettingsRoute: AccountDashboardSettingsRoute,
   AccountDashboardTransactionsRoute: AccountDashboardTransactionsRoute,
   AccountDashboardIndexRoute: AccountDashboardIndexRoute,
+  AccountDashboardPerpsAddressRoute: AccountDashboardPerpsAddressRoute,
+  AccountDashboardPerpsIndexRoute: AccountDashboardPerpsIndexRoute,
 }
 
 const AccountDashboardRouteWithChildren =

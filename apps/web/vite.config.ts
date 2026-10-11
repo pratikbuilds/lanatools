@@ -33,6 +33,22 @@ const PAGES: Array<[prefix: string, modules: Array<string>]> = [
       ],
     ],
   ),
+  // A Phoenix account by address, then the bare path that redirects to the
+  // user's own wallet.
+  ...(
+    [
+      ['/dashboard/perps/', 'perps.$address'],
+      ['/dashboard/perps', 'perps.index'],
+    ] as const
+  ).map(([prefix, page]): [string, Array<string>] => [
+    prefix,
+    [
+      APP,
+      ACCOUNT,
+      '/src/routes/_account/dashboard.tsx?tsr-split=component',
+      `/src/routes/_account/dashboard/${page}.tsx?tsr-split=component`,
+    ],
+  ]),
   [
     '/dashboard',
     [

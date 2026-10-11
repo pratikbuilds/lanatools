@@ -2,7 +2,10 @@
 
 Status, October 11, 2026: P0 mockup at
 [mockups/dashboard-trading.html](mockups/dashboard-trading.html) approved.
-P1 to P5 below are waiting for sign-off. Builds on
+P1 to P5 built, each checked with `bun run check` and committed separately;
+P3 and P4 also checked live against mainnet (Jupiter swaps, Phoenix wallets
+and candles). No real swap or perp order has been placed through LanaTools
+for this work. Builds on
 [dashboard-transactions.md](dashboard-transactions.md),
 [phoenix-trade-tools.md](phoenix-trade-tools.md) and
 [phoenix-read-tools.md](phoenix-read-tools.md).

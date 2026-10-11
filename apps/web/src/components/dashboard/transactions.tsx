@@ -4,6 +4,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type {
@@ -911,11 +912,10 @@ function OrderTicket({
 
 /** Where a perp transaction's account lives: the wallet that signed it. */
 function AccountLink({ account }: { account: string | null }) {
-  return (
-    <a
-      href={account ? `/dashboard/perps/${account}` : '/dashboard/perps'}
-      className="mt-4 flex items-center justify-between gap-3 rounded-[10px] border border-line bg-surface px-4 py-3 hover:border-fg-3"
-    >
+  const className =
+    'mt-4 flex items-center justify-between gap-3 rounded-[10px] border border-line bg-surface px-4 py-3 hover:border-fg-3'
+  const body = (
+    <>
       <span className="min-w-0">
         <span className="block font-mono text-[13px] font-semibold">
           Phoenix account
@@ -927,7 +927,20 @@ function AccountLink({ account }: { account: string | null }) {
       <span className="font-mono text-[12px] font-semibold">
         Open account →
       </span>
-    </a>
+    </>
+  )
+  return account ? (
+    <Link
+      to="/dashboard/perps/$address"
+      params={{ address: account }}
+      className={className}
+    >
+      {body}
+    </Link>
+  ) : (
+    <Link to="/dashboard/perps" className={className}>
+      {body}
+    </Link>
   )
 }
 

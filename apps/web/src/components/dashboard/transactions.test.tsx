@@ -1,5 +1,11 @@
 import { expect, test } from 'bun:test'
 import { renderToString } from 'react-dom/server'
+import {
+  RouterContextProvider,
+  createMemoryHistory,
+  createRouter,
+} from '@tanstack/react-router'
+import { routeTree } from '#/routeTree.gen'
 import type { TransactionActivityItem } from '@lanatools/contracts'
 import { DashboardSessionProvider } from './session'
 import { TransactionDetail, TransactionRows } from './transactions'
@@ -102,12 +108,20 @@ function rows(items: TransactionActivityItem[]) {
   )
 }
 
+// The drawer links to other dashboard pages, so it renders inside a router.
+const router = createRouter({
+  routeTree,
+  history: createMemoryHistory({ initialEntries: ['/dashboard/transactions'] }),
+})
+
 function detail(item: TransactionActivityItem) {
   return text(
     renderToString(
-      <DashboardSessionProvider value={session}>
-        <TransactionDetail item={item} onClose={() => {}} now={now} />
-      </DashboardSessionProvider>,
+      <RouterContextProvider router={router}>
+        <DashboardSessionProvider value={session}>
+          <TransactionDetail item={item} onClose={() => {}} now={now} />
+        </DashboardSessionProvider>
+      </RouterContextProvider>,
     ),
   )
 }

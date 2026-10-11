@@ -111,7 +111,9 @@ function Loading() {
         ? 'Settings'
         : pathname.startsWith('/dashboard/transactions')
           ? 'Transactions'
-          : 'Wallet'
+          : pathname.startsWith('/dashboard/perps')
+            ? 'Perps'
+            : 'Wallet'
   return (
     <DashboardShell
       status={{
@@ -158,6 +160,12 @@ function Loading() {
             <PageHead title="Transactions" />
             <Skeleton className="mt-5 h-10 w-full" />
             <Skeleton className="d-card mt-4 h-[140px]" />
+          </>
+        ) : page === 'Perps' ? (
+          <>
+            <PageHead title="Phoenix account" />
+            <Skeleton className="mt-6 h-[52px] w-full max-w-[34rem]" />
+            <Skeleton className="d-card mt-5 h-[420px] w-full" />
           </>
         ) : page === 'Activity' ? (
           <>
