@@ -41,8 +41,11 @@ export function toolAccess(
     choice.limitUsd === undefined ? null : parseClientLimit(choice.limitUsd)
   if (choice.limitUsd !== undefined && limitMicroUsd === null)
     return { error: 'Invalid spending limit' }
+  // The API refuses these too, but only after the code is issued.
   if (scopes.includes('payments:pay') && limitMicroUsd === null)
     return { error: 'Set a spending limit' }
+  if (!scopes.includes('payments:pay') && limitMicroUsd !== null)
+    return { error: 'A spending limit needs payments' }
   return { toolScopes: choice.scopes, scopes, limitMicroUsd }
 }
 

@@ -28,6 +28,9 @@ test('a choice that cannot be granted says why', () => {
   expect(toolAccess({ scopes: ['payments:pay'] })).toEqual({
     error: 'Set a spending limit',
   })
+  expect(toolAccess({ scopes: ['helius:read'], limitUsd: '5' })).toEqual({
+    error: 'A spending limit needs payments',
+  })
 })
 
 test('approving issues a code for the chosen scopes, then activates the grant', async () => {
