@@ -201,3 +201,37 @@ test('collateral alone needs no market or margin reads', async () => {
   })
   expect(requests).toEqual([`/v1/trader/state/${WALLET}`])
 })
+
+test('spot collateral counts at Phoenix’s value, not as zero USDC', async () => {
+  const account = await readPhoenixAccount(WALLET, {
+    fetch: fakeFetch({
+      [`/v1/trader/state/${WALLET}`]: {
+        authority: WALLET,
+        snapshot: {
+          subaccounts: [
+            {
+              subaccountIndex: 0,
+              collateral: '0',
+              spotCollaterals: [
+                { symbol: 'SOL', balance: '2390000000', decimals: 9 },
+              ],
+            },
+          ],
+        },
+      },
+      [`/v1/view/trader/${CROSS}`]: {
+        riskState: 'healthy',
+        portfolioValue: amount('261.8'),
+        unrealizedPnl: amount('0'),
+        maintenanceMargin: amount('0'),
+        positions: [],
+      },
+    }),
+  })
+  expect(account).toMatchObject({
+    exists: true,
+    accountValueUsd: '261.8',
+    collateralUsdc: '0',
+    positions: [],
+  })
+})

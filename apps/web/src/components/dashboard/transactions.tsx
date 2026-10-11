@@ -38,6 +38,7 @@ import {
 import type { TransactionsFilter } from '#/lib/transactions'
 import {
   awaitingFacts,
+  formatPrice,
   formatUSD,
   orderTicket,
   perpNotional,
@@ -589,8 +590,12 @@ function LiveTransactionDetail({
     queryFn: () => getTransaction(getAccessToken, item.id),
     // A confirmed trade may not know what filled yet; reading it asks.
     enabled: pending || awaitingFacts(item),
+    // Pending, or confirmed before the chain or Phoenix has indexed what
+    // filled: keep asking while the drawer is open.
     refetchInterval: (query) =>
-      query.state.data && statusGroup(query.state.data) !== 'pending'
+      query.state.data &&
+      statusGroup(query.state.data) !== 'pending' &&
+      !awaitingFacts(query.state.data)
         ? false
         : 5_000,
   })
@@ -726,7 +731,7 @@ export function TransactionDetail({
       {order && item.kind === 'agent' && item.receipt?.fill ? (
         <p className="mb-1 font-mono text-[13px] font-medium text-fg-2">
           Filled {item.receipt.fill.size} at{' '}
-          {formatUSD(item.receipt.fill.price)} each,{' '}
+          {formatPrice(item.receipt.fill.price)} each,{' '}
           {perpNotional(order, item.receipt)} notional
         </p>
       ) : (
@@ -734,9 +739,9 @@ export function TransactionDetail({
           <p className="mb-1 font-mono text-[13px] font-medium text-fg-2">
             {formatUSD(order.notionalUsd)} notional
             {order.orderType === 'limit' && order.limitPrice
-              ? ` at ${formatUSD(order.limitPrice)} each`
+              ? ` at ${formatPrice(order.limitPrice)} each`
               : order.bestPrice
-                ? ` at the best price, ${formatUSD(order.bestPrice)}`
+                ? ` at the best price, ${formatPrice(order.bestPrice)}`
                 : ''}
           </p>
         )

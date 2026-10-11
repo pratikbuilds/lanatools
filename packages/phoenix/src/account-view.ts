@@ -132,9 +132,16 @@ export async function readPhoenixAccount(
       sub.positions.some((p) => BigInt(p.basePositionLots) !== 0n) ||
       sub.orders.length > 0,
   )
+  // Phoenix values a subaccount's spot collateral (SOL and the like); its
+  // trader view is read for those too, not only for trading subaccounts.
+  const valued = subaccounts.filter(
+    (sub) =>
+      active.includes(sub) ||
+      sub.spotCollaterals.some((spot) => BigInt(spot.balance) !== 0n),
+  )
   const [views, configs, stats] = await Promise.all([
     Promise.all(
-      active.map(async (sub) => ({
+      valued.map(async (sub) => ({
         subaccount: sub.subaccountIndex,
         view: await view(client, owner, sub.subaccountIndex),
       })),

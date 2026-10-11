@@ -27,9 +27,18 @@ export function awaitingFacts(item: TransactionActivityItem) {
   if (item.kind !== 'agent' || !trade || item.status !== 'confirmed')
     return false
   if (trade.kind === 'swap') return !item.receipt?.received
+  return fillsInItsOwnTransaction(trade) && !item.receipt?.fill
+}
+
+/**
+ * Market orders and closes fill (or not) inside the transaction that sends
+ * them, so their fill carries its signature. A limit order rests on the
+ * book and fills later, in other transactions.
+ */
+export function fillsInItsOwnTransaction(trade: PerpTrade) {
   return (
-    (trade.action === 'order' || trade.action === 'close') &&
-    !item.receipt?.fill
+    trade.action === 'close' ||
+    (trade.action === 'order' && trade.orderType === 'market')
   )
 }
 
@@ -47,6 +56,29 @@ export function formatUSD(value: string | number, { signed = false } = {}) {
   })
   const sign = amount < 0 ? '−' : signed && amount > 0 ? '+' : ''
   return `${sign}$${text}`
+}
+
+/** Decimal places a price carries, ignoring trailing zeros. */
+function decimalsOf(value: string | number) {
+  const text =
+    typeof value === 'number' ? String(Number(value.toPrecision(12))) : value
+  if (/e/i.test(text)) return 8
+  return (text.split('.')[1] ?? '').replace(/0+$/, '').length
+}
+
+/**
+ * A market price at the precision it carries: cents at least, more when
+ * the market quotes them, so distinct levels on a sub-cent market never
+ * read the same. Money totals use `formatUSD`.
+ */
+export function formatPrice(value: string | number) {
+  const amount = Number(value)
+  if (!Number.isFinite(amount)) return String(value)
+  const text = Math.abs(amount).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: Math.max(2, decimalsOf(value)),
+  })
+  return `${amount < 0 ? '−' : ''}$${text}`
 }
 
 const side = (trade: PerpTrade) => (trade.side === 'sell' ? 'Sell' : 'Buy')
@@ -99,7 +131,7 @@ export function swapRate(trade: SwapTrade, facts?: Facts) {
 /** A market order's price bound, as the person signing would say it. */
 export function worstPriceText(trade: PerpTrade) {
   if (!trade.worstPrice) return null
-  return `${trade.side === 'sell' ? 'at least' : 'at most'} ${formatUSD(trade.worstPrice)}`
+  return `${trade.side === 'sell' ? 'at least' : 'at most'} ${formatPrice(trade.worstPrice)}`
 }
 
 /** The second line of a row: the venue and the one term that matters. */
@@ -115,12 +147,12 @@ export function tradeDetail(
   const fill = facts?.fill
   if (fill && (trade.action === 'order' || trade.action === 'close')) {
     const realized = Number(fill.realizedPnlUsdc)
-    return `Phoenix · Filled at ${formatUSD(fill.price)}${realized ? `, realized ${formatUSD(realized, { signed: true })}` : ''}`
+    return `Phoenix · Filled at ${formatPrice(fill.price)}${realized ? `, realized ${formatUSD(realized, { signed: true })}` : ''}`
   }
   switch (trade.action) {
     case 'order':
       if (trade.orderType === 'limit' && trade.limitPrice)
-        return `Phoenix · Limit at ${formatUSD(trade.limitPrice)}${trade.postOnly ? ', post only' : ''}`
+        return `Phoenix · Limit at ${formatPrice(trade.limitPrice)}${trade.postOnly ? ', post only' : ''}`
       return ['Phoenix · Market', worstPriceText(trade)]
         .filter(Boolean)
         .join(', ')
@@ -195,13 +227,13 @@ export function orderTicket(
             : 'Limit'),
     ],
     ['Size', trade.size && `${trade.size} ${trade.symbol ?? ''}`.trim()],
-    ['Limit price', trade.limitPrice && formatUSD(trade.limitPrice)],
+    ['Limit price', trade.limitPrice && formatPrice(trade.limitPrice)],
     ['Worst price', worstPriceText(trade) ?? undefined],
     ['Filled', fill && `${fill.size} ${trade.symbol ?? ''}`.trim()],
-    ['Fill price', fill && formatUSD(fill.price)],
+    ['Fill price', fill && formatPrice(fill.price)],
     [
       'Best price',
-      fill ? undefined : trade.bestPrice && formatUSD(trade.bestPrice),
+      fill ? undefined : trade.bestPrice && formatPrice(trade.bestPrice),
     ],
     ['Notional', perpNotional(trade, facts) ?? undefined],
     [

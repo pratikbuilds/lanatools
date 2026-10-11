@@ -560,6 +560,7 @@ test('a confirmed perp order learns its fill when read, once Phoenix has it', as
         kind: 'perp',
         venue: 'phoenix',
         action: 'order',
+        orderType: 'market',
         symbol: 'SOL',
         side: 'buy',
         size: '0.1',
@@ -570,11 +571,12 @@ test('a confirmed perp order learns its fill when read, once Phoenix has it', as
   let indexed = false
   const tradeFacts = {
     transaction: () => Promise.reject(new Error('not a swap')),
-    fills: async (wallet: string, symbol: string) => {
-      asked.push(`${wallet} ${symbol}`)
+    fills: async (wallet: string, symbol: string, since: number) => {
+      asked.push(`${wallet} ${symbol} ${since}`)
       return indexed
         ? [
             {
+              time: '2026-10-10T12:00:01Z',
               size: 0.1,
               price: 109.6,
               feeUsdc: 0.0038,
@@ -605,7 +607,8 @@ test('a confirmed perp order learns its fill when read, once Phoenix has it', as
   })
   // Stored: the next read neither asks again nor loses it.
   await readTransaction(env(), user, id, { now: NOON, tradeFacts })
-  expect(asked).toEqual([`${WALLET} SOL`, `${WALLET} SOL`])
+  // Paged back no further than the request's creation.
+  expect(asked).toEqual([`${WALLET} SOL ${NOON}`, `${WALLET} SOL ${NOON}`])
   const [listed] = (await list()).items
   expect(listed?.kind === 'agent' && listed.receipt?.fill?.price).toBe('109.6')
 })

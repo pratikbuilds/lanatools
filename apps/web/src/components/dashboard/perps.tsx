@@ -17,7 +17,7 @@ import {
   getPhoenixFills,
 } from '#/lib/phoenix'
 import { EMPTY_FILTER, shortAddress } from '#/lib/transactions'
-import { formatUSD, perpMarket } from '#/lib/trades'
+import { formatPrice, formatUSD, perpMarket } from '#/lib/trades'
 import { PageHead, SectionHead } from './page-head'
 import { PerpChart } from './perp-chart'
 import type { ChartLine } from './perp-chart'
@@ -139,20 +139,47 @@ const tone = (value: string | null) =>
   value === null ? '' : Number(value) < 0 ? 'text-bad' : 'text-live'
 /** Prices keep the precision Phoenix shows them with. */
 const price = (value: string | null) =>
-  value === null ? '—' : formatUSD(value)
+  value === null ? '—' : formatPrice(value)
+
+/**
+ * What the chart can show: each position, and each market where the account
+ * only has resting orders. A market can hold a cross and an isolated
+ * position at once, so a subaccount is part of what identifies one.
+ */
+type Charted = {
+  key: string
+  symbol: string
+  subaccount: number
+  position: PhoenixPosition | undefined
+}
+
+const chartKey = (subaccount: number, symbol: string) =>
+  `${subaccount}:${symbol}`
 
 function Account({ account }: { account: PhoenixAccount }) {
-  const markets = useMemo(
-    () => [
-      ...new Set([
-        ...account.positions.map((position) => position.symbol),
-        ...account.orders.map((order) => order.symbol),
-      ]),
-    ],
-    [account],
-  )
+  const charted = useMemo(() => {
+    const items = new Map<string, Charted>()
+    for (const position of account.positions)
+      items.set(chartKey(position.subaccount, position.symbol), {
+        key: chartKey(position.subaccount, position.symbol),
+        symbol: position.symbol,
+        subaccount: position.subaccount,
+        position,
+      })
+    for (const order of account.orders) {
+      const key = chartKey(order.subaccount, order.symbol)
+      if (!items.has(key))
+        items.set(key, {
+          key,
+          symbol: order.symbol,
+          subaccount: order.subaccount,
+          position: undefined,
+        })
+    }
+    return [...items.values()]
+  }, [account])
   const [picked, setPicked] = useState<string>()
-  const focus = picked && markets.includes(picked) ? picked : markets[0]
+  const focus = charted.find((item) => item.key === picked) ?? charted[0]
 
   return (
     <>
@@ -181,7 +208,7 @@ function Account({ account }: { account: PhoenixAccount }) {
       {focus ? (
         <TradeCard
           account={account}
-          markets={markets}
+          charted={charted}
           focus={focus}
           onFocus={setPicked}
         />
@@ -199,7 +226,7 @@ function Account({ account }: { account: PhoenixAccount }) {
         </SectionHead>
         <Positions
           positions={account.positions}
-          focus={focus}
+          focus={focus?.key}
           onFocus={setPicked}
         />
       </section>
@@ -242,14 +269,14 @@ function Stat({
 
 function TradeCard({
   account,
-  markets,
+  charted,
   focus,
   onFocus,
 }: {
   account: PhoenixAccount
-  markets: string[]
-  focus: string
-  onFocus: (symbol: string) => void
+  charted: Charted[]
+  focus: Charted
+  onFocus: (key: string) => void
 }) {
   const { userId, getAccessToken } = useDashboardSession()
   // Daily first, as trading screens open.
@@ -258,12 +285,19 @@ function TradeCard({
   const [fitLiquidation, setFitLiquidation] = useState(false)
   const [resetKey, setResetKey] = useState(0)
   const candles = useQuery({
-    queryKey: ['phoenix-candles', userId, focus, interval],
-    queryFn: () => getPhoenixCandles(getAccessToken, focus, interval),
+    queryKey: ['phoenix-candles', userId, focus.symbol, interval],
+    queryFn: () => getPhoenixCandles(getAccessToken, focus.symbol, interval),
     refetchInterval: 60_000,
   })
-  const position = account.positions.find((each) => each.symbol === focus)
-  const orders = account.orders.filter((each) => each.symbol === focus)
+  const position = focus.position
+  const orders = useMemo(
+    () =>
+      account.orders.filter(
+        (each) =>
+          each.symbol === focus.symbol && each.subaccount === focus.subaccount,
+      ),
+    [account.orders, focus],
+  )
   const lines = useMemo(() => {
     const levels: ChartLine[] = []
     if (position?.entryPrice)
@@ -295,19 +329,20 @@ function TradeCard({
           aria-label="Market"
           className="-mb-px flex max-w-full gap-0.5 overflow-x-auto"
         >
-          {markets.map((symbol) => {
-            const side = account.positions.find(
-              (each) => each.symbol === symbol,
-            )?.side
+          {charted.map((item) => {
+            const side = item.position?.side
             return (
               <button
-                key={symbol}
+                key={item.key}
                 type="button"
-                aria-pressed={symbol === focus}
-                onClick={() => onFocus(symbol)}
+                aria-pressed={item.key === focus.key}
+                onClick={() => onFocus(item.key)}
                 className="h-11 shrink-0 border-b-2 border-transparent px-2.5 font-mono text-[13px] whitespace-nowrap text-fg-3 hover:text-fg aria-pressed:border-fg aria-pressed:font-semibold aria-pressed:text-fg"
               >
-                {perpMarket(symbol)}
+                {perpMarket(item.symbol)}
+                {item.subaccount !== 0 && (
+                  <span className="ml-1.5 text-[11px] text-fg-3">isolated</span>
+                )}
                 {side && (
                   <span
                     className={`ml-1.5 text-[11.5px] font-semibold ${side === 'long' ? 'text-live' : 'text-bad'}`}
@@ -355,6 +390,7 @@ function TradeCard({
         <div className="flex min-w-0 flex-col">
           {candles.data ? (
             <PerpChart
+              market={`${focus.key} ${interval}`}
               candles={candles.data.candles}
               lines={lines}
               fitLiquidation={fitLiquidation}
@@ -374,7 +410,7 @@ function TradeCard({
                   aria-hidden="true"
                   className={`mr-1.5 inline-block w-3.5 align-middle ${line.tone === 'liquidation' ? 'border-t-2 border-bad' : line.tone === 'entry' ? 'border-t-[1.5px] border-dashed border-fg-2' : 'border-t-[1.5px] border-dotted border-fg-3'}`}
                 />
-                {line.title} {formatUSD(line.price)}
+                {line.title} {formatPrice(line.price)}
               </span>
             ))}
             <span className="ml-auto text-[11px] text-fg-3">
@@ -595,12 +631,19 @@ function Positions({
       {positions.map((position) => (
         <tr
           key={`${position.subaccount}-${position.symbol}`}
-          aria-selected={position.symbol === focus}
-          onClick={() => onFocus(position.symbol)}
+          aria-selected={
+            chartKey(position.subaccount, position.symbol) === focus
+          }
+          onClick={() =>
+            onFocus(chartKey(position.subaccount, position.symbol))
+          }
           className="cursor-pointer hover:bg-surface aria-selected:bg-surface aria-selected:[&>td:first-child]:shadow-[inset_3px_0_0_var(--d-accent)]"
         >
           <td>
             <b className="font-semibold">{perpMarket(position.symbol)}</b>
+            {position.marginMode === 'isolated' && (
+              <span className="ml-1.5 text-[11px] text-fg-3">isolated</span>
+            )}
             <small
               className={`block text-[11px] sm:hidden ${position.side === 'long' ? 'text-live' : 'text-bad'}`}
             >
@@ -729,7 +772,7 @@ function Fills({ wallet }: { wallet: string }) {
                 </span>
               </td>
               <td className="text-right">{fill.size}</td>
-              <td className="text-right">{formatUSD(fill.price)}</td>
+              <td className="text-right">{formatPrice(fill.price)}</td>
               <td
                 className={`text-right max-lg:hidden ${realized ? (realized < 0 ? 'text-bad' : 'text-live') : 'text-fg-3'}`}
               >

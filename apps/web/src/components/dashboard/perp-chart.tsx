@@ -6,9 +6,15 @@ import {
   TickMarkType,
   createChart,
 } from 'lightweight-charts'
-import type { IChartApi, Time, UTCTimestamp } from 'lightweight-charts'
+import type {
+  IChartApi,
+  IPriceLine,
+  ISeriesApi,
+  Time,
+  UTCTimestamp,
+} from 'lightweight-charts'
 import type { PhoenixCandles } from '@lanatools/contracts'
-import { formatUSD } from '#/lib/trades'
+import { formatPrice } from '#/lib/trades'
 
 type Candle = PhoenixCandles['candles'][number]
 
@@ -19,8 +25,17 @@ export type ChartLine = {
   tone: 'entry' | 'liquidation' | 'order'
 }
 
-/** Decimals a price is shown with: cents, or more for sub-dollar markets. */
-const decimalsFor = (price: number) => (price >= 1 ? 2 : 6)
+/** Decimals the market quotes in: the most any recent candle carries, cents at least. */
+function decimalsFor(candles: Candle[]) {
+  const places = candles
+    .slice(-50)
+    .flatMap((candle) => [candle.open, candle.high, candle.low, candle.close])
+    .map(
+      (value) =>
+        (String(Number(value.toPrecision(12))).split('.')[1] ?? '').length,
+    )
+  return Math.max(2, ...places)
+}
 
 /** Colour tokens from the dashboard theme the chart sits in. */
 function palette(element: HTMLElement) {
@@ -65,13 +80,20 @@ const localTime = (time: Time, options: Intl.DateTimeFormatOptions) =>
  * A market's candles with the position's levels drawn across them. Drag to
  * pan, scroll or pinch to zoom, drag an axis to scale it. TradingView's
  * attribution logo stays on, as Lightweight Charts' licence asks.
+ *
+ * The chart is built once per market, interval and theme. Refreshed candles
+ * and levels update it in place, so a refresh never moves the user's view;
+ * only Reset view or a new market does.
  */
 export function PerpChart({
+  market,
   candles,
   lines,
   fitLiquidation,
   resetKey,
 }: {
+  /** Identifies what is charted, e.g. "SOL 1d"; a new one starts fresh. */
+  market: string
   candles: Candle[]
   lines: ChartLine[]
   /**
@@ -79,20 +101,27 @@ export function PerpChart({
    * fits the candles, as trading screens do, and a level shows when in view.
    */
   fitLiquidation: boolean
-  /** Changing it redraws the chart at its fitted view. */
+  /** Changing it returns the chart to its opening view. */
   resetKey: number
 }) {
   const [host, setHost] = useState<HTMLDivElement | null>(null)
   const theme = useFrameTheme(host)
   const [hovered, setHovered] = useState<Candle | null>(null)
   const chart = useRef<IChartApi | null>(null)
+  const series = useRef<ISeriesApi<'Candlestick'> | null>(null)
+  const drawn = useRef<IPriceLine[]>([])
+  /** Prices the fitted range must reach; read by the series' autoscale. */
+  const reach = useRef<number[]>([])
+  const decimals = decimalsFor(candles)
+  // Levels arrive as a new array on every render; redraw only on change.
+  const linesKey = JSON.stringify(lines)
+  const latestLines = useRef(lines)
+  latestLines.current = lines
 
+  // Build the chart for this market and theme.
   useEffect(() => {
-    if (!host || candles.length === 0) return
+    if (!host) return
     const colors = palette(host)
-    const last = candles.at(-1)?.close ?? 0
-    const decimals = decimalsFor(last)
-    const money = (price: number) => formatUSD(Number(price.toFixed(decimals)))
     const api = createChart(host, {
       autoSize: true,
       layout: {
@@ -131,7 +160,6 @@ export function PerpChart({
         horzLine: { color: colors.muted, labelBackgroundColor: colors.text },
       },
       localization: {
-        priceFormatter: money,
         timeFormatter: (time: Time) =>
           localTime(time, {
             month: 'short',
@@ -141,66 +169,31 @@ export function PerpChart({
           }),
       },
     })
-    const liquidation = lines.find((line) => line.tone === 'liquidation')
-    const reach = fitLiquidation ? lines.map((line) => line.price) : []
-    const series = api.addSeries(CandlestickSeries, {
+    const candlesticks = api.addSeries(CandlestickSeries, {
       upColor: colors.up,
       downColor: colors.down,
       wickUpColor: colors.up,
       wickDownColor: colors.down,
       borderVisible: false,
       priceLineColor: colors.accent,
-      priceFormat: {
-        type: 'price',
-        precision: decimals,
-        minMove: 10 ** -decimals,
-      },
       autoscaleInfoProvider: (
         original: () => {
           priceRange: { minValue: number; maxValue: number } | null
         } | null,
       ) => {
         const fitted = original()
-        if (!fitted?.priceRange || reach.length === 0) return fitted
+        if (!fitted?.priceRange || reach.current.length === 0) return fitted
         return {
           ...fitted,
           priceRange: {
-            minValue: Math.min(fitted.priceRange.minValue, ...reach),
-            maxValue: Math.max(fitted.priceRange.maxValue, ...reach),
+            minValue: Math.min(fitted.priceRange.minValue, ...reach.current),
+            maxValue: Math.max(fitted.priceRange.maxValue, ...reach.current),
           },
         }
       },
     })
-    series.setData(
-      candles.map(({ time, ...ohlc }) => ({
-        time: time as UTCTimestamp,
-        ...ohlc,
-      })),
-    )
-    for (const line of lines)
-      series.createPriceLine({
-        price: line.price,
-        title: line.title,
-        axisLabelVisible: true,
-        color:
-          line.tone === 'liquidation'
-            ? colors.down
-            : line.tone === 'entry'
-              ? colors.entry
-              : colors.muted,
-        lineWidth: line === liquidation ? 2 : 1,
-        lineStyle:
-          line.tone === 'entry'
-            ? LineStyle.Dashed
-            : line.tone === 'order'
-              ? LineStyle.SparseDotted
-              : LineStyle.Solid,
-      })
-    // The latest candles at the library's default width, like a trading
-    // screen; older ones are a drag away.
-    api.timeScale().scrollToRealTime()
     api.subscribeCrosshairMove((param) => {
-      const data = param.seriesData.get(series)
+      const data = param.seriesData.get(candlesticks)
       setHovered(
         data && 'open' in data
           ? {
@@ -214,14 +207,93 @@ export function PerpChart({
       )
     })
     chart.current = api
+    series.current = candlesticks
+    drawn.current = []
     return () => {
       api.remove()
       chart.current = null
+      series.current = null
+      drawn.current = []
     }
-  }, [host, candles, lines, fitLiquidation, resetKey, theme])
+  }, [host, theme, market])
+
+  // Candles: replaced in place on every refresh. The first set for a
+  // market opens on the latest candles at the library's default width.
+  const opened = useRef<string | null>(null)
+  useEffect(() => {
+    const api = chart.current
+    const candlesticks = series.current
+    if (!api || !candlesticks) return
+    candlesticks.applyOptions({
+      priceFormat: {
+        type: 'price',
+        precision: decimals,
+        minMove: 10 ** -decimals,
+      },
+    })
+    api.applyOptions({
+      localization: {
+        priceFormatter: (price: number) =>
+          formatPrice(Number(price.toFixed(decimals))),
+      },
+    })
+    candlesticks.setData(
+      candles.map(({ time, ...ohlc }) => ({
+        time: time as UTCTimestamp,
+        ...ohlc,
+      })),
+    )
+    const key = `${market}:${theme ?? ''}`
+    if (opened.current !== key && candles.length > 0) {
+      opened.current = key
+      api.timeScale().scrollToRealTime()
+    }
+  }, [candles, decimals, market, theme])
+
+  // Levels: redrawn only when they change.
+  useEffect(() => {
+    const candlesticks = series.current
+    const api = chart.current
+    if (!candlesticks || !api) return
+    const colors = palette(api.chartElement())
+    for (const line of drawn.current) candlesticks.removePriceLine(line)
+    const levels = latestLines.current
+    drawn.current = levels.map((line) =>
+      candlesticks.createPriceLine({
+        price: line.price,
+        title: line.title,
+        axisLabelVisible: true,
+        color:
+          line.tone === 'liquidation'
+            ? colors.down
+            : line.tone === 'entry'
+              ? colors.entry
+              : colors.muted,
+        lineWidth: line.tone === 'liquidation' ? 2 : 1,
+        lineStyle:
+          line.tone === 'entry'
+            ? LineStyle.Dashed
+            : line.tone === 'order'
+              ? LineStyle.SparseDotted
+              : LineStyle.Solid,
+      }),
+    )
+    reach.current = fitLiquidation ? levels.map((line) => line.price) : []
+    api.priceScale('right').applyOptions({ autoScale: true })
+  }, [linesKey, fitLiquidation, market, theme])
+
+  // Reset view: latest candles, price axis fitted again.
+  const resets = useRef(resetKey)
+  useEffect(() => {
+    const api = chart.current
+    if (!api || resets.current === resetKey) return
+    resets.current = resetKey
+    api.timeScale().resetTimeScale()
+    api.timeScale().scrollToRealTime()
+    api.priceScale('right').applyOptions({ autoScale: true })
+  }, [resetKey])
 
   const shown = hovered ?? candles.at(-1)
-  const decimals = decimalsFor(shown?.close ?? 0)
   const up = shown ? shown.close >= shown.open : true
   return (
     <div className="flex min-w-0 flex-col">
@@ -231,7 +303,7 @@ export function PerpChart({
             <span key={key}>
               {key[0]?.toUpperCase()}{' '}
               <b className={`font-semibold ${up ? 'text-live' : 'text-bad'}`}>
-                {formatUSD(Number(shown[key].toFixed(decimals)))}
+                {formatPrice(Number(shown[key].toFixed(decimals)))}
               </b>
             </span>
           ))}

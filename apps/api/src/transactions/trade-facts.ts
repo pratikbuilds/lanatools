@@ -6,6 +6,7 @@ import { type } from 'arktype'
 import { TransactionReceipt } from '@lanatools/contracts'
 import type { TradeSummary } from '@lanatools/contracts'
 import { runPhoenixTool } from '@lanatools/phoenix'
+import type { PhoenixOpts } from '@lanatools/phoenix'
 import { transactionRequest } from '../db/schema'
 import type { TransactionRequestRow } from './requests'
 import type { TransactionRpc } from './submission'
@@ -22,22 +23,34 @@ const WRAPPED_SOL = 'So11111111111111111111111111111111111111112'
 
 const PhoenixFills = type({
   trades: type({
+    time: 'string',
     size: 'number',
     price: 'number',
     feeUsdc: 'number',
     realizedPnlUsdc: 'number',
     signature: 'string | null',
   }).array(),
+  nextCursor: 'string | null',
 })
 type PhoenixFill = (typeof PhoenixFills.infer)['trades'][number]
 
 export type TradeFactsReader = {
   transaction: (signature: string) => Promise<ParsedWalletTransaction | null>
-  /** The wallet's latest Phoenix fills in one market, newest first. */
-  fills: (wallet: string, symbol: string) => Promise<PhoenixFill[]>
+  /**
+   * The wallet's Phoenix fills in one market, newest first, back to at
+   * least `since` (Unix ms), so an older order's fills are all included.
+   */
+  fills: (
+    wallet: string,
+    symbol: string,
+    since: number,
+  ) => Promise<PhoenixFill[]>
 }
 
-export function tradeFactsReader(rpc: TransactionRpc): TradeFactsReader {
+export function tradeFactsReader(
+  rpc: TransactionRpc,
+  phoenix: PhoenixOpts = {},
+): TradeFactsReader {
   return {
     async transaction(value) {
       const tx = await rpc.accounts
@@ -49,16 +62,32 @@ export function tradeFactsReader(rpc: TransactionRpc): TradeFactsReader {
         .send({ abortSignal: AbortSignal.timeout(5_000) })
       return tx ? parseWalletTransaction(tx) : null
     },
-    async fills(wallet, symbol) {
-      // Phoenix's largest page; a just-confirmed order is among the newest.
-      const outcome = await runPhoenixTool('phoenix_get_history', {
-        wallet,
-        type: 'trades',
-        symbol,
-        limit: 100,
-      })
-      if (!outcome.ok) throw new Error(outcome.error.message)
-      return PhoenixFills.assert(outcome.result).trades
+    async fills(wallet, symbol, since) {
+      const fills: PhoenixFill[] = []
+      let cursor: string | null = null
+      // Page back (Phoenix's largest page each time) until the history is
+      // older than `since`, so the order's fills are all in, even across a
+      // page boundary.
+      do {
+        const outcome = await runPhoenixTool(
+          'phoenix_get_history',
+          {
+            wallet,
+            type: 'trades',
+            symbol,
+            limit: 100,
+            ...(cursor ? { cursor } : {}),
+          },
+          phoenix,
+        )
+        if (!outcome.ok) throw new Error(outcome.error.message)
+        const page = PhoenixFills.assert(outcome.result)
+        fills.push(...page.trades)
+        const oldest = page.trades.at(-1)
+        if (!oldest || Date.parse(oldest.time) < since) break
+        cursor = page.nextCursor
+      } while (cursor)
+      return fills
     },
   }
 }
@@ -118,7 +147,13 @@ export function needsTradeFacts(
 ) {
   if (!trade || !receipt) return false
   if (trade.kind === 'swap') return !receipt.received
-  return (trade.action === 'order' || trade.action === 'close') && !receipt.fill
+  // Market orders and closes fill inside their own transaction; a limit
+  // order rests and fills later in others, so its own signature never has
+  // a fill to find.
+  const immediate =
+    trade.action === 'close' ||
+    (trade.action === 'order' && trade.orderType === 'market')
+  return immediate && !receipt.fill
 }
 
 /**
@@ -143,8 +178,10 @@ export async function settleTradeFacts(
     const received = tx && swapReceived(tx, row.account, trade.receive.mint)
     if (received) facts = { received }
   } else if (trade.symbol) {
+    // The request exists before its transaction is sent, so its fills are
+    // never older than it.
     const fill = orderFill(
-      await reader.fills(row.account, trade.symbol),
+      await reader.fills(row.account, trade.symbol, row.createdAt),
       row.signature,
     )
     if (fill) facts = { fill }

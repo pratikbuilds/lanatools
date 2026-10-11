@@ -1,6 +1,8 @@
 import { expect, test } from 'bun:test'
 import type { PerpTrade, SwapTrade } from '@lanatools/contracts'
 import {
+  fillsInItsOwnTransaction,
+  formatPrice,
   formatUSD,
   orderTicket,
   perpNotional,
@@ -164,4 +166,24 @@ test('once read after confirmation, actual amounts replace estimates', () => {
   expect(
     tradeDetail(close, true, { fill: { ...fill, realizedPnlUsdc: '4.05' } }),
   ).toBe('Phoenix · Filled at $109.64, realized +$4.05')
+})
+
+test('prices keep the precision they carry; money stays in cents', () => {
+  expect(formatPrice('0.12345')).toBe('$0.12345')
+  expect(formatPrice('0.12340')).toBe('$0.1234')
+  expect(formatPrice('2590')).toBe('$2,590.00')
+  expect(formatPrice(109.6)).toBe('$109.60')
+  expect(formatUSD('0.12345')).toBe('$0.12')
+})
+
+test('only orders that fill in their own transaction wait for a fill', () => {
+  expect(fillsInItsOwnTransaction(buy)).toBe(true)
+  expect(
+    fillsInItsOwnTransaction(perp({ action: 'close', symbol: 'SOL' })),
+  ).toBe(true)
+  expect(
+    fillsInItsOwnTransaction(
+      perp({ action: 'order', orderType: 'limit', limitPrice: '100' }),
+    ),
+  ).toBe(false)
 })
