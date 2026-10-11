@@ -74,7 +74,10 @@ export function PerpChart({
 }: {
   candles: Candle[]
   lines: ChartLine[]
-  /** Widen the fitted price range to reach the liquidation line. */
+  /**
+   * Widen the fitted price range to reach every level. Off, the price axis
+   * fits the candles, as trading screens do, and a level shows when in view.
+   */
   fitLiquidation: boolean
   /** Changing it redraws the chart at its fitted view. */
   resetKey: number
@@ -110,6 +113,9 @@ export function PerpChart({
       timeScale: {
         borderColor: colors.line,
         rightOffset: 4,
+        // Intraday candles need times on the axis, not only dates.
+        timeVisible: true,
+        secondsVisible: false,
         // Local time, as the rest of the dashboard.
         tickMarkFormatter: (time: Time, type: TickMarkType) =>
           localTime(
@@ -136,9 +142,7 @@ export function PerpChart({
       },
     })
     const liquidation = lines.find((line) => line.tone === 'liquidation')
-    const reach = lines
-      .filter((line) => line.tone !== 'liquidation' || fitLiquidation)
-      .map((line) => line.price)
+    const reach = fitLiquidation ? lines.map((line) => line.price) : []
     const series = api.addSeries(CandlestickSeries, {
       upColor: colors.up,
       downColor: colors.down,

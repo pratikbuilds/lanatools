@@ -50,9 +50,9 @@ for (const width of [390, 1440]) {
     if (!box) throw new Error('The chart has no size')
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
     await page.mouse.wheel(0, -400)
-    await page.getByRole('button', { name: 'Hide liquidation' }).click()
+    await page.getByRole('button', { name: 'Show liquidation' }).click()
     await expect(
-      page.getByRole('button', { name: 'Show liquidation' }),
+      page.getByRole('button', { name: 'Hide liquidation' }),
     ).toBeVisible()
     await page.getByRole('button', { name: 'Reset view' }).click()
     await page.screenshot({

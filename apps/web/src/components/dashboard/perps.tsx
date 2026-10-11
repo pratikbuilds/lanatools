@@ -253,7 +253,8 @@ function TradeCard({
 }) {
   const { userId, getAccessToken } = useDashboardSession()
   const [range, setRange] = useState<PhoenixCandleRange>('1D')
-  const [fitLiquidation, setFitLiquidation] = useState(true)
+  // Candles first; levels far from price would flatten them.
+  const [fitLiquidation, setFitLiquidation] = useState(false)
   const [resetKey, setResetKey] = useState(0)
   const candles = useQuery({
     queryKey: ['phoenix-candles', userId, focus, range],
