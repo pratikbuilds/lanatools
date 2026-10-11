@@ -2,44 +2,28 @@ import OAuthProvider, {
   OAuthError,
   getOAuthApi,
 } from '@cloudflare/workers-oauth-provider'
-import type {
-  OAuthHelpers,
-  OAuthProviderOptions,
-} from '@cloudflare/workers-oauth-provider'
+import type { OAuthProviderOptions } from '@cloudflare/workers-oauth-provider'
 import { createMcpHandler } from 'agents/mcp/server'
 import { z } from 'zod'
-import {
-  MCP_SCOPES,
-  TOOL_SCOPES,
-  grantScopes,
-  parseClientLimit,
-} from '@lanatools/contracts'
+import { MCP_SCOPES } from '@lanatools/contracts'
 import { WorkerEntrypoint, env as bindings } from 'cloudflare:workers'
-import type {
-  McpAccessService,
-  McpTokenRevoker,
-} from '../../api/src/mcp-service'
+import type { McpTokenRevoker } from '../../api/src/mcp-service'
 import { createServer } from './server'
 import { Identity } from './identity'
-import { completeApproval } from './complete-approval'
+import { ToolChoice, approveGrant, toolAccess } from './approve-grant'
+import type { GrantEnv } from './approve-grant'
 import { revokeClientTokens } from './revoke-tokens'
+import { authorizeFirstParty } from './first-party-authorize'
+import { json } from './json'
 
-type McpEnv = Env & {
-  OAUTH_PROVIDER: OAuthHelpers
-  API: Service<typeof McpAccessService>
-  TYPESAFE_API_KEY?: string
-}
+type McpEnv = Env &
+  GrantEnv & {
+    TYPESAFE_API_KEY?: string
+  }
 
 const OAuthContext = z.object({
   auth: z.object({ scope: z.array(z.string()) }),
 })
-
-function json(value: unknown, status = 200, extra?: Headers) {
-  const headers = new Headers(extra)
-  headers.set('Content-Type', 'application/json')
-  headers.set('Cache-Control', 'no-store')
-  return new Response(JSON.stringify(value), { status, headers })
-}
 
 const defaultHandler = {
   async fetch(request: Request, env: McpEnv) {
@@ -100,32 +84,18 @@ const defaultHandler = {
       if (request.method === 'POST') {
         if (request.headers.get('origin') !== env.MCP_ORIGIN)
           return new Response('Forbidden', { status: 403 })
-        const body = z
-          .object({
-            decision: z.enum(['approve', 'deny']),
-            // Unscoped tools remain available when no families are selected.
-            scopes: z.array(z.enum(TOOL_SCOPES)).default([]),
-            // Required when the user allows payments.
-            limitUsd: z.string().optional(),
-          })
-          .safeParse(await request.json().catch(() => null))
+        const body = ToolChoice.extend({
+          decision: z.enum(['approve', 'deny']),
+        }).safeParse(await request.json().catch(() => null))
         if (!body.success) return json({ error: 'Invalid decision' }, 400)
-        const scopes = grantScopes(body.data.scopes)
-        if (!scopes) return json({ error: 'Invalid tool access' }, 400)
-        const limitMicroUsd =
-          body.data.limitUsd === undefined
-            ? null
-            : parseClientLimit(body.data.limitUsd)
-        if (body.data.limitUsd !== undefined && limitMicroUsd === null)
-          return json({ error: 'Invalid spending limit' }, 400)
         try {
           if (body.data.decision === 'deny') {
             const denied = await env.OAUTH_PROVIDER.denyConsent(request, handle)
             await env.API.discardConsent(handle)
             return json({ redirectTo: denied.redirectTo }, 200, denied.headers)
           }
-          if (scopes.includes('payments:pay') && limitMicroUsd === null)
-            return json({ error: 'Set a spending limit' }, 400)
+          const access = toolAccess(body.data)
+          if ('error' in access) return json({ error: access.error }, 400)
           const token = /^Bearer (.+)$/.exec(
             request.headers.get('authorization') || '',
           )?.[1]
@@ -135,31 +105,14 @@ const defaultHandler = {
           const approved = await env.OAUTH_PROVIDER.approveConsent(
             request,
             handle,
-            { scope: scopes },
+            { scope: access.scopes },
           )
-          const { grantId } = await env.API.prepareGrant(
+          const { redirectTo } = await approveGrant(
+            env,
+            approved.request,
             handle,
-            approved.request.clientId,
             userId,
-          )
-          const { redirectTo } = await completeApproval(
-            () =>
-              env.OAUTH_PROVIDER.completeAuthorization({
-                request: approved.request,
-                // OAuthProvider separates the subject from its code with colons.
-                userId: encodeURIComponent(userId),
-                scope: approved.request.scope,
-                props: { grantId, userId, clientId: approved.request.clientId },
-                // Lets a dashboard revocation find this OAuth grant in KV.
-                metadata: { label: 'LanaTools connection', grantId },
-              }),
-            () =>
-              env.API.activateGrant(
-                handle,
-                { grantId, userId, clientId: approved.request.clientId },
-                body.data.scopes,
-                limitMicroUsd,
-              ),
+            access,
           )
           return json({ redirectTo }, 200, approved.headers)
         } catch {
@@ -167,6 +120,9 @@ const defaultHandler = {
         }
       }
     }
+
+    if (url.pathname === '/first-party/authorize' && request.method === 'POST')
+      return authorizeFirstParty(request, env)
 
     return new Response('Not found', { status: 404 })
   },
