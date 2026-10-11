@@ -1,0 +1,884 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Swaps and perps mockup</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet" />
+    <style>
+      /* Tokens and d-* surfaces are copied from apps/web/src/styles.css so the
+         mockup reads as the live dashboard. */
+      @font-face {
+        font-family: 'Paper Mono';
+        src: url('../../apps/web/src/fonts/paper-mono-variable.woff2') format('woff2');
+        font-weight: 100 800;
+        font-display: swap;
+      }
+      :root {
+        --mono: 'Paper Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+        --paper: #f3efe6;
+        --ink: #0a1f6e;
+        --lime: #d9ff4a;
+        --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+      }
+      .dash {
+        --bg: #f3efe6; --panel: #fffdf8; --panel-2: #ebe6da; --line: #d6d0c2; --line-2: #bfb7a4;
+        --fg: #0a1f6e; --fg-2: #4a5480; --fg-3: #5f668c; --accent: #0b2fb2; --on-accent: #f3efe6;
+        --live: #1d8f55; --up: #1d8f55; --bad: #b8361a; --on-bad: #fffdf8; --scrim: rgb(5 11 43 / 0.4);
+        --hatch-c: #ddd6c6; --hdr: #0b2fb2; --hdr-line: transparent; --hdr-dim: #b5c1f0;
+        --hatch: repeating-linear-gradient(135deg, var(--hatch-c) 0 1px, transparent 1px 7px);
+        color-scheme: light;
+        min-height: 100dvh; padding-bottom: 36px; background: var(--bg); color: var(--fg);
+        font-family: 'Inter Tight', system-ui, sans-serif; font-size: 14px; line-height: 1.5;
+        -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums;
+      }
+      .dash[data-theme='dark'] {
+        --bg: #08090c; --panel: #0f1115; --panel-2: #171a21; --line: #23272f; --line-2: #343a46;
+        --fg: #f3efe6; --fg-2: #aab1c5; --fg-3: #8a90a3; --accent: #f3efe6; --on-accent: #0a1f6e;
+        --live: #d9ff4a; --up: #7ad99a; --bad: #ff8a70; --on-bad: #08090c; --scrim: rgb(0 0 0 / 0.55);
+        --hatch-c: #1b1e25; --hdr: #0f1115; --hdr-line: #23272f; --hdr-dim: #8d93a5;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-width: 320px; }
+      h1, h2, h3, p, dl, dd, ul, ol { margin: 0; padding: 0; }
+      ul { list-style: none; }
+      button, input, select { font: inherit; color: inherit; background: none; border: 0; padding: 0; }
+      a { color: inherit; }
+      [hidden] { display: none !important; }
+      .mono { font-family: var(--mono); }
+
+      .d-label { font: 500 11px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-3); }
+      .d-th { background: var(--hatch), var(--panel-2); }
+      .d-card { overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+      .d-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 14px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); color: var(--fg); font: 600 13px var(--mono); white-space: nowrap; cursor: pointer; text-decoration: none; }
+      .d-btn:hover { border-color: var(--fg-3); }
+      .d-btn-sm { height: 30px; padding: 0 11px; font-size: 12px; }
+      .d-input { height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--fg); font-size: 13px; }
+      .d-input::placeholder { color: var(--fg-3); }
+      .d-chip { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--fg-2); font: 500 12px var(--mono); white-space: nowrap; }
+      .d-well { padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); font: 500 12.5px var(--mono); overflow-wrap: anywhere; }
+      .d-h2 { font: 600 15px var(--mono); }
+      .d-col { width: 100%; max-width: 1100px; margin-inline: auto; padding-inline: 32px; }
+
+      /* Header bar: destinations only. */
+      header { background: var(--hdr); border-bottom: 1px solid var(--hdr-line); color: var(--paper); }
+      header .d-col { display: flex; align-items: center; gap: 16px; }
+      .wordmark { display: flex; align-items: center; gap: 8px; padding: 16px 0; font: 700 18px var(--mono); letter-spacing: -0.02em; }
+      .wordmark small { font-weight: 500; font-size: 18px; color: var(--hdr-dim); }
+      nav { display: flex; gap: 6px; align-self: stretch; }
+      nav a { position: relative; display: flex; align-items: center; padding: 0 12px; font: 500 13px var(--mono); color: var(--hdr-dim); text-decoration: none; cursor: pointer; }
+      nav a[aria-current='page'] { color: var(--paper); font-weight: 600; }
+      nav a[aria-current='page']::after { content: ''; position: absolute; inset: auto 12px 0; height: 3px; border-radius: 3px 3px 0 0; background: var(--paper); }
+      .pill { margin-left: auto; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px 0 4px; border: 1.5px solid rgb(181 193 240 / 0.5); border-radius: 999px; font: 500 12.5px var(--mono); }
+      .pill i { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--paper); color: var(--ink); font-style: normal; font-weight: 700; font-size: 12px; }
+
+      main { padding-top: 28px; padding-bottom: 96px; }
+      h1 { font: 600 18px var(--mono); }
+      .meta { font: 400 12px var(--mono); color: var(--fg-3); }
+      .back { display: inline-flex; gap: 6px; margin-bottom: 14px; font: 500 12px var(--mono); color: var(--fg-3); text-decoration: none; cursor: pointer; }
+      .back:hover { color: var(--fg); }
+
+      /* ---------- Transactions ledger (as live) ---------- */
+      .band { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 24px; margin-top: 20px; margin-bottom: 20px; border-bottom: 1px solid var(--line); }
+      .tabs { display: flex; gap: 2px; margin-bottom: -1px; overflow-x: auto; }
+      .tabs button { height: 36px; padding: 0 10px; border-bottom: 2px solid transparent; font: 400 13px var(--mono); color: var(--fg-3); white-space: nowrap; cursor: pointer; }
+      .tabs button:hover { color: var(--fg); }
+      .tabs button[aria-pressed='true'] { color: var(--fg); font-weight: 600; border-bottom-color: var(--fg); }
+      .tabs button i { font-style: normal; margin-left: 6px; font-size: 11px; color: var(--fg-3); font-weight: 400; }
+      .tools { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 10px; }
+
+      .cols { display: grid; grid-template-columns: 5rem minmax(0, 1fr) 11rem 9.5rem 7rem; gap: 0 16px; align-items: center; padding: 0 16px; }
+      .thead { min-height: 36px; }
+      .day { display: flex; align-items: baseline; gap: 10px; padding: 6px 16px; border-top: 1px solid var(--line); background: var(--bg); }
+      .day b { padding-bottom: 1px; border-bottom: 2px solid var(--fg); font: 600 12px var(--mono); }
+      .row { width: 100%; min-height: 58px; padding-top: 10px; padding-bottom: 10px; border-top: 1px solid var(--line); text-align: left; cursor: pointer; }
+      .row:hover { background: var(--bg); }
+      .t { font: 400 12px var(--mono); color: var(--fg-3); }
+      .what { min-width: 0; }
+      .what b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 13.5px var(--mono); }
+      .what span.sub { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--fg-3); }
+      .what span.sub.bad { color: var(--bad); }
+      .src { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--fg-3); }
+      .src b { color: var(--fg); font-weight: 600; }
+      .amt { text-align: right; white-space: nowrap; font: 600 15px var(--mono); letter-spacing: -0.02em; }
+      .amt u { margin-left: 4px; text-decoration: none; font-size: 11.5px; font-weight: 500; letter-spacing: 0; opacity: 0.7; }
+      .amt .in { display: inline-block; padding: 1px 8px; border-radius: 5px; background: var(--lime); color: var(--ink); }
+      .amt .got { display: block; margin-top: 2px; font-size: 12px; font-weight: 500; color: var(--up); }
+      .amt .got u { opacity: 0.8; }
+      .amt .note { display: block; margin-top: 1px; font-size: 11px; font-weight: 400; letter-spacing: 0; color: var(--fg-3); }
+      .amt .quiet { color: var(--fg); }
+      .row.gone .amt { color: var(--fg-3); font-weight: 400; text-decoration: line-through; }
+      .row.gone .amt .got { display: none; }
+      .sig a { font: 400 12px var(--mono); color: var(--fg-3); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+      .sig a:hover { color: var(--accent); }
+      .st { display: inline-block; margin-left: 8px; padding: 0 6px; border-radius: 4px; vertical-align: 2px; font: 600 11px var(--mono); }
+      .st-pending { border: 1px solid var(--accent); color: var(--accent); }
+      .st-failed { background: var(--bad); color: var(--on-bad); }
+      .side { font-weight: 700; }
+      .side.long { color: var(--up); }
+      .side.short { color: var(--bad); }
+      .new { outline: 2px dashed color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: -3px; }
+
+      /* ---------- Drawer ---------- */
+      .scrim { position: fixed; inset: 0; z-index: 20; background: var(--scrim); }
+      .drawer { position: fixed; z-index: 21; inset: 0 0 0 auto; width: min(28rem, 100vw); overflow-y: auto; padding: 20px 28px 40px; border-left: 1px solid var(--line); background: var(--panel); animation: slide 220ms var(--ease-out); }
+      @keyframes slide { from { transform: translateX(24px); opacity: 0; } }
+      .dh { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin: 0 -28px 24px; padding: 0 28px 20px; border-bottom: 1px dashed var(--line-2); }
+      .dh p { font: 400 11.5px var(--mono); color: var(--fg-3); }
+      .dh h2 { margin-top: 4px; font: 600 17px var(--mono); letter-spacing: -0.01em; }
+      .big { margin: 12px 0 4px; font: 600 2.6rem/1 var(--mono); letter-spacing: -0.05em; }
+      .big u { text-decoration: none; font-size: 1.4rem; letter-spacing: -0.02em; }
+      .under { font: 500 13px var(--mono); color: var(--fg-2); }
+      .status-note { margin-top: 6px; font-size: 12px; color: var(--fg-3); }
+      .facts { display: grid; grid-template-columns: 8.5rem minmax(0, 1fr); margin-top: 20px; overflow: hidden; border: 1px solid var(--line); border-radius: 9px; }
+      .facts dt { padding: 11px 14px; border-top: 1px solid var(--line); background: var(--hatch), var(--panel-2); font: 500 11px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-3); }
+      .facts dd { padding: 10px 14px; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+      .facts > :nth-child(1), .facts > :nth-child(2) { border-top: 0; }
+      .section-l { margin-top: 24px; margin-bottom: 8px; }
+
+      /* Swap: what left, what came back. */
+      .flow { margin-top: 14px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+      .leg { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 14px 16px; }
+      .leg + .leg { border-top: 1px solid var(--line); }
+      .leg .lbl { font: 500 11px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-3); }
+      .leg .val { font: 600 22px/1.2 var(--mono); letter-spacing: -0.03em; }
+      .leg .val u { text-decoration: none; font-size: 14px; }
+      .leg .usd { font: 400 12px var(--mono); color: var(--fg-3); text-align: right; }
+      .leg.out .val { color: var(--fg); }
+      .leg.in { background: color-mix(in srgb, var(--lime) 22%, var(--panel)); }
+      .dash[data-theme='dark'] .leg.in { background: color-mix(in srgb, var(--lime) 8%, var(--panel)); }
+      .leg.in.est { background: none; }
+      .tok { width: 34px; height: 34px; border-radius: 50%; }
+      .swapmark { position: relative; height: 0; }
+      .swapmark span { position: absolute; left: 16px; top: -12px; display: grid; place-items: center; width: 24px; height: 24px; margin-left: 5px; border: 1px solid var(--line); border-radius: 50%; background: var(--panel); font: 600 12px var(--mono); color: var(--fg-3); }
+
+      /* Perp: an order ticket. */
+      .ticket { margin-top: 16px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+      .ticket-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+      .ticket-head b { font: 600 13px var(--mono); }
+      .ticket-grid { display: grid; grid-template-columns: 1fr 1fr; }
+      .ticket-grid div { padding: 10px 14px; border-top: 1px solid var(--line); }
+      .ticket-grid div:nth-child(odd) { border-right: 1px solid var(--line); }
+      .ticket-grid div:nth-child(-n + 2) { border-top: 0; }
+      .ticket-grid dt { font: 500 10.5px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-3); }
+      .ticket-grid dd { margin-top: 2px; font: 600 13.5px var(--mono); }
+      .ticket-grid dd small { font-weight: 400; color: var(--fg-3); font-size: 11.5px; }
+      .tag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; font: 600 11.5px var(--mono); }
+      .tag.long { background: color-mix(in srgb, var(--up) 14%, transparent); color: var(--up); }
+      .tag.short { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
+      .tag.plain { border: 1px solid var(--line); color: var(--fg-2); }
+      .notice { margin-top: 12px; padding: 10px 12px; border-left: 2px solid var(--line-2); font-size: 12.5px; color: var(--fg-2); }
+      .poscard { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; margin-top: 8px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); text-decoration: none; cursor: pointer; }
+      .poscard:hover { border-color: var(--fg-3); }
+      .poscard b { font: 600 13.5px var(--mono); }
+      .poscard span { font: 400 12px var(--mono); color: var(--fg-3); }
+      .poscard em { grid-row: span 2; font: 600 12px var(--mono); font-style: normal; color: var(--fg); }
+
+      .up { color: var(--up); }
+      .down { color: var(--bad); }
+
+      /* ---------- Phoenix account ---------- */
+      .acct-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+      .addr-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+      .addr-bar .d-input { width: 22rem; font-family: var(--mono); font-size: 12.5px; }
+      .summary { display: grid; grid-template-columns: minmax(0, 1.2fr) repeat(4, minmax(0, 1fr)); margin-top: 22px; }
+      .summary > div { padding: 18px 20px; border-left: 1px solid var(--line); }
+      .summary > div:first-child { border-left: 0; }
+      .summary .value { margin-top: 6px; font: 600 15px var(--mono); letter-spacing: -0.02em; }
+      .summary .hero { font-size: 2.1rem; line-height: 1; letter-spacing: -0.05em; margin-top: 10px; }
+      .summary .sub2 { margin-top: 4px; font: 400 11.5px var(--mono); color: var(--fg-3); }
+      .sec { margin-top: 32px; }
+      .sec-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+      .sec-head .meta { margin-left: auto; }
+      .tbl { width: 100%; border-collapse: collapse; }
+      .tbl th { height: 36px; padding: 0 14px; text-align: left; font: 500 11px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-3); white-space: nowrap; }
+      .tbl td { height: 54px; padding: 0 14px; border-top: 1px solid var(--line); font: 500 13px var(--mono); white-space: nowrap; }
+      .tbl tbody tr { cursor: pointer; }
+      .tbl tbody tr:hover td { background: var(--bg); }
+      .tbl .r { text-align: right; }
+      .tbl .mk b { font-weight: 600; }
+      .tbl .mk small { display: block; font-size: 11px; color: var(--fg-3); font-weight: 400; }
+      .tbl .pnl { font-weight: 600; }
+      .tbl .pnl small { display: block; font-size: 11px; font-weight: 400; }
+      .tbl .by { font-family: 'Inter Tight', system-ui, sans-serif; font-size: 12.5px; color: var(--fg-3); }
+      .tbl .by b { color: var(--fg); font-weight: 600; }
+      .tbl td.sig a { font-weight: 400; }
+      .empty-row { padding: 22px 16px; text-align: center; font: 400 12.5px var(--mono); color: var(--fg-3); }
+      .acct-empty { margin-top: 24px; padding: 40px 20px; border: 1px dashed var(--line-2); border-radius: 10px; text-align: center; }
+      .acct-empty p { max-width: 34rem; margin: 8px auto 0; font-size: 13px; color: var(--fg-3); }
+      .scroll-x { overflow-x: auto; }
+      .only-xs { display: none !important; }
+
+
+      /* Account strip: four numbers, no boxes. */
+      .strip { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 40px; margin-top: 22px; }
+      .strip .sv { margin-top: 4px; font: 600 15px var(--mono); letter-spacing: -0.02em; }
+      .strip .sv.hero { font-size: 2rem; line-height: 1; letter-spacing: -0.05em; }
+
+      /* The trade card: chart on the left, the position on the right. */
+      .trade { margin-top: 20px; }
+      .trade-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 0 16px; border-bottom: 1px solid var(--line); }
+      .mk-tabs { margin-bottom: -1px; }
+      .mk-tabs button { height: 44px; }
+      .mk-tabs .side { margin-left: 6px; font-size: 11.5px; font-weight: 600; }
+      .d-seg { display: inline-flex; padding: 3px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); }
+      .d-seg button { padding: 3px 10px; border-radius: 6px; color: var(--fg-3); font: 500 12px var(--mono); cursor: pointer; }
+      .d-seg button[aria-pressed='true'] { background: var(--panel-2); color: var(--fg); box-shadow: inset 0 0 0 1px var(--line-2); }
+      .trade-body { display: grid; grid-template-columns: minmax(0, 1fr) 17rem; }
+      .chart-wrap { position: relative; min-width: 0; display: flex; flex-direction: column; }
+      .ll { height: 360px; }
+      .ohlc { display: flex; gap: 14px; padding: 10px 16px 0; font: 500 11.5px var(--mono); color: var(--fg-3); min-height: 28px; }
+      .ohlc b { font-weight: 600; }
+      .chart-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 0; }
+      .chart-tools .d-btn[aria-pressed='true'] { border-color: var(--bad); color: var(--bad); }
+      .key { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; margin-top: auto; padding: 10px 16px; border-top: 1px solid var(--line); font: 500 12px var(--mono); color: var(--fg-2); }
+      .key i { display: inline-block; width: 14px; height: 0; margin-right: 7px; vertical-align: middle; border-top: 1.5px dashed var(--fg-2); }
+      .key .k-liq { color: var(--fg); }
+      .key .k-liq i { border-top: 2px solid var(--bad); }
+      .key .k-liq small { color: var(--bad); font-size: 11px; }
+      .key .k-order { border-top-style: dotted !important; }
+      .key-src { margin-left: auto; color: var(--fg-3); font-size: 11px; }
+      .pos { padding: 20px; border-left: 1px solid var(--line); }
+      .pos-size { margin-top: 8px; font: 600 18px var(--mono); letter-spacing: -0.02em; }
+      .pos-pnl { margin-top: 2px; font: 600 26px/1.15 var(--mono); letter-spacing: -0.04em; }
+      .pos-pnl small { font-size: 13px; letter-spacing: 0; }
+      .pos-facts { display: grid; grid-template-columns: auto 1fr; margin-top: 16px; border-top: 1px solid var(--line); }
+      .pos-facts dt, .pos-facts dd { padding: 9px 0; border-bottom: 1px solid var(--line); }
+      .pos-facts dt { font: 500 11px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-3); }
+      .pos-facts dd { text-align: right; font: 600 13px var(--mono); }
+      .pos-facts dd small { display: block; font-size: 11px; font-weight: 400; color: var(--fg-3); }
+      .pos-facts .liq-t { color: var(--bad); }
+
+      .chart { display: block; overflow: visible; }
+      .chart .grid { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 4; }
+      .chart .price { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+      .chart .fade-a { stop-color: var(--accent); stop-opacity: 0.12; }
+      .chart .fade-b { stop-color: var(--accent); stop-opacity: 0; }
+      .chart .danger-line { stroke: var(--bad); stroke-width: 1.2; opacity: 0.35; }
+      .chart .axis { font: 400 11px var(--mono); fill: var(--fg-3); }
+      .chart .ref { stroke-width: 1.25; }
+      .chart .ref.entry { stroke: var(--fg-2); stroke-dasharray: 5 4; }
+      .chart .ref.mark { stroke: var(--accent); stroke-opacity: 0.35; }
+      .chart .ref.liq { stroke: var(--bad); }
+      .chart .ref.liq.pinned { stroke-opacity: 0; }
+      .chart .ref.order { stroke: var(--fg-3); stroke-dasharray: 1.5 3; }
+      .chart .rlab rect { fill: var(--panel); stroke: var(--line-2); }
+      .chart .rlab text { font: 600 11.5px var(--mono); fill: var(--fg); }
+      .chart .rlab .rtag { font-size: 10px; font-weight: 500; fill: var(--fg-3); }
+      .chart .rlab.mark rect { fill: var(--accent); stroke: var(--accent); }
+      .chart .rlab.mark text, .chart .rlab.mark .rtag { fill: var(--on-accent); }
+      .chart .rlab.liq rect { stroke: var(--bad); }
+      .chart .rlab.liq .rtag { fill: var(--bad); font-weight: 700; }
+      .chart .now { fill: var(--accent); stroke: var(--panel); stroke-width: 2; }
+      .chart .cross { stroke: var(--fg-3); stroke-dasharray: 2 3; }
+      .chart .hdot { fill: var(--panel); stroke: var(--accent); stroke-width: 2; }
+      .chart .hit { cursor: crosshair; }
+      .tip { position: absolute; z-index: 2; width: 190px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); box-shadow: 0 8px 20px rgb(10 31 110 / 0.12); pointer-events: none; font: 500 12.5px var(--mono); }
+
+      .buf { margin-top: 16px; }
+      .buf .d-label b { margin-left: 4px; color: var(--fg); font-weight: 600; }
+      .buf-track { position: relative; height: 10px; margin-top: 10px; border-radius: 5px; background: var(--panel-2); }
+      .buf-room { position: absolute; top: 0; bottom: 0; border-radius: 5px; background: color-mix(in srgb, var(--accent) 22%, transparent); }
+      .buf-track i { position: absolute; top: -4px; width: 2px; height: 18px; margin-left: -1px; border-radius: 1px; }
+      .buf-liq { background: var(--bad); }
+      .buf-entry { background: var(--fg-3); }
+      .buf-mark { background: var(--accent); width: 10px !important; height: 10px !important; top: 0 !important; margin-left: -5px !important; border-radius: 50% !important; box-shadow: 0 0 0 2px var(--panel); }
+      .buf-ends { display: flex; justify-content: space-between; margin-top: 6px; font: 500 11px var(--mono); color: var(--fg-3); }
+      .tbl tbody tr.on td { background: var(--bg); }
+      .tbl tbody tr.on td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+
+      /* ---------- status bar ---------- */
+      .status-bar { position: fixed; inset: auto 0 0; z-index: 5; display: flex; height: 36px; border-top: 1px solid var(--line); background: var(--bg); color: var(--fg-2); font: 500 12px var(--mono); }
+      .status-bar > div { display: flex; align-items: center; gap: 8px; padding: 0 16px; border-right: 1px solid var(--line); white-space: nowrap; }
+      .status-bar > div:last-child { margin-left: auto; border-right: 0; border-left: 1px solid var(--line); }
+      .status-bar i { width: 7px; height: 7px; border-radius: 50%; background: var(--live); }
+
+      /* Mockup controls, not part of the design. */
+      .mock { position: fixed; left: 50%; bottom: 48px; z-index: 30; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; padding: 4px; border: 1.5px dashed var(--fg-3); border-radius: 22px; background: var(--panel); font: 500 12px var(--mono); color: var(--fg-3); white-space: nowrap; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+      .mock button { height: 28px; padding: 0 12px; border-radius: 14px; cursor: pointer; }
+      .mock button[aria-pressed='true'] { background: var(--fg); color: var(--bg); }
+      .mock span { padding: 0 8px; }
+
+      @media (max-width: 1023px) {
+        .d-col { padding-inline: 16px; }
+        nav a { padding: 0 7px; font-size: 12px; }
+        .pill span { display: none; }
+        .thead { display: none; }
+        .cols { grid-template-columns: 4.4rem minmax(0, 1fr) auto; gap: 0 12px; padding: 0 14px; }
+        .row .src, .row .sig { display: none; }
+        .what b { white-space: normal; }
+        .summary { grid-template-columns: 1fr 1fr; }
+        .summary > div:first-child { grid-column: span 2; border-bottom: 1px solid var(--line); }
+        .summary > div:nth-child(2), .summary > div:nth-child(4) { border-left: 0; }
+        .summary > div:nth-child(n + 4) { border-top: 1px solid var(--line); }
+        .tbl .hide-sm { display: none; }
+        .addr-bar .d-input { width: 100%; }
+        .trade-body { grid-template-columns: 1fr; }
+        .pos { border-left: 0; border-top: 1px solid var(--line); }
+        .acct-head .d-input { width: 100% !important; }
+        .strip { gap: 12px 28px; }
+        .wordmark small { display: none; }
+      }
+      @media (max-width: 560px) {
+        nav { display: none; }
+        .tbl .hide-xs { display: none; }
+        .tbl .only-xs { display: block !important; }
+        .tbl th, .tbl td { padding: 0 10px; }
+        .addr-bar .mono { overflow-wrap: anywhere; min-width: 0; }
+        .ticket-grid { grid-template-columns: 1fr; }
+        .ticket-grid div:nth-child(odd) { border-right: 0; }
+        .ticket-grid div:nth-child(2) { border-top: 1px solid var(--line); }
+        .drawer { padding-inline: 20px; }
+        .dh { margin-inline: -20px; padding-inline: 20px; }
+      }
+      @media (prefers-reduced-motion: reduce) { .drawer { animation: none; } }
+    </style>
+  </head>
+  <body>
+    <div class="dash" id="dash" data-theme="light">
+      <header>
+        <div class="d-col">
+          <span class="wordmark">
+            <svg width="22" height="22" viewBox="0 0 64 64" aria-hidden="true">
+              <path d="M16 56h-4q-4 0-4-4V15q0-7 7-7h23l19 12.5V29L37 16H19.5q-3.5 0-3.5 3.5Z" fill="currentColor" />
+              <path d="M23 26l8 7-8 7" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" />
+              <rect x="35" y="41" width="15" height="5" rx="2.5" fill="#d9ff4a" />
+            </svg>
+            <span>lanatools<small>.sh</small></span>
+          </span>
+          <nav aria-label="Main">
+            <a>Wallet</a><a>Payments</a><a>Activity</a><a id="nav-tx" aria-current="page">Transactions</a><a>Settings</a>
+          </nav>
+          <span class="pill"><i>P</i><span>pratik@example.com</span></span>
+        </div>
+      </header>
+
+      <main class="d-col" id="main"></main>
+
+      <footer class="status-bar">
+        <div><i></i>Agent payments on</div>
+        <div>mcp.lanatools.sh · 2 clients connected</div>
+        <div id="net">Solana devnet</div>
+      </footer>
+
+      <div class="mock" role="group" aria-label="Mockup controls">
+        <span>Mockup</span>
+        <button data-view="tx" aria-pressed="true">Transactions</button>
+        <button data-view="perps" aria-pressed="false">Phoenix account</button>
+        <button id="m-empty" aria-pressed="false">No account</button>
+        <button id="m-theme" aria-pressed="false">Dark</button>
+      </div>
+
+      <div id="overlay" hidden>
+        <div class="scrim" id="scrim"></div>
+        <aside class="drawer" id="drawer" role="dialog" aria-modal="true"></aside>
+      </div>
+    </div>
+
+    <!-- Mockup only: the app would add lightweight-charts (Apache-2.0) as a dependency. -->
+    <script src="https://unpkg.com/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js"></script>
+    <script>
+      const $ = (id) => document.getElementById(id)
+      const WALLET = 'G7fu2vBDEZ9SYM4agJPshffJQUmyg6UCEEUnxuYRAMuq'
+      const LOCAL = '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU'
+      const SIG = '4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi8nXv2Tq1ZsVhUuYc6mRkQ3d5yW7oE2pBtGxHnLfAaJe9'
+      const SIG2 = '2Qm8xZbYH6kPq1sTd3vWn7yRtL9cFe4gJa5hUo6iKpVbNrXwS8zDfA1eC3tG7yHj9kLmQ2wErT5uYi8oPaSdFg'
+      const SIG3 = '3Rn7Lx9kPq2wErT5uYi8oPaSdFgHj1kLmQ2wZbYH6kPq1sTd3vWn7yRtL9cFe4gJa5hUo6iKpVbNrXwS8zaJe9'
+      const short = (a) => `${a.slice(0, 4)}…${a.slice(-4)}`
+      const usd = (n, signed = false) =>
+        `${signed ? (n > 0 ? '+' : n < 0 ? '−' : '') : n < 0 ? '−' : ''}$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: Math.abs(n) > 0 && Math.abs(n) < 0.01 ? 4 : 2 })}`
+      const unit = (v) => v.replace(/ (\S+)$/, '<u>$1</u>')
+      const sig = (s) => (s ? `<a href="#" onclick="event.stopPropagation()">${short(s)} ↗</a>` : '')
+      const state = { view: 'tx', empty: false, address: null }
+
+      // Token marks for the drawer only; rows stay free of icons.
+      const TOKEN = {
+        SOL: `<svg class="tok" viewBox="0 0 34 34"><defs><linearGradient id="sg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#9945ff"/><stop offset="1" stop-color="#14f195"/></linearGradient></defs><circle cx="17" cy="17" r="17" fill="#0b0b10"/><path d="M10 21.5h12l2-2H12zM10 14.5h12l2-2H12zM12 18h12l-2-2H10z" fill="url(#sg)"/></svg>`,
+        USDC: `<svg class="tok" viewBox="0 0 34 34"><circle cx="17" cy="17" r="17" fill="#2775ca"/><text x="17" y="22" text-anchor="middle" font-family="Inter Tight,sans-serif" font-weight="700" font-size="13" fill="#fff">$</text><circle cx="17" cy="17" r="10.5" fill="none" stroke="#fff" stroke-width="1.6"/></svg>`,
+      }
+
+      // ---------------------------------------------------------------------
+      // Transactions. Each agent row carries a typed `trade` summary from the
+      // API (swap or perp), so nothing is read from label strings.
+      const CLIENT = { codex: 'Codex', claude: 'Claude Code' }
+      const DELIVERY = { embedded: 'Embedded', link: 'Link', local: 'Local' }
+      const rows = [
+        { id: 'swap1', day: 'Today', t: '2:31 PM', client: 'codex', delivery: 'embedded', status: 'confirmed', account: WALLET, sig: SIG, slot: '454798245',
+          trade: { kind: 'swap', pay: { amount: '1', symbol: 'USDC', usd: 1.0 }, get: { amount: '0.00913', symbol: 'SOL', usd: 1.0 }, actual: true, min: '0.00908 SOL', slippage: '0.5%', rate: '1 SOL = 109.52 USDC', venue: 'Jupiter' } },
+        { id: 'buy1', day: 'Today', t: '2:05 PM', client: 'codex', delivery: 'embedded', status: 'confirmed', account: WALLET, sig: SIG2, slot: '454797410',
+          trade: { kind: 'order', market: 'SOL-PERP', base: 'SOL', side: 'buy', type: 'market', size: '0.1', limit: 110.15, fill: 109.6, notional: 10.96, fee: 0.0055, reduceOnly: false, slippage: '0.5%' } },
+        { id: 'lim1', day: 'Today', t: '1:40 PM', client: 'claude', delivery: 'link', status: 'open', account: null,
+          trade: { kind: 'order', market: 'ETH-PERP', base: 'ETH', side: 'sell', type: 'limit', size: '0.5', price: 2590, notional: 1295, reduceOnly: false, postOnly: true, best: 2504.2 },
+          reviewUrl: 'https://lanatools.sh/t/8f3a…c21e', expires: 'Today at 1:55 PM' },
+        { id: 'close1', day: 'Today', t: '12:10 PM', client: 'codex', delivery: 'local', status: 'confirmed', account: LOCAL, sig: SIG3, slot: '454790011',
+          trade: { kind: 'close', market: 'SOL-PERP', base: 'SOL', side: 'sell', type: 'market', size: '1.5', closing: 'long 1.5', fill: 109.48, notional: 164.22, fee: 0.0821, realized: 4.05 } },
+        { id: 'dep1', day: 'Today', t: '11:52 AM', client: 'codex', delivery: 'embedded', status: 'confirmed', account: WALLET, sig: SIG, slot: '454789002',
+          trade: { kind: 'deposit', amount: '250' } },
+        { id: 'act1', day: 'Today', t: '11:50 AM', client: 'codex', delivery: 'embedded', status: 'confirmed', account: WALLET, sig: SIG2, slot: '454788950',
+          trade: { kind: 'activate' } },
+        { id: 'swap2', day: 'Today', t: '9:12 AM', client: 'codex', delivery: 'embedded', status: 'failed', account: WALLET, sig: SIG3, reason: 'chain_failed',
+          trade: { kind: 'swap', pay: { amount: '0.1', symbol: 'SOL', usd: 10.95 }, get: { amount: '10.95', symbol: 'USDC', usd: 10.95 }, actual: false, min: '10.89 USDC', slippage: '0.5%', rate: '1 SOL = 109.52 USDC', venue: 'Jupiter' } },
+        { id: 'cancel1', day: 'Yesterday', t: '6:05 PM', client: 'claude', delivery: 'embedded', status: 'confirmed', account: WALLET, sig: SIG, slot: '454601877',
+          trade: { kind: 'cancel', market: 'SOL-PERP', count: 2 } },
+        { id: 'wd1', day: 'Yesterday', t: '4:45 PM', client: 'codex', delivery: 'embedded', status: 'confirmed', account: WALLET, sig: SIG2, slot: '454600120',
+          trade: { kind: 'withdraw', amount: '40' } },
+        { id: 'deposit-usdc', day: 'Yesterday', t: '10:14 AM', kind: 'deposit', status: 'confirmed', in: '25 USDC', from: LOCAL, sig: SIG3, slot: '454412390' },
+      ]
+      const group = (r) => (['open', 'preparing', 'ready', 'submitting', 'unknown'].includes(r.status) ? 'pending' : r.status)
+      const gone = (r) => group(r) === 'failed' || group(r) === 'expired'
+      const sideWord = (s) => (s === 'buy' ? 'Buy' : 'Sell')
+
+      function title(r) {
+        const t = r.trade
+        if (!t) return 'Deposit USDC'
+        if (t.kind === 'swap') return `Swap ${t.pay.symbol} → ${t.get.symbol}`
+        if (t.kind === 'order') return `${sideWord(t.side)} ${t.size} ${t.market}`
+        if (t.kind === 'close') return `Close ${t.closing} ${t.market}`
+        if (t.kind === 'deposit') return 'Deposit to Phoenix'
+        if (t.kind === 'withdraw') return 'Withdraw from Phoenix'
+        if (t.kind === 'cancel') return `Cancel ${t.count} ${t.market} orders`
+        if (t.kind === 'activate') return 'Activate Phoenix account'
+      }
+      // The second line: where, and the one number that matters.
+      function sub(r) {
+        const t = r.trade
+        if (group(r) === 'failed') return `<span class="sub bad">Rejected by the chain. Nothing moved.</span>`
+        if (!t) return `<span class="sub">From ${short(r.from)}</span>`
+        const pending = group(r) === 'pending'
+        if (t.kind === 'swap') return `<span class="sub">Jupiter · ${t.rate}</span>`
+        if (t.kind === 'order')
+          return `<span class="sub">Phoenix · ${t.type === 'market' ? (t.fill && !pending ? `Market, filled at ${usd(t.fill)}` : `Market, at most ${usd(t.limit)}`) : `Limit at ${usd(t.price)}${t.postOnly ? ', post only' : ''}`}</span>`
+        if (t.kind === 'close') return `<span class="sub">Phoenix · Filled at ${usd(t.fill)}, realized <span class="${t.realized >= 0 ? 'up' : 'down'}">${usd(t.realized, true)}</span></span>`
+        if (t.kind === 'deposit') return `<span class="sub">Phoenix · Into your margin account</span>`
+        if (t.kind === 'withdraw') return `<span class="sub">Phoenix · From your margin account</span>`
+        if (t.kind === 'cancel') return `<span class="sub">Phoenix · Resting orders removed</span>`
+        if (t.kind === 'activate') return `<span class="sub">Phoenix · Trader account opened</span>`
+      }
+      // Wallet money is signed; a perp order moves no wallet money, so it shows
+      // its notional unsigned and quiet.
+      function amount(r) {
+        const t = r.trade
+        if (!t) return `<span class="in">+${unit(r.in)}</span>`
+        if (t.kind === 'swap')
+          return `−${unit(`${t.pay.amount} ${t.pay.symbol}`)}<span class="got">${t.actual ? '+' : '≈ +'}${unit(`${t.get.amount} ${t.get.symbol}`)}</span>`
+        if (t.kind === 'order' || t.kind === 'close')
+          return `<span class="quiet">${group(r) === 'pending' ? '≈ ' : ''}${usd(t.notional)}</span><span class="note">notional</span>`
+        if (t.kind === 'deposit') return `−${unit(`${t.amount} USDC`)}`
+        if (t.kind === 'withdraw') return `<span class="in">+${unit(`${t.amount} USDC`)}</span>`
+        return `<span class="quiet" style="color:var(--fg-3);font-weight:400">—</span>`
+      }
+      const source = (r) => (r.client ? `<b>${CLIENT[r.client]}</b> · ${DELIVERY[r.delivery]}` : '')
+      const mark = (r) => (group(r) === 'confirmed' ? '' : `<span class="st st-${group(r)}">${group(r)[0].toUpperCase() + group(r).slice(1)}</span>`)
+
+      function renderTx() {
+        $('nav-tx').setAttribute('aria-current', 'page')
+        $('net').textContent = 'Solana devnet'
+        let day
+        const perDay = rows.reduce((n, r) => ((n[r.day] = (n[r.day] ?? 0) + 1), n), {})
+        const list = rows
+          .map(
+            (r, i) =>
+              (r.day !== day ? `<h3 class="day"><b>${(day = r.day)}</b><span class="d-label" style="text-transform:none">${perDay[day]} transactions</span></h3>` : '') +
+              `<button class="row cols ${gone(r) ? 'gone' : ''}" data-i="${i}">
+                <span class="t">${r.t}</span>
+                <span class="what"><b>${title(r)}${mark(r)}</b>${sub(r)}</span>
+                <span class="src">${source(r)}</span>
+                <span class="amt">${amount(r)}</span>
+                <span class="sig">${sig(r.sig)}</span>
+              </button>`,
+          )
+          .join('')
+        $('main').innerHTML = `
+          <h1>Transactions</h1>
+          <div class="band">
+            <div class="tabs"><button aria-pressed="true">All</button><button>Pending<i>1</i></button><button>Confirmed<i>8</i></button><button>Failed<i>1</i></button><button>Expired</button></div>
+            <div class="tools">
+              <select class="d-input" style="color:var(--fg-3)"><option>All kinds</option><option>Swaps</option><option>Perps</option><option>Transfers</option><option>Withdrawals</option><option>Deposits</option></select>
+              <select class="d-input" style="color:var(--fg-3)"><option>All clients</option></select>
+              <select class="d-input" style="color:var(--fg-3)"><option>Any signing</option></select>
+              <input class="d-input mono" style="width:15rem;font-size:12.5px" placeholder="Search by address" />
+            </div>
+          </div>
+          <div class="d-card">
+            <div class="d-th cols thead"><span class="d-label">Time</span><span class="d-label">Transaction</span><span class="d-label">Source</span><span class="d-label" style="text-align:right">Amount</span><span class="d-label">Signature</span></div>
+            ${list}
+          </div>
+          <p class="meta" style="text-align:center;padding-top:20px">That is every transaction.</p>`
+        document.querySelectorAll('[data-i]').forEach((b) => (b.onclick = () => openTx(rows[+b.dataset.i])))
+      }
+
+      // ---------------------------------------------------------------------
+      // Drawers
+      function openDrawer(html) {
+        $('drawer').innerHTML = html
+        $('overlay').hidden = false
+        $('drawer').querySelectorAll('[data-close]').forEach((b) => (b.onclick = close))
+        $('drawer').querySelectorAll('[data-perps]').forEach(
+          (b) => (b.onclick = (e) => (e.preventDefault(), close(), go('perps', b.dataset.perps))),
+        )
+      }
+      const close = () => ($('overlay').hidden = true)
+      $('scrim').onclick = close
+      addEventListener('keydown', (e) => e.key === 'Escape' && close())
+
+      const head = (r, t) =>
+        `<div class="dh"><div><p>${r.client ? CLIENT[r.client] : 'Deposit'}, ${r.day.toLowerCase()} at ${r.t}</p><h2>${t}</h2></div><button class="d-btn d-btn-sm" data-close>Close</button></div>`
+      const facts = (pairs) => `<dl class="facts">${pairs.filter(Boolean).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`
+      const signer = (r) => (r.account === WALLET ? 'Your LanaTools wallet' : r.account ? `<span class="mono" style="font-size:12.5px">${r.account}</span>` : null)
+      const common = (r) => [
+        ['Client', CLIENT[r.client]],
+        ['Signing', { embedded: 'Embedded, no approval', link: 'Link, on the review page', local: "Local, the agent's own wallet" }[r.delivery]],
+        signer(r) && ['Signed by', signer(r)],
+        ['Network', 'Solana mainnet'],
+        r.slot && ['Slot', `${r.slot}, finalized`],
+        r.reason && ['Error', r.reason],
+        r.expires && ['Expires', r.expires],
+      ]
+      const sigBlock = (r) =>
+        r.sig
+          ? `<p class="d-label section-l">Transaction</p><p class="d-well">${r.sig}</p>
+             <div style="display:flex;gap:8px;margin-top:12px"><a class="d-btn d-btn-sm" href="#">View on Solana Explorer ↗</a><button class="d-btn d-btn-sm">Copy signature</button></div>`
+          : ''
+      const linkBlock = (r) =>
+        r.reviewUrl
+          ? `<p class="d-label section-l">Review link</p><p class="d-well">${r.reviewUrl}</p>
+             <div style="display:flex;gap:8px;margin-top:12px"><a class="d-btn d-btn-sm" href="#">Open review page ↗</a><button class="d-btn d-btn-sm">Copy link</button></div>`
+          : ''
+      const statusLine = (r) =>
+        `<p class="d-label">${group(r)}${r.status !== group(r) ? ` <span style="text-transform:none;opacity:.7">(${r.status})</span>` : ''}</p>`
+      // The account a perp row belongs to: the wallet that signed it.
+      const accountLink = (r, market) => {
+        const who = r.account ?? WALLET
+        const pos = POSITIONS.find((p) => p.market === market)
+        return `<p class="d-label section-l">${market ? `${market} position now` : 'Phoenix account'}</p>
+          <a class="poscard" href="#" data-perps="${who}">
+            ${
+              pos && market
+                ? `<b><span class="side ${pos.side}">${pos.side === 'long' ? 'Long' : 'Short'}</span> ${pos.size} ${pos.base} · ${usd(pos.value)}</b><em>Open account →</em>
+                   <span>Entry ${usd(pos.entry)} · Unrealized <span class="${pos.pnl >= 0 ? 'up' : 'down'}">${usd(pos.pnl, true)}</span></span>`
+                : market
+                  ? `<b>No open ${market} position</b><em>Open account →</em><span>The position was closed.</span>`
+                  : `<b>${usd(ACCOUNT.value)} account value</b><em>Open account →</em><span>Collateral ${usd(ACCOUNT.collateral)} · ${POSITIONS.length} open positions</span>`
+            }
+          </a>
+          ${who !== WALLET ? `<p class="meta" style="margin-top:6px">Signed by ${short(who)}, the agent's local wallet.</p>` : ''}`
+      }
+
+      function openTx(r) {
+        const t = r.trade
+        if (!t) return openDrawer(`${head(r, title(r))}${statusLine(r)}<p class="big">+25 <u>USDC</u></p>${facts([['From', `<span class="mono" style="font-size:12.5px">${r.from}</span>`], ['Kind', 'Deposit']])}${sigBlock(r)}`)
+        if (t.kind === 'swap') return openSwap(r, t)
+        if (t.kind === 'order' || t.kind === 'close') return openOrder(r, t)
+        if (t.kind === 'deposit' || t.kind === 'withdraw') {
+          const dep = t.kind === 'deposit'
+          return openDrawer(`${head(r, title(r))}${statusLine(r)}
+            <p class="big">${dep ? '−' : '+'}${t.amount} <u>USDC</u></p>
+            <p class="under">${dep ? 'From your wallet into your Phoenix margin account.' : 'From your Phoenix margin account back to your wallet.'}</p>
+            ${accountLink(r)}
+            ${facts([['Protocol', 'Phoenix perpetuals'], ['Account', 'Cross margin'], ...common(r)])}${sigBlock(r)}`)
+        }
+        if (t.kind === 'cancel')
+          return openDrawer(`${head(r, title(r))}${statusLine(r)}
+            <p class="under" style="margin-top:8px">Removed ${t.count} resting orders on ${t.market}. Nothing filled.</p>
+            <div class="ticket"><div class="ticket-head"><b>Cancelled</b><span class="tag plain">${t.market}</span></div>
+              <div class="ticket-grid"><div><dt>Order 81204</dt><dd>Buy 1 at $102.00</dd></div><div><dt>Order 81211</dt><dd>Buy 1 at $100.00</dd></div></div></div>
+            ${accountLink(r)}${facts(common(r))}${sigBlock(r)}`)
+        return openDrawer(`${head(r, title(r))}${statusLine(r)}
+          <p class="under" style="margin-top:8px">Opened a Phoenix trader account for this wallet. Phoenix co-signed it; the wallet also signed a login message.</p>
+          ${facts([['Referral', 'LANATOOLS'], ['Trader account', `<span class="mono" style="font-size:12.5px">9yQm…h3Ks</span>`], ...common(r)])}${sigBlock(r)}`)
+      }
+
+      function openSwap(r, t) {
+        const done = group(r) === 'confirmed'
+        const est = !done
+        openDrawer(`${head(r, title(r))}${statusLine(r)}
+          <div class="flow">
+            <div class="leg out">${TOKEN[t.pay.symbol]}<div><p class="lbl">${done ? 'You paid' : 'You pay'}</p><p class="val" ${gone(r) ? 'style="text-decoration:line-through;color:var(--fg-3)"' : ''}>${t.pay.amount} <u>${t.pay.symbol}</u></p></div><p class="usd">${usd(t.pay.usd)}</p></div>
+            <div class="swapmark"><span>↓</span></div>
+            <div class="leg in ${est ? 'est' : ''}">${TOKEN[t.get.symbol]}<div><p class="lbl">${done ? 'You received' : gone(r) ? 'Would have received' : 'You receive, estimated'}</p><p class="val" ${gone(r) ? 'style="text-decoration:line-through;color:var(--fg-3)"' : ''}>${done ? '' : '≈ '}${t.get.amount} <u>${t.get.symbol}</u></p></div><p class="usd">${usd(t.get.usd)}</p></div>
+          </div>
+          <p class="status-note" style="${group(r) === 'failed' ? 'color:var(--bad)' : ''}">${group(r) === 'failed' ? 'The chain rejected this transaction. Nothing moved.' : 'Confirmed on chain. Received amount read from the transaction.'}</p>
+          ${facts([['Rate', t.rate], ['Minimum receive', t.min], ['Max slippage', t.slippage], ['Route', `${t.venue}`], ...common(r)])}
+          ${sigBlock(r)}`)
+      }
+
+      function openOrder(r, t) {
+        const pending = group(r) === 'pending'
+        const close = t.kind === 'close'
+        const sideTag = close
+          ? `<span class="tag ${t.side === 'sell' ? 'short' : 'long'}">${sideWord(t.side)} · closes ${t.closing}</span>`
+          : `<span class="tag ${t.side === 'buy' ? 'long' : 'short'}">${sideWord(t.side)} · ${t.side === 'buy' ? 'long' : 'short'}</span>`
+        const cells = [
+          ['Market', t.market],
+          ['Side', sideWord(t.side)],
+          ['Type', t.type === 'market' ? 'Market <small>fill or cancel</small>' : `Limit${t.postOnly ? ' <small>post only</small>' : ''}`],
+          ['Size', `${t.size} ${t.base}`],
+          t.type === 'market' ? ['Worst price', `${usd(t.limit ?? t.fill * 1.005)} <small>${t.slippage ?? '0.5%'} slippage</small>`] : ['Limit price', usd(t.price)],
+          t.fill && !pending ? ['Fill price', usd(t.fill)] : ['Best at build', usd(t.best ?? t.limit)],
+          ['Notional', `${pending ? '≈ ' : ''}${usd(t.notional)}`],
+          t.fee ? ['Taker fee', usd(t.fee)] : ['Reduce only', t.reduceOnly ? 'Yes' : 'No'],
+          close ? ['Realized PnL', `<span class="${t.realized >= 0 ? 'up' : 'down'}">${usd(t.realized, true)}</span>`] : null,
+          close ? ['Reduce only', 'Yes'] : null,
+        ].filter(Boolean)
+        openDrawer(`${head(r, title(r))}${statusLine(r)}
+          <p class="big">${t.size} <u>${t.base}</u></p>
+          <p class="under">${pending ? `${usd(t.notional)} if it fills at ${usd(t.price)}` : `${usd(t.notional)} at ${usd(t.fill)} each`}</p>
+          <p class="status-note">${pending ? 'Waiting for someone to open the review link and sign.' : 'Filled and confirmed on chain.'}</p>
+          <div class="ticket">
+            <div class="ticket-head"><b>Order</b>${sideTag}</div>
+            <dl class="ticket-grid">${cells.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
+          </div>
+          ${pending ? `<p class="notice">Best ask is ${usd(t.best)}. This order rests on the book until the price reaches ${usd(t.price)}.</p>` : ''}
+          ${accountLink(r, t.market)}
+          ${facts(common(r))}
+          ${sigBlock(r)}${linkBlock(r)}`)
+      }
+
+      // ---------------------------------------------------------------------
+      // Phoenix account: read from Phoenix's public API for any address.
+      // Liquidation prices and leverage come from Rise's margin calculator
+      // (createMarginCalculator), run on the API with the account's state.
+      const ACCOUNT = { value: 1270.85, collateral: 1250.0, pnl: 20.85, leverage: 0.89 }
+      // Marks are the last real candle close; entries and sizes are sample data.
+      const POSITIONS = [
+        { market: 'SOL-PERP', base: 'SOL', side: 'long', size: '1.6', entry: 106.8, mark: 109.52, liq: 80.4, value: 175.23, pnl: 4.35, pct: 2.55, funding: -0.08, dp: 2 },
+        { market: 'ETH-PERP', base: 'ETH', side: 'short', size: '0.25', entry: 2560.0, mark: 2504.2, liq: 3270.0, value: 626.05, pnl: 13.95, pct: 2.18, funding: -0.21, dp: 2 },
+        { market: 'BTC-PERP', base: 'BTC', side: 'long', size: '0.004', entry: 82450, mark: 83088, liq: 54300, value: 332.35, pnl: 2.55, pct: 0.77, funding: 0.0, dp: 0 },
+      ]
+      const ORDERS = [{ market: 'ETH-PERP', side: 'sell', type: 'Limit', price: 2590, size: '0.5', base: 'ETH', by: 'Claude Code' }]
+      const FILLS = [
+        { t: 'Today 2:05 PM', market: 'SOL-PERP', side: 'buy', size: '0.1', price: 109.6, fee: 0.0055, realized: null, by: 'Codex', sig: SIG2 },
+        { t: 'Today 12:10 PM', market: 'SOL-PERP', side: 'sell', size: '1.5', price: 109.48, fee: 0.0821, realized: 4.05, by: 'Codex', sig: SIG3 },
+        { t: 'Oct 9 3:22 PM', market: 'ETH-PERP', side: 'sell', size: '0.25', price: 2560.0, fee: 0.32, realized: null, by: null, sig: SIG },
+        { t: 'Oct 9 11:02 AM', market: 'BTC-PERP', side: 'buy', size: '0.004', price: 82450, fee: 0.165, realized: null, by: 'Codex', sig: SIG2 },
+        { t: 'Oct 8 9:40 AM', market: 'SOL-PERP', side: 'buy', size: '3', price: 106.1, fee: 0.159, realized: null, by: 'Codex', sig: SIG3 },
+      ]
+      let focus = 'SOL-PERP'
+      let range = '1D'
+      // Each range is one Phoenix timeframe: 96 × 15m, 168 × 1h, 180 × 4h.
+      const RANGES = { '1D': { secs: 86400, width: 900 }, '1W': { secs: 604800, width: 3600 }, '1M': { secs: 2592000, width: 14400 } }
+// Real Phoenix candles (perp-api.phoenix.trade/v1/candles), fetched 2026-10-11.
+      const CANDLES = {"SOL-PERP":{"1D":[[1791612900,109.96,110.09,109.88,109.89],[1791613800,109.89,110.04,109.81000000000002,110.03],[1791614700,110.03,110.1,109.84,109.89],[1791615600,109.89,110.05,109.85,110.05],[1791616500,110.05,110.06,109.91,109.91999999999999],[1791617400,109.91999999999999,110.02000000000001,109.91,109.91],[1791618300,109.91,110.03,109.88,110.03],[1791619200,110.03,110.23,110.0,110.07],[1791620100,110.07,110.11,109.95,110.02000000000001],[1791621000,110.02000000000001,110.08,109.96,109.96999999999998],[1791621900,109.96999999999998,110.11,109.94999999999999,110.11],[1791622800,110.11,110.26,110.06,110.19999999999999],[1791623700,110.19999999999999,110.22,110.10000000000001,110.19],[1791624600,110.19,110.28999999999999,110.07999999999998,110.08],[1791625500,110.08,110.11,110.00999999999999,110.06],[1791626400,110.06,110.09,109.69,109.74999999999999],[1791627300,109.74999999999999,109.81000000000002,109.55999999999999,109.62000000000002],[1791628200,109.62000000000002,109.66000000000001,109.49999999999999,109.61999999999999],[1791629100,109.61999999999999,109.81,109.61999999999999,109.80000000000001],[1791630000,109.80000000000001,109.80000000000001,109.55,109.56],[1791630900,109.56,109.72,109.56,109.64],[1791631800,109.64,109.93000000000002,109.64,109.92999999999999],[1791632700,109.92999999999999,110.05,109.87,109.98],[1791633600,109.98,109.98,109.72999999999999,109.76999999999998],[1791634500,109.76999999999998,109.84,109.69999999999999,109.80999999999999],[1791635400,109.80999999999999,110.01,109.80999999999999,109.92999999999999],[1791636300,109.92999999999999,109.95,109.79,109.85],[1791637200,109.85,110.02000000000001,109.83,109.96],[1791638100,109.96,110.08999999999999,109.88,109.99],[1791639000,109.99,110.03,109.89999999999999,109.96000000000001],[1791639900,109.96000000000001,110.11,109.95,110.02000000000001],[1791640800,110.02000000000001,110.02999999999999,109.82,109.96],[1791641700,109.96,110.57000000000002,109.96,110.57000000000002],[1791642600,110.57000000000002,110.89000000000001,110.33999999999999,110.7],[1791643500,110.7,110.87,110.57999999999998,110.60999999999999],[1791644400,110.60999999999999,110.77000000000001,110.57000000000001,110.57000000000001],[1791645300,110.57000000000001,110.60000000000001,110.47,110.53999999999999],[1791646200,110.53999999999999,110.81,110.53999999999999,110.67999999999999],[1791647100,110.67999999999999,110.76,110.50999999999999,110.57000000000001],[1791648000,110.57000000000001,110.67,110.37,110.42],[1791648900,110.42,110.57,110.32,110.33999999999999],[1791649800,110.33999999999999,110.37,110.26,110.26],[1791650700,110.26,110.3,110.13000000000001,110.16],[1791651600,110.16,110.21000000000001,110.04,110.2],[1791652500,110.2,110.21,110.1,110.14999999999999],[1791653400,110.14999999999999,110.23,110.11,110.15],[1791654300,110.15,110.28,110.05000000000001,110.07],[1791655200,110.07,110.09,109.9672000632611,110.02000000000001],[1791656100,110.02000000000001,110.29,110.02000000000001,110.13000000000001],[1791657000,110.13000000000001,110.44000000000001,110.05999999999999,110.38000000000001],[1791657900,110.38000000000001,110.53,110.36999999999999,110.39],[1791658800,110.39,110.42999999999999,110.35,110.42999999999999],[1791659700,110.42999999999999,110.59,110.42999999999999,110.59],[1791660600,110.59,110.73,110.57,110.64],[1791661500,110.64,110.68,110.48000000000002,110.58],[1791662400,110.58,110.63000000000001,110.45,110.5],[1791663300,110.5,110.5,110.36,110.4],[1791664200,110.4,110.52,110.39999999999999,110.5],[1791665100,110.5,110.59,110.45,110.45],[1791666000,110.45,110.57,110.42,110.42999999999999],[1791666900,110.42999999999999,110.49,110.35999999999999,110.36],[1791667800,110.36,110.42,110.26,110.4],[1791668700,110.4,110.45,110.34999999999998,110.38],[1791669600,110.38,110.52999999999999,110.34,110.44],[1791670500,110.44,110.5,110.35999999999999,110.47],[1791671400,110.47,110.66999999999999,110.42,110.51],[1791672300,110.51,110.61,110.32,110.59],[1791673200,110.59,110.62,110.39000000000001,110.39000000000001],[1791674100,110.39000000000001,110.44,110.19000000000001,110.28],[1791675000,110.28,110.35,110.15999999999998,110.3],[1791675900,110.3,110.39,110.2,110.22],[1791676800,110.22,110.32,110.2,110.26],[1791677700,110.26,110.27,110.03999999999999,110.06],[1791678600,110.06,110.14,110.01,110.03],[1791679500,110.03,110.15,109.99999999999999,110.02000000000001],[1791680400,110.02000000000001,110.13999999999999,110.02,110.13999999999999],[1791681300,110.13999999999999,110.28999999999999,110.13999999999999,110.28999999999999],[1791682200,110.28999999999999,110.39000000000001,110.24000000000001,110.27],[1791683100,110.27,110.32,110.13999999999999,110.19],[1791684000,110.19,110.25000000000001,110.07,110.14999999999999],[1791684900,110.14999999999999,110.28999999999999,110.11999999999999,110.18],[1791685800,110.18,110.34,110.16999999999999,110.29],[1791686700,110.29,110.3,110.13,110.13],[1791687600,110.13,110.14,109.69999999999999,109.80000000000001],[1791688500,109.80000000000001,109.86999999999999,109.61,109.71000000000001],[1791689400,109.71000000000001,109.91000000000001,109.69,109.78000000000002],[1791690300,109.78000000000002,109.86,109.25,109.29],[1791691200,109.29,109.47000000000001,109.08,109.46],[1791692100,109.46,109.57,109.46,109.55000000000001],[1791693000,109.55000000000001,109.78,109.52999999999999,109.78],[1791693900,109.78,109.87,109.74999999999999,109.75],[1791694800,109.75,109.85,109.66000000000001,109.71],[1791695700,109.71,109.88000000000001,109.69,109.80000000000001],[1791696600,109.80000000000001,109.80999999999999,109.58,109.62],[1791697500,109.62,109.66000000000001,109.46,109.46],[1791698400,109.46,109.58,109.46,109.52000000000001]],"1W":[[1791093600,120.86,121.14,120.73,121.02999999999999],[1791097200,121.02999999999999,121.35999999999999,120.99,121.2],[1791100800,121.2,121.3,120.92,121.04999999999998],[1791104400,121.04999999999998,121.58000000000001,120.88000000000001,121.36],[1791108000,121.36,121.68999999999998,121.25999999999999,121.32000000000002],[1791111600,121.32000000000002,121.46000000000001,121.16,121.23],[1791115200,121.23,121.74,121.16,121.32000000000001],[1791118800,121.32000000000001,121.93,121.24,121.65999999999998],[1791122400,121.65999999999998,121.83,121.16,121.82],[1791126000,121.82,122.04994975744977,121.51,121.51],[1791129600,121.51,121.86,121.34,121.68],[1791133200,121.68,121.75,121.41000000000001,121.43],[1791136800,121.43,121.63000000000001,121.32999999999998,121.49000000000001],[1791140400,121.49000000000001,121.72,121.10999999999999,121.15],[1791144000,121.15,121.47999999999999,120.75999999999999,121.35],[1791147600,121.35,121.68,121.17999999999999,121.22],[1791151200,121.22,122.35000000000001,121.22,121.8],[1791154800,121.8,122.17,121.52000000000001,121.63],[1791158400,121.63,121.63,120.85999999999999,121.39],[1791162000,121.39,121.69000000000001,121.07000000000001,121.24999999999999],[1791165600,121.24999999999999,121.77,121.19,121.21],[1791169200,121.21,121.33000000000001,120.4,120.5],[1791172800,120.5,120.83,120.14,120.58000000000001],[1791176400,120.58000000000001,120.61999999999999,120.08,120.54],[1791180000,120.54,121.89,120.54,121.69],[1791183600,121.69,121.95,121.46,121.75999999999998],[1791187200,121.75999999999998,122.17,120.92,121.16],[1791190800,121.16,121.16,120.63,120.69],[1791194400,120.69,120.97999999999999,120.54,120.78000000000002],[1791198000,120.78000000000002,121.02000000000001,120.52,120.89],[1791201600,120.89,120.89,120.39,120.39999999999999],[1791205200,120.39999999999999,121.04,120.28,120.89999999999999],[1791208800,120.89999999999999,121.37,119.33,119.59],[1791212400,119.59,119.82999999999998,119.3,119.38000000000001],[1791216000,119.38000000000001,119.71000000000001,119.0,119.68000000000002],[1791219600,119.68000000000002,120.09,119.44999999999999,120.09],[1791223200,120.09,120.25000000000001,119.93999999999998,120.16000000000001],[1791226800,120.16000000000001,120.39,120.02,120.25999999999999],[1791230400,120.25999999999999,120.71000000000001,120.21,120.71000000000001],[1791234000,120.71000000000001,120.89999999999999,120.63,120.80000000000001],[1791237600,120.80000000000001,121.64000000000001,120.80000000000001,121.05],[1791241200,121.05,121.24000000000001,120.60000000000001,120.82999999999998],[1791244800,120.82999999999998,121.13,120.82999999999998,121.03999999999999],[1791248400,121.03999999999999,121.31,120.54,120.65999999999998],[1791252000,120.65999999999998,120.82000000000001,120.21999999999998,120.25000000000001],[1791255600,120.25000000000001,120.33,119.77,120.05],[1791259200,120.05,120.42000000000002,120.05,120.14999999999999],[1791262800,120.14999999999999,120.37,119.82,119.85000000000001],[1791266400,119.85000000000001,119.97,119.3,119.89],[1791270000,119.89,120.35,119.77,120.29],[1791273600,120.29,120.85999999999999,120.26,120.61999999999999],[1791277200,120.61999999999999,120.73,118.98,119.66],[1791280800,119.66,120.63,119.57000000000001,120.33000000000001],[1791284400,120.33000000000001,120.52,120.05000000000001,120.39999999999999],[1791288000,120.39999999999999,120.69,120.17000000000002,120.38],[1791291600,120.38,121.19999999999999,120.17,120.95],[1791295200,120.95,121.83999999999999,120.63,121.81],[1791298800,121.81,121.97,120.49,120.55],[1791302400,120.55,121.19,120.24,120.28],[1791306000,120.28,120.89999999999999,120.12,120.89999999999999],[1791309600,120.89999999999999,121.31,120.72,120.87],[1791313200,120.87,120.89999999999999,120.36,120.85],[1791316800,120.85,121.19999999999999,120.77,121.03999999999999],[1791320400,121.03999999999999,121.22999999999999,120.72,121.03999999999999],[1791324000,121.03999999999999,121.53,120.87,120.87],[1791327600,120.87,121.00999999999999,120.47999999999999,120.75000000000001],[1791331200,120.75000000000001,120.75000000000001,120.36,120.62],[1791334800,120.62,120.62,119.07,119.07],[1791338400,119.07,119.07,117.13000000000001,118.4],[1791342000,118.4,118.67,118.15,118.32],[1791345600,118.32,118.47000000000001,118.02999999999999,118.18999999999998],[1791349200,118.18999999999998,118.99,118.18999999999998,118.93],[1791352800,118.93,119.18,118.53999999999999,118.89],[1791356400,118.89,119.12,118.65,118.71000000000001],[1791360000,118.71000000000001,118.88,118.28,118.33],[1791363600,118.33,118.43,117.69,117.86000000000001],[1791367200,117.86000000000001,118.06,117.17000000000002,117.76],[1791370800,117.76,117.89000000000001,117.16,117.47],[1791374400,117.47,117.63000000000001,116.28999999999999,116.53999999999999],[1791378000,116.53999999999999,116.69000000000001,115.66999999999999,116.33],[1791381600,116.33,116.41000000000001,115.88,116.00999999999999],[1791385200,116.00999999999999,116.93,115.75,116.91],[1791388800,116.91,117.32,116.78999999999999,116.91],[1791392400,116.91,117.30000000000003,116.17,116.48],[1791396000,116.48,117.2,116.23,116.27000000000001],[1791399600,116.27000000000001,116.54000000000002,115.87,115.94],[1791403200,115.94,116.53999999999999,115.94,116.34],[1791406800,116.34,116.34,115.41,115.69000000000001],[1791410400,115.69000000000001,116.2,115.69000000000001,116.12],[1791414000,116.12,116.53,116.08999999999999,116.45],[1791417600,116.45,116.68,116.28999999999999,116.55999999999999],[1791421200,116.55999999999999,116.94,116.15761964894557,116.19],[1791424800,116.19,116.85000000000001,116.1,116.57],[1791428400,116.57,116.67,115.82,115.83000000000001],[1791432000,115.83000000000001,115.89,114.46000000000001,115.11000000000001],[1791435600,115.11000000000001,115.92,115.00999999999999,115.03],[1791439200,115.03,115.75000000000001,114.72999999999999,115.52],[1791442800,115.52,115.98,115.00999999999999,115.03],[1791446400,115.03,115.26,114.87,115.02000000000001],[1791450000,115.02000000000001,115.48,114.82000000000001,115.31],[1791453600,115.31,115.38,114.23,114.55999999999999],[1791457200,114.55999999999999,114.57000000000001,113.3,113.30000000000001],[1791460800,113.30000000000001,113.46000000000001,112.33000000000001,112.62],[1791464400,112.62,113.00999999999999,111.35,112.4],[1791468000,112.4,112.96000000000001,112.29,112.61],[1791471600,112.61,112.63,108.3,108.63],[1791475200,108.63,109.21000000000001,107.71000000000001,107.76],[1791478800,107.76,107.94,105.8,106.38],[1791482400,106.38,108.33,106.12325226496363,108.17],[1791486000,108.17,109.57,108.17,109.24000000000001],[1791489600,109.24000000000001,110.02000000000001,109.12,109.99999999999999],[1791493200,109.99999999999999,110.89,109.60000000000001,110.68],[1791496800,110.68,110.86,110.2,110.42999999999999],[1791500400,110.42999999999999,110.59,109.53999999999999,109.67999999999999],[1791504000,109.67999999999999,109.88,108.91,109.44],[1791507600,109.44,109.72,108.89,109.55],[1791511200,109.55,111.03000000000002,109.55,110.43],[1791514800,110.43,110.58,110.06,110.56000000000002],[1791518400,110.56000000000002,110.82000000000001,109.90999999999998,110.0],[1791522000,110.0,110.9,110.0,110.43],[1791525600,110.43,110.97999999999999,110.43,110.78],[1791529200,110.78,110.85000000000001,110.4,110.82],[1791532800,110.82,110.94,110.13,110.81],[1791536400,110.81,110.81,110.43,110.51],[1791540000,110.51,110.66,109.50999999999999,109.85000000000001],[1791543600,109.85000000000001,112.13000000000001,109.65,111.4],[1791547200,111.4,111.46,110.28,110.56000000000002],[1791550800,110.56000000000002,110.75,109.25999999999999,109.69999999999999],[1791554400,109.69999999999999,110.81000000000002,109.3,110.22],[1791558000,110.22,110.22,109.49,109.81],[1791561600,109.81,110.15999999999998,109.59,109.82],[1791565200,109.82,110.2,109.51,110.03000000000002],[1791568800,110.03000000000002,110.11,109.32,109.59],[1791572400,109.59,109.82000000000001,108.55,108.58],[1791576000,108.58,109.36000000000001,108.57,109.17317104115456],[1791579600,109.17317104115456,109.36000000000001,109.1,109.16],[1791583200,109.16,109.50999999999999,108.72,109.31],[1791586800,109.31,109.46,109.17,109.24],[1791590400,109.24,109.64999999999999,109.06,109.52999999999999],[1791594000,109.52999999999999,110.11000000000001,109.42999999999999,110.11000000000001],[1791597600,110.11000000000001,110.16500901748608,109.82,110.05],[1791601200,110.05,110.05,109.60000000000001,109.79],[1791604800,109.79,110.07,109.69999999999999,109.94],[1791608400,109.94,110.46,109.87,110.24000000000001],[1791612000,110.24000000000001,110.25,109.81000000000002,109.89],[1791615600,109.89,110.06,109.85,110.03],[1791619200,110.03,110.23,109.94999999999999,110.11],[1791622800,110.11,110.28999999999999,110.00999999999999,110.06],[1791626400,110.06,110.09,109.49999999999999,109.80000000000001],[1791630000,109.80000000000001,110.05,109.55,109.98],[1791633600,109.98,110.01,109.69999999999999,109.85],[1791637200,109.85,110.11,109.83,110.02000000000001],[1791640800,110.02000000000001,110.89000000000001,109.82,110.60999999999999],[1791644400,110.60999999999999,110.81,110.47,110.57000000000001],[1791648000,110.57000000000001,110.67,110.13000000000001,110.16],[1791651600,110.16,110.28,110.04,110.07],[1791655200,110.07,110.53,109.9672000632611,110.39],[1791658800,110.39,110.73,110.35,110.58],[1791662400,110.58,110.63000000000001,110.36,110.45],[1791666000,110.45,110.57,110.26,110.38],[1791669600,110.38,110.66999999999999,110.32,110.59],[1791673200,110.59,110.62,110.15999999999998,110.22],[1791676800,110.22,110.32,109.99999999999999,110.02000000000001],[1791680400,110.02000000000001,110.39000000000001,110.02,110.19],[1791684000,110.19,110.34,110.07,110.13],[1791687600,110.13,110.14,109.25,109.29],[1791691200,109.29,109.87,109.08,109.75],[1791694800,109.75,109.88000000000001,109.46,109.46]],"1M":[[1789099200,99.44,100.25999999999999,99.35,99.84],[1789113600,99.84,100.41,98.7,99.61],[1789128000,99.61,105.66,98.35999999999999,101.67999999999999],[1789142400,101.67999999999999,102.58,100.56000000000002,102.12],[1789156800,102.12,103.14,101.69999999999999,102.56],[1789171200,102.56,102.66999999999999,101.56,101.73],[1789185600,101.73,102.01,101.53,101.77000000000001],[1789200000,101.77000000000001,102.36,101.66999999999999,102.24000000000001],[1789214400,102.24000000000001,102.53,101.86999999999999,102.15],[1789228800,102.15,102.25999999999999,101.32000000000001,101.39],[1789243200,101.39,101.94000000000001,101.35000000000001,101.85],[1789257600,101.85,102.44,101.66,101.74000000000001],[1789272000,101.74000000000001,102.03,100.77,100.82],[1789286400,100.82,100.96999999999998,99.53,99.93],[1789300800,99.93,100.95000000000002,99.56,100.37],[1789315200,100.37,101.46,100.36000000000001,101.1],[1789329600,101.1,101.74000000000001,99.28000000000002,99.39999999999999],[1789344000,99.39999999999999,101.44,99.11,101.09999999999998],[1789358400,101.09999999999998,102.1,100.98,101.72000000000001],[1789372800,101.72000000000001,102.44999999999999,101.35000000000001,101.44999999999999],[1789387200,101.44999999999999,102.4,100.8,102.1],[1789401600,102.1,103.99000000000001,101.98,103.28999999999999],[1789416000,103.28999999999999,104.95,102.56,102.67999999999999],[1789430400,102.67999999999999,102.97000000000001,101.39,101.62],[1789444800,101.62,101.82000000000001,100.46999999999998,100.55],[1789459200,100.55,101.20000000000002,100.2,100.94],[1789473600,100.94,101.48,98.07,99.46999999999998],[1789488000,99.46999999999998,100.78,95.82,97.91999999999999],[1789502400,97.91999999999999,98.11,96.36,96.93999999999998],[1789516800,96.93999999999998,97.65,96.45,97.32999999999998],[1789531200,97.32999999999998,97.78999999999999,96.95,97.05],[1789545600,97.05,98.39,96.44000000000001,98.09],[1789560000,98.09,98.17,96.71,97.16],[1789574400,97.16,99.0,96.19999999999999,98.15],[1789588800,98.15,98.97,97.45,98.67999999999999],[1789603200,98.67999999999999,100.1,98.55,100.02],[1789617600,100.02,100.42,99.22999999999999,100.1],[1789632000,100.1,100.92,99.61999999999999,100.12],[1789646400,100.12,101.88,99.72999999999999,101.35000000000001],[1789660800,101.35000000000001,102.15,100.83,101.00999999999999],[1789675200,101.00999999999999,101.84,100.88,101.74],[1789689600,101.74,105.19507746666666,100.99,104.62],[1789704000,104.62,106.2,104.53,105.82000000000001],[1789718400,105.82000000000001,106.74,105.47,105.84],[1789732800,105.84,111.67,105.52,111.28999999999999],[1789747200,111.28999999999999,114.42999999999999,111.13,114.33999999999999],[1789761600,114.33999999999999,114.33999999999999,112.64,112.82000000000001],[1789776000,112.82000000000001,114.18999999999998,112.52,113.34],[1789790400,113.34,113.57,111.33,111.73999999999998],[1789804800,111.73999999999998,112.59,111.56,111.96],[1789819200,111.96,112.25000000000001,111.4,111.72],[1789833600,111.72,112.36999999999999,110.76000000000002,111.27999999999999],[1789848000,111.27999999999999,111.47000000000001,110.15999999999998,111.14999999999999],[1789862400,111.14999999999999,111.23,107.52999999999999,108.98],[1789876800,108.98,109.40999999999998,108.25,108.59],[1789891200,108.59,108.97000000000001,107.86999999999999,108.58],[1789905600,108.58,108.99,107.99,108.88],[1789920000,108.88,110.96,108.57,110.57999999999998],[1789934400,110.57999999999998,111.53999999999999,109.2,111.26],[1789948800,111.26,113.48,110.9,111.68999999999998],[1789963200,111.68999999999998,112.65999999999998,111.14999999999999,112.25],[1789977600,112.25,117.27,112.25,116.9],[1789992000,116.9,119.17999999999998,116.27,117.99999999999999],[1790006400,117.99999999999999,118.53999999999999,116.77,118.45],[1790020800,118.45,120.05000000000001,118.32000000000001,118.97999999999999],[1790035200,118.97999999999999,119.51,116.41000000000001,116.97000000000001],[1790049600,116.97000000000001,117.25000000000001,115.65871757925072,116.35],[1790064000,116.35,118.07000000000001,115.92,117.39999999999999],[1790078400,117.39999999999999,118.07000000000001,116.00000000000001,117.41],[1790092800,117.41,118.8,116.76,118.31],[1790107200,118.31,119.38,117.78999999999999,118.67],[1790121600,118.67,119.68,117.9,119.17999999999999],[1790136000,119.17999999999999,119.78999999999999,117.65,118.0],[1790150400,118.0,118.36,116.55000000000001,117.19999999999999],[1790164800,117.19999999999999,117.3,113.05999999999999,113.93],[1790179200,113.93,115.25,113.3,114.58],[1790193600,114.58,115.72,113.97237528681907,115.11],[1790208000,115.11,115.8,114.19,114.82000000000001],[1790222400,114.82000000000001,116.19,114.53,115.61],[1790236800,115.61,115.73,112.59,113.48],[1790251200,113.48,116.72,113.23,116.43],[1790265600,116.43,117.83559561708745,116.05999999999999,117.4],[1790280000,117.4,117.47,116.22,117.12],[1790294400,117.12,118.53,116.59,116.97],[1790308800,116.97,117.41,115.9638726245506,116.45],[1790323200,116.45,122.33,116.45,121.0],[1790337600,121.0,121.55,118.47,120.21],[1790352000,120.21,122.84,120.2,121.89999999999999],[1790366400,121.89999999999999,122.92,120.88,122.22999999999999],[1790380800,122.22999999999999,122.47,120.6,120.68],[1790395200,120.68,120.98000000000002,120.21999999999998,120.8],[1790409600,120.8,121.46,119.90000000000002,121.3],[1790424000,121.3,122.08000000000001,120.33,121.92],[1790438400,121.92,121.92,120.82000000000001,121.14],[1790452800,121.14,121.86,120.07,121.38],[1790467200,121.38,121.68000000000002,120.56,120.62000000000002],[1790481600,120.62000000000002,124.4,120.16,124.17],[1790496000,124.17,125.01,123.40999999999998,123.95],[1790510400,123.95,124.46000000000001,121.41,121.85000000000001],[1790524800,121.85000000000001,123.51,121.77999999999999,123.14999999999998],[1790539200,123.14999999999998,123.50999999999999,121.04,122.03],[1790553600,122.03,122.99000000000001,119.54,119.91],[1790568000,119.91,120.30000000000001,118.08000000000001,118.1],[1790582400,118.1,118.87000000000002,117.64,118.78],[1790596800,118.78,120.44000000000001,117.47999999999999,118.80999999999999],[1790611200,118.80999999999999,120.75,118.08000000000001,118.41999999999999],[1790625600,118.41999999999999,119.23,117.29,118.92],[1790640000,118.92,119.16,116.41,117.97999999999999],[1790654400,117.97999999999999,120.00000000000001,117.21,119.63],[1790668800,119.63,120.5,118.97999999999999,120.24],[1790683200,120.24,121.75,118.05,118.32],[1790697600,118.32,119.64999999999999,117.49,118.91],[1790712000,118.91,119.75,118.63999999999999,119.22],[1790726400,119.22,120.13,118.60000000000001,119.24],[1790740800,119.24,119.75999999999999,118.02999999999999,118.59],[1790755200,118.59,120.02,117.94,119.61000000000001],[1790769600,119.61000000000001,123.0,118.18999999999998,119.43999999999998],[1790784000,119.43999999999998,120.72,117.16000000000001,117.35000000000001],[1790798400,117.35000000000001,118.64000000000001,117.34,118.22999999999999],[1790812800,118.22999999999999,118.82,117.91999999999999,118.82],[1790827200,118.82,119.77,117.49,117.6],[1790841600,117.6,118.37,117.14999999999999,118.11],[1790856000,118.11,118.34,116.83999999999999,117.49999999999999],[1790870400,117.49999999999999,119.24723525524533,117.05,118.32],[1790884800,118.32,118.59,117.49,118.48],[1790899200,118.48,121.33,118.36,121.29000000000002],[1790913600,121.29000000000002,123.73999999999998,120.72,121.8],[1790928000,121.8,123.0,121.36999999999999,121.88],[1790942400,121.88,123.31,119.66,119.95],[1790956800,119.95,120.39,117.19,117.98],[1790971200,117.98,118.78,117.74,118.61999999999999],[1790985600,118.61999999999999,119.75,118.57,119.44999999999999],[1791000000,119.44999999999999,119.88000000000001,119.00999999999999,119.41],[1791014400,119.41,119.69,119.12,119.38],[1791028800,119.38,119.86000000000001,119.19999999999999,119.75],[1791043200,119.75,120.15,119.58999999999999,119.82999999999998],[1791057600,119.82999999999998,120.12,119.50999999999999,119.64999999999999],[1791072000,119.64999999999999,121.34,119.63000000000001,120.82999999999998],[1791086400,120.82999999999998,121.35999999999999,120.57,121.2],[1791100800,121.2,121.68999999999998,120.88000000000001,121.23],[1791115200,121.23,122.04994975744977,121.16,121.51],[1791129600,121.51,121.86,121.10999999999999,121.15],[1791144000,121.15,122.35000000000001,120.75999999999999,121.63],[1791158400,121.63,121.77,120.4,120.5],[1791172800,120.5,121.95,120.08,121.75999999999998],[1791187200,121.75999999999998,122.17,120.52,120.89],[1791201600,120.89,121.37,119.3,119.38000000000001],[1791216000,119.38000000000001,120.39,119.0,120.25999999999999],[1791230400,120.25999999999999,121.64000000000001,120.21,120.82999999999998],[1791244800,120.82999999999998,121.31,119.77,120.05],[1791259200,120.05,120.42000000000002,119.3,120.29],[1791273600,120.29,120.85999999999999,118.98,120.39999999999999],[1791288000,120.39999999999999,121.97,120.17,120.55],[1791302400,120.55,121.31,120.12,120.85],[1791316800,120.85,121.53,120.47999999999999,120.75000000000001],[1791331200,120.75000000000001,120.75000000000001,117.13000000000001,118.32],[1791345600,118.32,119.18,118.02999999999999,118.71000000000001],[1791360000,118.71000000000001,118.88,117.16,117.47],[1791374400,117.47,117.63000000000001,115.66999999999999,116.91],[1791388800,116.91,117.32,115.87,115.94],[1791403200,115.94,116.53999999999999,115.41,116.45],[1791417600,116.45,116.94,115.82,115.83000000000001],[1791432000,115.83000000000001,115.98,114.46000000000001,115.03],[1791446400,115.03,115.48,113.3,113.30000000000001],[1791460800,113.30000000000001,113.46000000000001,108.3,108.63],[1791475200,108.63,109.57,105.8,109.24000000000001],[1791489600,109.24000000000001,110.89,109.12,109.67999999999999],[1791504000,109.67999999999999,111.03000000000002,108.89,110.56000000000002],[1791518400,110.56000000000002,110.97999999999999,109.90999999999998,110.82],[1791532800,110.82,112.13000000000001,109.50999999999999,111.4],[1791547200,111.4,111.46,109.25999999999999,109.81],[1791561600,109.81,110.2,108.55,108.58],[1791576000,108.58,109.50999999999999,108.57,109.24],[1791590400,109.24,110.16500901748608,109.06,109.79],[1791604800,109.79,110.46,109.69999999999999,110.03],[1791619200,110.03,110.28999999999999,109.49999999999999,109.98],[1791633600,109.98,110.89000000000001,109.69999999999999,110.57000000000001],[1791648000,110.57000000000001,110.73,109.9672000632611,110.58],[1791662400,110.58,110.66999999999999,110.15999999999998,110.22],[1791676800,110.22,110.39000000000001,109.25,109.29]]},"ETH-PERP":{"1D":[[1791612900,2495.8,2498.2000000000003,2495.7,2496.0],[1791613800,2496.0,2497.5,2495.4,2497.5],[1791614700,2497.5,2498.0,2493.5,2493.5],[1791615600,2493.5,2495.0,2492.7999999999997,2494.4],[1791616500,2494.4,2495.0,2493.3,2493.7],[1791617400,2493.7,2494.5,2492.7000000000003,2494.1],[1791618300,2494.1,2496.1000000000004,2493.7999999999997,2495.8999999999996],[1791619200,2495.8999999999996,2497.6,2495.4,2496.7999999999997],[1791620100,2496.7999999999997,2496.7999999999997,2494.4,2494.7],[1791621000,2494.7,2495.5,2494.4,2494.5],[1791621900,2494.5,2496.9,2494.1,2496.6],[1791622800,2496.6,2499.0,2495.8,2498.8999999999996],[1791623700,2498.8999999999996,2498.8999999999996,2496.7999999999997,2498.1],[1791624600,2498.1,2499.1,2497.1,2497.2000000000003],[1791625500,2497.2000000000003,2498.7,2496.4,2497.9],[1791626400,2497.9,2498.1,2495.2,2495.7],[1791627300,2495.7,2496.0,2493.5,2494.2999999999997],[1791628200,2494.2999999999997,2495.6,2494.1,2495.6],[1791629100,2495.6,2497.7,2495.6,2496.6],[1791630000,2496.6,2496.6,2495.0,2495.0],[1791630900,2495.0,2496.3,2494.8999999999996,2495.0],[1791631800,2495.0,2498.8999999999996,2495.0,2498.4],[1791632700,2498.4,2499.2,2497.6,2497.6],[1791633600,2497.6,2498.0,2496.2,2497.7999999999997],[1791634500,2497.7999999999997,2498.1,2496.7000000000003,2497.6],[1791635400,2497.6,2498.7,2497.0,2498.5],[1791636300,2498.5,2498.8,2496.6,2497.0],[1791637200,2497.0,2498.0,2496.7999999999997,2497.1],[1791638100,2497.1,2500.1000000000004,2496.3,2499.6],[1791639000,2499.6,2499.8999999999996,2498.0,2498.0],[1791639900,2498.0,2499.8999999999996,2498.0,2499.8999999999996],[1791640800,2499.8999999999996,2499.8999999999996,2496.9,2498.1],[1791641700,2498.1,2508.1,2498.1,2507.9],[1791642600,2507.9,2517.0,2504.3,2511.1],[1791643500,2511.1,2512.7000000000003,2507.8999999999996,2509.6],[1791644400,2509.6,2511.1,2508.0,2508.2],[1791645300,2508.2,2509.9999999999995,2507.5,2509.5],[1791646200,2509.5,2511.2000000000003,2509.1,2510.4],[1791647100,2510.4,2512.0,2509.2,2511.2999999999997],[1791648000,2511.2999999999997,2512.5,2508.7000000000003,2509.9],[1791648900,2509.9,2511.2999999999997,2505.7,2506.8],[1791649800,2506.8,2508.7999999999997,2505.3999999999996,2508.7000000000003],[1791650700,2508.7000000000003,2508.7000000000003,2505.5,2506.2000000000003],[1791651600,2506.2000000000003,2508.0,2504.7000000000003,2507.6],[1791652500,2507.6,2508.2,2506.1,2507.2],[1791653400,2507.2,2510.1,2506.8,2508.3],[1791654300,2508.3,2510.5,2507.7,2508.4],[1791655200,2508.4,2510.4,2508.0,2509.5],[1791656100,2509.5,2510.7,2508.4,2510.7],[1791657000,2510.7,2512.2,2509.5,2511.5],[1791657900,2511.5,2513.9,2510.5,2512.7999999999997],[1791658800,2512.7999999999997,2513.7,2512.3,2513.3],[1791659700,2513.3,2514.7,2513.3,2514.7],[1791660600,2514.7,2519.6,2513.9,2516.6],[1791661500,2516.6,2517.2,2513.5,2513.5],[1791662400,2513.5,2514.7,2511.1,2511.4],[1791663300,2511.4,2511.8,2507.8999999999996,2507.8999999999996],[1791664200,2507.8999999999996,2509.9,2507.1,2508.5],[1791665100,2508.5,2511.8,2508.5,2508.5],[1791666000,2508.5,2510.8,2507.1,2507.7],[1791666900,2507.7,2510.1,2507.2,2507.2999999999997],[1791667800,2507.2999999999997,2510.8,2507.2,2509.3999999999996],[1791668700,2509.3999999999996,2511.5,2508.6,2508.7999999999997],[1791669600,2508.7999999999997,2511.1,2507.7,2507.7],[1791670500,2507.7,2508.7999999999997,2507.7,2508.0],[1791671400,2508.0,2508.7000000000003,2507.4,2508.4],[1791672300,2508.4,2510.1,2505.5,2509.7999999999997],[1791673200,2509.7999999999997,2511.0,2506.7,2506.7],[1791674100,2506.7,2508.0,2505.9,2508.0],[1791675000,2508.0,2508.9,2506.4,2507.8999999999996],[1791675900,2507.8999999999996,2509.9999999999995,2506.2999999999997,2506.2999999999997],[1791676800,2506.2999999999997,2509.3,2505.9,2509.1],[1791677700,2509.1,2509.1,2504.7999999999997,2505.7],[1791678600,2505.7,2506.2000000000003,2504.5,2505.0],[1791679500,2505.0,2506.5,2504.1000000000004,2504.1000000000004],[1791680400,2504.1000000000004,2507.0,2504.1000000000004,2506.5],[1791681300,2506.5,2509.5,2506.5,2509.5],[1791682200,2509.5,2511.7,2509.5,2510.4],[1791683100,2510.4,2511.2000000000003,2509.1,2510.5],[1791684000,2510.5,2511.2999999999997,2509.5,2509.5],[1791684900,2509.5,2511.5,2509.3999999999996,2510.7],[1791685800,2510.7,2514.1,2510.1,2513.5],[1791686700,2513.5,2513.9,2511.4,2511.5],[1791687600,2511.5,2511.5,2506.1,2507.6],[1791688500,2507.6,2508.1000000000004,2505.0,2505.7],[1791689400,2505.7,2510.7,2505.7,2509.5],[1791690300,2509.5,2509.5,2499.8999999999996,2501.0],[1791691200,2501.0,2502.4,2499.2,2501.6],[1791692100,2501.6,2505.5,2501.6,2505.0],[1791693000,2505.0,2508.4,2505.0,2508.0],[1791693900,2508.0,2508.9,2507.4,2508.0],[1791694800,2508.0,2510.1,2506.6,2506.6],[1791695700,2506.6,2509.5,2506.6,2507.8999999999996],[1791696600,2507.8999999999996,2510.4,2505.7999999999997,2506.1],[1791697500,2506.1,2506.2999999999997,2504.2,2504.2],[1791698400,2504.2,2505.9,2503.6,2504.2]],"1W":[[1791093600,2695.3999999999996,2697.9,2692.0,2697.0],[1791097200,2697.0,2707.3999999999996,2692.6,2707.3999999999996],[1791100800,2707.3999999999996,2707.3999999999996,2698.7,2700.7],[1791104400,2700.7,2706.3,2698.5,2702.1],[1791108000,2702.1,2707.3,2701.7999999999997,2701.9],[1791111600,2701.9,2704.5,2699.7,2700.4],[1791115200,2700.4,2703.9,2695.2999999999997,2696.1],[1791118800,2696.1,2700.8,2694.7999999999997,2699.3999999999996],[1791122400,2699.3999999999996,2699.7,2692.2999999999997,2698.0],[1791126000,2698.0,2704.4,2696.6,2699.6000000000004],[1791129600,2699.6000000000004,2706.5,2696.5,2703.9],[1791133200,2703.9,2706.1,2702.1,2702.3999999999996],[1791136800,2702.3999999999996,2702.6,2701.0,2701.4999999999995],[1791140400,2701.4999999999995,2704.7999999999997,2701.1,2702.0],[1791144000,2702.0,2707.2,2699.8,2706.5],[1791147600,2706.5,2710.2,2701.4,2702.7000000000003],[1791151200,2702.7000000000003,2735.9,2702.7000000000003,2729.4],[1791154800,2729.4,2738.2,2724.8999999999996,2727.5],[1791158400,2727.5,2731.5,2719.0,2729.7999999999997],[1791162000,2729.7999999999997,2733.8,2722.9,2724.5],[1791165600,2724.5,2737.4999999999995,2724.5,2731.3],[1791169200,2731.3,2731.3,2714.1,2716.3],[1791172800,2716.3,2718.0,2698.9,2702.4],[1791176400,2702.4,2706.9999999999995,2694.7,2706.2],[1791180000,2706.2,2728.3,2706.2,2724.6],[1791183600,2724.6,2730.9,2720.6,2725.2999999999997],[1791187200,2725.2999999999997,2733.1,2713.8999999999996,2721.4],[1791190800,2721.4,2722.4,2716.6,2717.1],[1791194400,2717.1,2721.2,2713.0,2717.0],[1791198000,2717.0,2721.2999999999997,2711.1,2718.1],[1791201600,2718.1,2720.1,2709.2999999999997,2711.2],[1791205200,2711.2,2725.6,2711.2,2722.5],[1791208800,2722.5,2729.3999999999996,2697.4999999999995,2704.0],[1791212400,2704.0,2705.0,2695.9,2696.8],[1791216000,2696.8,2698.2,2680.0,2698.2],[1791219600,2698.2,2706.2,2693.9,2706.0],[1791223200,2706.0,2711.6,2705.7999999999997,2711.1],[1791226800,2711.1,2713.6,2707.2,2710.4],[1791230400,2710.4,2715.6,2707.0,2712.8999999999996],[1791234000,2712.8999999999996,2719.6,2711.5,2718.3],[1791237600,2718.3,2722.2999999999997,2715.7,2716.5],[1791241200,2716.5,2719.5,2710.7000000000003,2710.7000000000003],[1791244800,2710.7000000000003,2717.2,2710.7000000000003,2717.2],[1791248400,2717.2,2724.2999999999997,2707.6,2707.7],[1791252000,2707.7,2711.0,2702.0,2702.6],[1791255600,2702.6,2704.1,2693.4,2699.7],[1791259200,2699.7,2705.4,2698.7999999999997,2703.3],[1791262800,2703.3,2707.1,2700.0,2700.0],[1791266400,2700.0,2700.0,2691.8,2698.3999999999996],[1791270000,2698.3999999999996,2710.3,2696.0,2708.8],[1791273600,2708.8,2717.0,2708.8,2717.0],[1791277200,2717.0,2720.1,2695.5,2711.0],[1791280800,2711.0,2718.3,2709.4,2714.4],[1791284400,2714.4,2718.0,2710.9,2714.7000000000003],[1791288000,2714.7000000000003,2718.7000000000003,2708.2999999999997,2716.6],[1791291600,2716.6,2720.2999999999997,2710.2,2714.6],[1791295200,2714.6,2723.7000000000003,2706.6,2723.7000000000003],[1791298800,2723.7000000000003,2724.6,2702.2,2702.2],[1791302400,2702.2,2707.7,2696.1,2696.6],[1791306000,2696.6,2701.1,2694.2,2699.5],[1791309600,2699.5,2703.6,2690.3,2691.3999999999996],[1791313200,2691.3999999999996,2693.4,2684.5,2693.2999999999997],[1791316800,2693.2999999999997,2699.2999999999997,2691.9,2699.2],[1791320400,2699.2,2699.6000000000004,2695.3999999999996,2698.3999999999996],[1791324000,2698.3999999999996,2700.7,2695.9,2697.1],[1791327600,2697.1,2701.0,2695.1,2698.0],[1791331200,2698.0,2700.5,2694.5,2697.4999999999995],[1791334800,2697.4999999999995,2697.4999999999995,2658.6,2658.6],[1791338400,2658.6,2659.2999999999997,2594.9,2612.2999999999997],[1791342000,2612.2999999999997,2618.5,2606.2,2611.1000000000004],[1791345600,2611.1000000000004,2614.7999999999997,2605.7999999999997,2610.7999999999997],[1791349200,2610.7999999999997,2621.9,2610.2,2621.9],[1791352800,2621.9,2624.4,2613.5,2618.7999999999997],[1791356400,2618.7999999999997,2622.5,2615.8,2617.0],[1791360000,2617.0,2619.4,2609.4,2609.5],[1791363600,2609.5,2610.9,2594.1,2596.2999999999997],[1791367200,2596.2999999999997,2598.1,2565.3,2580.4],[1791370800,2580.4,2583.8,2571.7786910877817,2579.1],[1791374400,2579.1,2584.7999999999997,2568.6,2573.2],[1791378000,2573.2,2577.6,2553.7999999999997,2571.4],[1791381600,2571.4,2571.4,2559.2999999999997,2564.0],[1791385200,2564.0,2571.2999999999997,2559.4,2571.2999999999997],[1791388800,2571.2999999999997,2580.2,2566.0,2570.0],[1791392400,2570.0,2573.427288428325,2539.7,2552.5],[1791396000,2552.5,2566.5,2552.5,2563.2000000000003],[1791399600,2563.2000000000003,2571.4,2561.3999999999996,2569.9],[1791403200,2569.9,2579.0,2569.7,2574.7],[1791406800,2574.7,2575.6,2566.3,2568.1],[1791410400,2568.1,2571.8,2566.1,2571.2000000000003],[1791414000,2571.2000000000003,2579.4,2568.2,2575.1],[1791417600,2575.1,2578.2,2571.2000000000003,2577.2],[1791421200,2577.2,2586.9,2576.1,2578.5],[1791424800,2578.5,2586.2,2574.1,2581.0],[1791428400,2581.0,2581.3,2564.7999999999997,2565.2],[1791432000,2565.2,2575.2000000000003,2552.2999999999997,2563.8999999999996],[1791435600,2563.8999999999996,2576.7000000000003,2561.7999999999997,2562.0],[1791439200,2562.0,2572.9,2556.1,2568.7999999999997],[1791442800,2568.7999999999997,2577.7999999999997,2561.7999999999997,2568.7000000000003],[1791446400,2568.7000000000003,2570.7,2558.5,2560.5],[1791450000,2560.5,2570.5,2558.3,2568.5],[1791453600,2568.5,2569.7999999999997,2549.5,2552.2],[1791457200,2552.2,2552.2,2529.6,2538.2],[1791460800,2538.2,2539.0,2520.0,2530.1],[1791464400,2530.1,2542.2999999999997,2505.0,2523.1],[1791468000,2523.1,2536.5,2522.6,2532.6],[1791471600,2532.6,2532.6,2432.6,2435.9],[1791475200,2435.9,2441.6000000000004,2412.6,2417.5],[1791478800,2417.5,2427.9,2409.4,2417.7],[1791482400,2417.7,2448.9,2413.4,2447.2999999999997],[1791486000,2447.2999999999997,2465.1,2444.0,2464.6],[1791489600,2464.6,2477.8,2464.6,2475.6],[1791493200,2475.6,2483.4999999999995,2470.0,2478.8999999999996],[1791496800,2478.8999999999996,2482.4,2473.3,2476.6],[1791500400,2476.6,2485.0,2473.3,2474.7],[1791504000,2474.7,2484.1,2474.7,2479.0],[1791507600,2479.0,2486.2000000000003,2472.1,2482.7],[1791511200,2482.7,2500.5,2478.5,2490.4],[1791514800,2490.4,2494.2000000000003,2485.9,2494.1],[1791518400,2494.1,2496.5,2485.3,2488.7999999999997],[1791522000,2488.7999999999997,2500.0,2487.1,2491.8],[1791525600,2491.8,2501.6,2491.8,2500.2],[1791529200,2500.2,2505.3,2497.2,2504.5],[1791532800,2504.5,2508.0,2497.7999999999997,2507.5],[1791536400,2507.5,2508.2610513739546,2501.8,2503.4],[1791540000,2503.4,2504.1000000000004,2489.5,2494.1],[1791543600,2494.1,2520.0,2489.7999999999997,2507.2],[1791547200,2507.2,2509.5,2494.8999999999996,2498.7],[1791550800,2498.7,2503.5,2479.7,2484.9],[1791554400,2484.9,2502.8999999999996,2479.6,2493.0],[1791558000,2493.0,2493.7,2486.2999999999997,2490.8],[1791561600,2490.8,2500.0,2487.7,2491.0],[1791565200,2491.0,2493.3999999999996,2483.2999999999997,2489.5],[1791568800,2489.5,2490.4,2479.4,2483.8],[1791572400,2483.8,2487.8,2475.9,2478.5],[1791576000,2478.5,2483.9999999999995,2476.6,2483.4],[1791579600,2483.4,2485.9,2483.1,2485.2],[1791583200,2485.2,2491.2999999999997,2480.5,2489.6],[1791586800,2489.6,2490.5,2487.4999999999995,2487.8],[1791590400,2487.8,2491.2,2486.2000000000003,2489.7999999999997],[1791594000,2489.7999999999997,2496.3,2488.9,2496.1000000000004],[1791597600,2496.1000000000004,2497.3,2492.5,2493.7],[1791601200,2493.7,2494.6,2490.4,2492.4],[1791604800,2492.4,2496.5,2492.4,2496.0],[1791608400,2496.0,2499.8,2494.5,2498.5],[1791612000,2498.5,2499.4,2493.5,2493.5],[1791615600,2493.5,2496.1000000000004,2492.7000000000003,2495.8999999999996],[1791619200,2495.8999999999996,2497.6,2494.1,2496.6],[1791622800,2496.6,2499.1,2495.8,2497.9],[1791626400,2497.9,2498.1,2493.5,2496.6],[1791630000,2496.6,2499.2,2494.8999999999996,2497.6],[1791633600,2497.6,2498.8,2496.2,2497.0],[1791637200,2497.0,2500.1000000000004,2496.3,2499.8999999999996],[1791640800,2499.8999999999996,2517.0,2496.9,2509.6],[1791644400,2509.6,2512.0,2507.5,2511.2999999999997],[1791648000,2511.2999999999997,2512.5,2505.3999999999996,2506.2000000000003],[1791651600,2506.2000000000003,2510.5,2504.7000000000003,2508.4],[1791655200,2508.4,2513.9,2508.0,2512.7999999999997],[1791658800,2512.7999999999997,2519.6,2512.3,2513.5],[1791662400,2513.5,2514.7,2507.1,2508.5],[1791666000,2508.5,2511.5,2507.1,2508.7999999999997],[1791669600,2508.7999999999997,2511.1,2505.5,2509.7999999999997],[1791673200,2509.7999999999997,2511.0,2505.9,2506.2999999999997],[1791676800,2506.2999999999997,2509.3,2504.1000000000004,2504.1000000000004],[1791680400,2504.1000000000004,2511.7,2504.1000000000004,2510.5],[1791684000,2510.5,2514.1,2509.3999999999996,2511.5],[1791687600,2511.5,2511.5,2499.8999999999996,2501.0],[1791691200,2501.0,2508.9,2499.2,2508.0],[1791694800,2508.0,2510.4,2504.2,2504.2]],"1M":[[1789099200,2448.1,2474.7,2447.2,2468.4],[1789113600,2468.4,2484.7000000000003,2453.8,2460.6],[1789128000,2460.6,2665.3,2437.3999999999996,2561.2],[1789142400,2561.2,2584.1,2531.8,2540.2],[1789156800,2540.2,2548.2999999999997,2508.5,2517.7],[1789171200,2517.7,2518.9,2510.2999999999997,2514.0],[1789185600,2514.0,2525.9,2510.4,2524.4],[1789200000,2524.4,2538.2999999999997,2524.1,2537.3],[1789214400,2537.3,2547.2999999999997,2532.9,2536.0],[1789228800,2536.0,2537.9999999999995,2515.8999999999996,2520.7999999999997],[1789243200,2520.7999999999997,2529.7000000000003,2520.2,2526.9],[1789257600,2526.9,2529.3,2520.5,2521.7999999999997],[1789272000,2521.7999999999997,2525.7999999999997,2511.0,2519.2000000000003],[1789286400,2519.2000000000003,2520.7999999999997,2470.6,2482.4],[1789300800,2482.4,2496.3,2463.6,2491.7],[1789315200,2491.7,2516.9,2491.7,2507.1],[1789329600,2507.1,2518.2000000000003,2471.4,2477.6],[1789344000,2477.6,2521.3,2468.2,2513.4],[1789358400,2513.4,2527.5,2508.7000000000003,2524.2],[1789372800,2524.2,2536.0,2507.6,2510.7999999999997],[1789387200,2510.7999999999997,2518.9,2490.6,2509.7999999999997],[1789401600,2509.7999999999997,2550.2999999999997,2505.5,2541.3999999999996],[1789416000,2541.3999999999996,2614.4,2515.0,2517.3],[1789430400,2517.3,2521.1,2497.6,2499.1],[1789444800,2499.1,2501.5,2471.4,2474.5],[1789459200,2474.5,2489.1,2466.1,2477.5],[1789473600,2477.5,2487.2000000000003,2390.7,2425.3999999999996],[1789488000,2425.3999999999996,2449.0,2360.5,2417.4],[1789502400,2417.4,2419.1,2382.8,2399.7999999999997],[1789516800,2399.7999999999997,2412.7999999999997,2390.0,2402.9],[1789531200,2402.9,2411.9,2394.5,2398.0],[1789545600,2398.0,2430.1,2384.1,2423.4],[1789560000,2423.4,2424.1,2382.8,2393.7],[1789574400,2393.7,2430.6000000000004,2370.0,2410.2000000000003],[1789588800,2410.2000000000003,2423.7000000000003,2390.3,2419.2999999999997],[1789603200,2419.2999999999997,2446.4,2415.0,2437.3],[1789617600,2437.3,2455.7000000000003,2426.6,2445.9],[1789632000,2445.9,2450.4,2429.6,2442.7],[1789646400,2442.7,2484.6,2434.2999999999997,2470.6],[1789660800,2470.6,2478.5,2445.1,2449.6000000000004],[1789675200,2449.6000000000004,2459.2,2437.9,2448.6000000000004],[1789689600,2448.6000000000004,2485.7,2437.9,2478.7],[1789704000,2478.7,2498.1,2470.4,2489.9],[1789718400,2489.9,2521.3999999999996,2486.4,2508.2],[1789732800,2508.2,2597.8,2495.7,2583.7],[1789747200,2583.7,2646.4,2579.5,2638.9999999999995],[1789761600,2638.9999999999995,2640.3,2610.7999999999997,2613.5],[1789776000,2613.5,2632.5,2605.0,2621.2],[1789790400,2621.2,2637.0,2614.2,2628.3],[1789804800,2628.3,2661.7000000000003,2625.6,2640.7999999999997],[1789819200,2640.7999999999997,2651.6,2630.2000000000003,2642.0],[1789833600,2642.0,2659.9,2633.0,2635.7],[1789848000,2635.7,2641.9,2620.5,2633.7999999999997],[1789862400,2633.7999999999997,2633.7999999999997,2566.0,2588.7],[1789876800,2588.7,2589.6,2571.8999999999996,2577.5],[1789891200,2577.5,2587.3,2569.3,2580.3],[1789905600,2580.3,2616.0,2572.9,2613.4],[1789920000,2613.4,2650.1,2607.7,2634.1],[1789934400,2634.1,2647.8,2611.7,2646.5],[1789948800,2646.5,2707.7999999999997,2646.5,2667.1],[1789963200,2667.1,2678.7999999999997,2648.2999999999997,2660.1],[1789977600,2660.1,2748.5,2660.1,2725.7999999999997],[1789992000,2725.7999999999997,2767.006127272727,2714.6,2757.7],[1790006400,2757.7,2775.0,2736.1,2763.3],[1790020800,2763.3,2805.2999999999997,2762.4,2776.1],[1790035200,2776.1,2777.2,2726.3,2740.2999999999997],[1790049600,2740.2999999999997,2742.8999999999996,2716.9,2726.1],[1790064000,2726.1,2755.1,2723.0999999999995,2741.7],[1790078400,2741.7,2764.3,2718.1,2743.3999999999996],[1790092800,2743.3999999999996,2763.2,2729.4999999999995,2749.6],[1790107200,2749.6,2774.2000000000003,2737.2,2754.2],[1790121600,2754.2,2785.0,2747.0,2774.6],[1790136000,2774.6,2788.5,2737.5,2743.2],[1790150400,2743.2,2750.5,2717.7999999999997,2728.2999999999997],[1790164800,2728.2999999999997,2730.3,2647.7999999999997,2656.1],[1790179200,2656.1,2679.8,2637.0,2678.7],[1790193600,2678.7,2699.0,2669.6,2685.5],[1790208000,2685.5,2693.0,2665.7999999999997,2676.8999999999996],[1790222400,2676.8999999999996,2704.2000000000003,2671.4,2693.4],[1790236800,2693.4,2695.3,2629.9,2649.3],[1790251200,2649.3,2699.8,2640.1,2683.6000000000004],[1790265600,2683.6000000000004,2706.6,2660.9,2696.9],[1790280000,2696.9,2696.9,2677.1,2688.6],[1790294400,2688.6,2701.0,2674.7999999999997,2679.6000000000004],[1790308800,2679.6000000000004,2686.0,2667.96,2672.8],[1790323200,2672.8,2744.2000000000003,2672.8,2718.7000000000003],[1790337600,2718.7000000000003,2724.8999999999996,2670.3999999999996,2688.0000000000005],[1790352000,2688.0000000000005,2700.1,2679.3,2695.1],[1790366400,2695.1,2696.7,2678.5,2693.0],[1790380800,2693.0,2697.4999999999995,2682.2,2689.2999999999997],[1790395200,2689.2999999999997,2692.6000000000004,2684.7,2692.4],[1790409600,2692.4,2699.1,2680.5,2690.7],[1790424000,2690.7,2697.2999999999997,2683.3,2694.2],[1790438400,2694.2,2695.3999999999996,2683.8,2685.5],[1790452800,2685.5,2697.4,2665.6000000000004,2697.2999999999997],[1790467200,2697.2999999999997,2706.8999999999996,2691.6000000000004,2698.1],[1790481600,2698.1,2719.6,2692.4,2719.6],[1790496000,2719.6,2722.0,2707.8,2711.1],[1790510400,2711.1,2717.9,2683.4,2691.4],[1790524800,2691.4,2701.0000000000005,2686.0,2692.7],[1790539200,2692.7,2697.6,2670.7999999999997,2689.1],[1790553600,2689.1,2703.6,2644.5,2653.0],[1790568000,2653.0,2661.7000000000003,2636.2999999999997,2646.2],[1790582400,2646.2,2669.5,2639.1,2668.7],[1790596800,2668.7,2698.6,2655.4,2678.6],[1790611200,2678.6,2719.3,2664.6,2673.7999999999997],[1790625600,2673.7999999999997,2693.4,2668.4,2689.6],[1790640000,2689.6,2695.3,2653.4,2665.2999999999997],[1790654400,2665.2999999999997,2719.5999999999995,2656.1,2711.9],[1790668800,2711.9,2736.6,2703.5,2733.2],[1790683200,2733.2,2747.3,2667.3,2671.2],[1790697600,2671.2,2700.0,2669.2999999999997,2691.2],[1790712000,2691.2,2694.3999999999996,2675.2,2678.0],[1790726400,2678.0,2679.8,2666.3,2672.4],[1790740800,2672.4,2679.9,2658.2,2674.7],[1790755200,2674.7,2700.0,2665.0,2697.6],[1790769600,2697.6,2739.0,2668.5,2683.8],[1790784000,2683.8,2697.2,2668.6,2669.9],[1790798400,2669.9,2693.3999999999996,2669.9,2686.0],[1790812800,2686.0,2696.8,2679.3,2696.1],[1790827200,2696.1,2722.2,2674.9999999999995,2677.2999999999997],[1790841600,2677.2999999999997,2709.0,2674.9,2706.9],[1790856000,2706.9,2711.3,2673.5,2681.2],[1790870400,2681.2,2714.7,2677.2,2700.4],[1790884800,2700.4,2707.3,2689.4999999999995,2706.3999999999996],[1790899200,2706.3999999999996,2725.3,2697.7999999999997,2720.0],[1790913600,2720.0,2746.4,2713.6,2737.7000000000003],[1790928000,2737.7000000000003,2778.4,2736.8,2746.759254046446],[1790942400,2746.759254046446,2768.8,2692.8,2696.2000000000003],[1790956800,2696.2000000000003,2702.7999999999997,2651.9,2668.7],[1790971200,2668.7,2670.7,2657.9999999999995,2669.0],[1790985600,2669.0,2684.6,2666.2,2682.6],[1791000000,2682.6,2683.7,2673.0,2683.1],[1791014400,2683.1,2687.0,2678.7999999999997,2684.8],[1791028800,2684.8,2687.2,2678.7,2682.2],[1791043200,2682.2,2690.2,2678.9,2686.0],[1791057600,2686.0,2689.7999999999997,2684.2999999999997,2687.8],[1791072000,2687.8,2697.2999999999997,2686.7999999999997,2695.2],[1791086400,2695.2,2707.3999999999996,2691.7,2707.3999999999996],[1791100800,2707.3999999999996,2707.3999999999996,2698.5,2700.4],[1791115200,2700.4,2704.4,2692.2999999999997,2699.6000000000004],[1791129600,2699.6000000000004,2706.5,2696.5,2702.0],[1791144000,2702.0,2738.2,2699.8,2727.5],[1791158400,2727.5,2737.4999999999995,2714.1,2716.3],[1791172800,2716.3,2730.9,2694.7,2725.2999999999997],[1791187200,2725.2999999999997,2733.1,2711.1,2718.1],[1791201600,2718.1,2729.3999999999996,2695.9,2696.8],[1791216000,2696.8,2713.6,2680.0,2710.4],[1791230400,2710.4,2722.2999999999997,2707.0,2710.7000000000003],[1791244800,2710.7000000000003,2724.2999999999997,2693.4,2699.7],[1791259200,2699.7,2710.3,2691.8,2708.8],[1791273600,2708.8,2720.1,2695.5,2714.7000000000003],[1791288000,2714.7000000000003,2724.6,2702.2,2702.2],[1791302400,2702.2,2707.7,2684.5,2693.2999999999997],[1791316800,2693.2999999999997,2701.0,2691.9,2698.0],[1791331200,2698.0,2700.5,2594.9,2611.1000000000004],[1791345600,2611.1000000000004,2624.4,2605.7999999999997,2617.0],[1791360000,2617.0,2619.4,2565.3,2579.1],[1791374400,2579.1,2584.7999999999997,2553.7999999999997,2571.2999999999997],[1791388800,2571.2999999999997,2580.2,2539.7,2569.9],[1791403200,2569.9,2579.4,2566.1,2575.1],[1791417600,2575.1,2586.9,2564.7999999999997,2565.2],[1791432000,2565.2,2577.7999999999997,2552.2999999999997,2568.7000000000003],[1791446400,2568.7000000000003,2570.7,2529.6,2538.2],[1791460800,2538.2,2542.2999999999997,2432.6,2435.9],[1791475200,2435.9,2465.1,2409.4,2464.6],[1791489600,2464.6,2485.0,2464.6,2474.7],[1791504000,2474.7,2500.5,2472.1,2494.1],[1791518400,2494.1,2505.3,2485.3,2504.5],[1791532800,2504.5,2520.0,2489.5,2507.2],[1791547200,2507.2,2509.5,2479.6,2490.8],[1791561600,2490.8,2500.0,2475.9,2478.5],[1791576000,2478.5,2491.2999999999997,2476.6,2487.8],[1791590400,2487.8,2497.3,2486.2000000000003,2492.4],[1791604800,2492.4,2499.8,2492.4,2495.8999999999996],[1791619200,2495.8999999999996,2499.2,2493.5,2497.6],[1791633600,2497.6,2517.0,2496.2,2511.2999999999997],[1791648000,2511.2999999999997,2519.6,2504.7000000000003,2513.5],[1791662400,2513.5,2514.7,2505.5,2506.2999999999997],[1791676800,2506.2999999999997,2514.1,2499.8999999999996,2501.0]]},"BTC-PERP":{"1D":[[1791612900,82827.0,82873.0,82813.0,82836.99999999999],[1791613800,82836.99999999999,82925.0,82806.0,82925.0],[1791614700,82925.0,82925.0,82768.0,82783.99999999999],[1791615600,82783.99999999999,82811.0,82706.0,82739.99999999999],[1791616500,82739.99999999999,82739.99999999999,82680.0,82690.0],[1791617400,82690.0,82832.59953744884,82690.0,82798.99999999999],[1791618300,82798.99999999999,82872.0,82798.99999999999,82872.0],[1791619200,82872.0,82908.0,82846.0,82904.0],[1791620100,82904.0,82930.00000000001,82867.0,82874.0],[1791621000,82874.0,82898.99999999999,82847.0,82847.0],[1791621900,82847.0,82914.00000000001,82819.0,82913.99999999999],[1791622800,82913.99999999999,82994.0,82898.99999999999,82985.0],[1791623700,82985.0,82985.0,82918.0,82978.0],[1791624600,82978.0,83002.0,82944.99999999999,82960.99999999999],[1791625500,82960.99999999999,82960.99999999999,82886.0,82908.99999999999],[1791626400,82908.99999999999,82947.0,82860.99999999999,82886.0],[1791627300,82886.0,82913.77830188678,82855.0,82872.0],[1791628200,82872.0,82890.0,82837.1589997641,82854.0],[1791629100,82854.0,82935.0,82854.0,82931.0],[1791630000,82931.0,82931.0,82869.0,82878.0],[1791630900,82878.0,82897.99999999999,82856.8349099099,82882.0],[1791631800,82882.0,82974.99999999999,82848.0,82974.99999999999],[1791632700,82974.99999999999,82987.17857948139,82921.83427282976,82931.0],[1791633600,82931.0,82949.44029244516,82905.0,82928.99999999999],[1791634500,82928.99999999999,82954.0,82888.99999999999,82905.0],[1791635400,82905.0,82933.00000000001,82881.99999999999,82917.0],[1791636300,82917.0,82933.0,82808.0,82833.0],[1791637200,82833.0,82879.00000000001,82829.99999999999,82856.0],[1791638100,82856.0,82908.0,82837.99999999999,82908.0],[1791639000,82908.0,82914.0,82814.0,82844.99999999999],[1791639900,82844.99999999999,82901.0,82844.99999999999,82868.99999999999],[1791640800,82868.99999999999,82890.0,82809.0,82844.99999999999],[1791641700,82844.99999999999,82991.00000000001,82836.0,82991.00000000001],[1791642600,82991.00000000001,83124.00000000001,82952.99999999999,83074.99999999999],[1791643500,83074.99999999999,83111.0,83005.99999999999,83035.99999999999],[1791644400,83035.99999999999,83097.0,83013.99999999999,83030.0],[1791645300,83030.0,83045.0,82997.99999999999,83045.0],[1791646200,83045.0,83106.0,83028.99999999999,83095.0],[1791647100,83095.0,83116.0,83033.0,83096.99999999999],[1791648000,83096.99999999999,83115.0,83032.0,83073.99999999999],[1791648900,83073.99999999999,83129.0,83033.0,83060.0],[1791649800,83060.0,83124.0,83048.86107634543,83095.99999999999],[1791650700,83095.99999999999,83109.0,83053.62301216091,83056.0],[1791651600,83056.0,83129.3769878391,83051.99999999999,83119.99999999999],[1791652500,83119.99999999999,83119.99999999999,83085.0,83102.0],[1791653400,83102.0,83204.0,83097.99999999999,83198.0],[1791654300,83198.0,83231.0,83145.0,83161.0],[1791655200,83161.0,83176.0,83106.0,83106.0],[1791656100,83106.0,83134.0,83025.0,83055.0],[1791657000,83055.0,83095.99999999999,83054.0,83092.0],[1791657900,83092.0,83106.0,83065.0,83082.99999999999],[1791658800,83082.99999999999,83091.0,83066.99999999999,83070.0],[1791659700,83070.0,83096.99999999999,83061.0,83096.99999999999],[1791660600,83096.99999999999,83143.0,83080.99999999999,83130.0],[1791661500,83130.0,83147.0,83104.99999999999,83117.0],[1791662400,83117.0,83164.0,83088.29145211123,83089.99999999999],[1791663300,83089.99999999999,83118.99999999999,83070.0,83070.0],[1791664200,83070.0,83124.00000000001,83070.0,83122.0],[1791665100,83122.0,83128.00000000001,83073.99999999999,83073.99999999999],[1791666000,83073.99999999999,83121.0,83059.99999999999,83059.99999999999],[1791666900,83059.99999999999,83118.99999999999,83059.99999999999,83101.0],[1791667800,83101.0,83140.0,83097.99999999999,83123.0],[1791668700,83123.0,83146.0,83080.0,83095.0],[1791669600,83095.0,83124.0,83061.0,83083.0],[1791670500,83083.0,83097.99999999999,83034.0,83081.99999999999],[1791671400,83081.99999999999,83132.0,83079.0,83103.0],[1791672300,83103.0,83141.99999999999,82975.0,83141.99999999999],[1791673200,83141.99999999999,83146.0,83095.0,83104.0],[1791674100,83104.0,83106.0,83064.0,83064.0],[1791675000,83064.0,83115.0,83063.0,83063.0],[1791675900,83063.0,83071.0,83020.99999999999,83036.99999999999],[1791676800,83036.99999999999,83070.0,83027.0,83066.99999999999],[1791677700,83066.99999999999,83076.0,82876.0,82895.0],[1791678600,82895.0,82924.0,82876.60501500213,82881.0],[1791679500,82881.0,82958.99999999999,82881.0,82902.0],[1791680400,82902.0,83048.94438877756,82902.0,83048.94438877756],[1791681300,83048.94438877756,83071.0,83024.0,83051.99999999999],[1791682200,83051.99999999999,83112.84125379172,83051.99999999999,83055.0],[1791683100,83055.0,83081.99999999999,83050.0,83064.00000000001],[1791684000,83064.00000000001,83104.99999999999,83042.0,83076.0],[1791684900,83076.0,83126.0,83076.0,83095.0],[1791685800,83095.0,83187.0,83095.0,83178.0],[1791686700,83178.0,83178.0,83124.0,83124.0],[1791687600,83124.0,83124.0,82977.0,83008.0],[1791688500,83008.0,83024.0,82935.00000000001,82954.0],[1791689400,82954.0,83061.0,82954.0,83024.0],[1791690300,83024.0,83024.0,82849.0,82872.0],[1791691200,82872.0,82920.0,82830.99999999999,82886.0],[1791692100,82886.0,82944.0,82886.0,82933.0],[1791693000,82933.0,83034.0,82933.0,83025.0],[1791693900,83025.0,83069.00000000001,83025.0,83069.00000000001],[1791694800,83069.00000000001,83107.0,83053.0,83072.0],[1791695700,83072.0,83126.0,83072.0,83096.99999999999],[1791696600,83096.99999999999,83137.0,83093.0,83115.0],[1791697500,83115.0,83115.0,83076.0,83076.0],[1791698400,83076.0,83115.0,83076.0,83088.0]],"1W":[[1791093600,84961.0,85117.0,84921.0,85073.0],[1791097200,85073.0,85159.0,84970.0,85159.0],[1791100800,85159.0,85248.00000000001,85076.00000000001,85146.99999999999],[1791104400,85146.99999999999,85383.99999999999,85098.0,85275.99999999999],[1791108000,85275.99999999999,85470.0,85263.99999999999,85307.0],[1791111600,85307.0,85374.0,85237.99999999999,85355.00000000001],[1791115200,85355.00000000001,85427.0,85127.0,85167.00000000001],[1791118800,85167.00000000001,85367.99999999999,85161.0,85279.00000000001],[1791122400,85279.00000000001,85337.0,85140.00000000001,85336.00000000001],[1791126000,85336.00000000001,85525.0,85280.0,85320.0],[1791129600,85320.0,85482.99999999999,85213.0,85411.00000000001],[1791133200,85411.00000000001,85508.00000000001,85358.0,85366.0],[1791136800,85366.0,85410.00000000001,85353.0,85388.0],[1791140400,85388.0,85615.0,85380.00000000001,85466.00000000001],[1791144000,85466.00000000001,85921.0,85436.99999999999,85873.0],[1791147600,85873.0,86121.99999999999,85837.0,85885.0],[1791151200,85885.0,86712.00000000001,85885.0,86469.0],[1791154800,86469.0,86847.0,86464.0,86569.0],[1791158400,86569.0,86742.00000000001,86244.0,86697.00000000001],[1791162000,86697.00000000001,87039.0,86517.0,86662.99999999999],[1791165600,86662.99999999999,86780.0,86457.0,86563.0],[1791169200,86563.0,86581.0,86069.0,86147.00000000001],[1791172800,86147.00000000001,86178.0,85545.0,85586.0],[1791176400,85586.0,85824.0,85471.0,85806.00000000001],[1791180000,85806.00000000001,86407.0,85804.0,86309.0],[1791183600,86309.0,86492.86580086581,86168.38428571427,86247.0],[1791187200,86247.0,86531.0,86095.0,86281.0],[1791190800,86281.0,86281.0,85824.0,86019.0],[1791194400,86019.0,86240.0,86007.0,86149.0],[1791198000,86149.0,86294.0,85957.0,86244.99999999999],[1791201600,86244.99999999999,86249.00000000001,85882.00000000001,85925.99999999999],[1791205200,85925.99999999999,86518.99999999999,85846.0,86464.0],[1791208800,86464.0,86750.0,85470.0,85675.0],[1791212400,85675.0,85686.00000000001,85230.00000000001,85292.99999999999],[1791216000,85292.99999999999,85359.0,85053.0,85320.0],[1791219600,85320.0,85475.99999999999,85238.99999999999,85475.99999999999],[1791223200,85475.99999999999,85689.00000000001,85392.00000000001,85683.0],[1791226800,85683.0,85829.0,85588.99999999999,85746.00000000001],[1791230400,85746.00000000001,85886.99999999999,85698.0,85826.00000000001],[1791234000,85826.00000000001,86030.0,85733.0,85976.99999999999],[1791237600,85976.99999999999,86071.31239291832,85881.0,85959.0],[1791241200,85959.0,86099.99999999999,85759.0,85794.0],[1791244800,85794.0,86010.0,85794.0,85901.0],[1791248400,85901.0,86183.0,85646.0,85662.0],[1791252000,85662.0,85802.00000000001,85495.0,85558.99999999999],[1791255600,85558.99999999999,85630.0,85370.0,85546.0],[1791259200,85546.0,85683.0,85546.0,85668.0],[1791262800,85668.0,85783.0,85555.0,85555.0],[1791266400,85555.0,85555.0,85174.0,85352.0],[1791270000,85352.0,85670.00000000001,85310.0,85593.0],[1791273600,85593.0,86097.1596318629,85593.0,86066.00000000001],[1791277200,86066.00000000001,86251.00000000001,85714.0,86016.99999999999],[1791280800,86016.99999999999,86293.0,85986.99999999999,86182.0],[1791284400,86182.0,86410.00000000001,86108.0,86271.0],[1791288000,86271.0,86452.0,86166.0,86264.00000000001],[1791291600,86264.00000000001,86527.0,86023.87353629975,86313.99999999999],[1791295200,86313.99999999999,86658.0,85987.0,86642.0],[1791298800,86642.0,86731.0,85745.0,85745.0],[1791302400,85745.0,85879.0,85592.00000000001,85608.0],[1791306000,85608.0,85798.0,85535.99999999999,85768.0],[1791309600,85768.0,85851.0,85545.0,85547.0],[1791313200,85547.0,85713.0,85463.0,85672.99999999999],[1791316800,85672.99999999999,85710.00000000001,85618.0,85664.0],[1791320400,85664.0,85672.0,85535.99999999999,85665.99999999999],[1791324000,85665.99999999999,85710.0,85521.0,85571.0],[1791327600,85571.0,85664.0,85407.0,85596.0],[1791331200,85596.0,85641.0,85447.0,85588.0],[1791334800,85588.0,85588.0,84406.0,84409.00000000001],[1791338400,84409.00000000001,84494.00000000001,83655.0,83932.0],[1791342000,83932.0,84311.0,83922.00000000001,84218.0],[1791345600,84218.0,84294.0,84104.00000000001,84176.0],[1791349200,84176.0,84419.0,84147.99999999999,84408.0],[1791352800,84408.0,84442.0,84210.0,84308.00000000001],[1791356400,84308.00000000001,84381.0,84166.00000000001,84223.99999999999],[1791360000,84223.99999999999,84224.99999999999,84010.0,84022.0],[1791363600,84022.0,84072.86915887852,83727.0,83850.00000000001],[1791367200,83850.00000000001,84006.0,83538.0,83815.0],[1791370800,83815.0,83912.0,83587.0,83804.0],[1791374400,83804.0,83829.0,83469.0,83542.0],[1791378000,83542.0,83609.0,82824.0,83271.0],[1791381600,83271.0,83336.0,82987.0,83066.0],[1791385200,83066.0,83500.0,82868.33009708737,83500.0],[1791388800,83500.0,83727.0,83411.0,83454.00000000001],[1791392400,83454.00000000001,83661.99999999999,83126.0,83231.0],[1791396000,83231.0,83558.0,83231.0,83490.00000000001],[1791399600,83490.00000000001,83586.00000000001,83394.00000000001,83495.0],[1791403200,83495.0,83679.0,83404.00000000001,83496.0],[1791406800,83496.0,83506.950262132,83186.0,83236.0],[1791410400,83236.0,83400.0,83225.99999999999,83326.00000000001],[1791414000,83326.00000000001,83488.0,83207.0,83391.0],[1791417600,83391.0,83515.0,83287.99999999999,83435.0],[1791421200,83435.0,83597.00000000001,83165.99999999999,83165.99999999999],[1791424800,83165.99999999999,83367.0,83000.0,83257.99999999999],[1791428400,83257.99999999999,83291.0,82734.39153439154,82861.99999999999],[1791432000,82861.99999999999,83042.0,82372.0,82754.99999999999],[1791435600,82754.99999999999,83124.35099337749,82695.0,82775.0],[1791439200,82775.0,83039.0,82598.0,82988.99999999999],[1791442800,82988.99999999999,83352.0,82825.00000000001,83093.0],[1791446400,83093.0,83153.0,82886.0,82964.0],[1791450000,82964.0,83271.99999999999,82964.0,83222.0],[1791453600,83222.0,83279.99999999999,82691.99999999999,82832.0],[1791457200,82832.0,82832.0,82406.6955345061,82608.99999999999],[1791460800,82608.99999999999,82608.99999999999,82005.0,82416.0],[1791464400,82416.0,82731.0,81861.0,82266.99999999999],[1791468000,82266.99999999999,82845.59999999999,82218.0,82788.0],[1791471600,82788.0,82788.0,80948.0,81002.0],[1791475200,81002.0,81418.0,80803.99999999999,80959.0],[1791478800,80959.0,80987.0,80387.0,80716.0],[1791482400,80716.0,81594.99999999999,80544.0,81538.0],[1791486000,81538.0,81868.99999999999,81455.22869955156,81797.0],[1791489600,81797.0,81920.0,81710.0,81830.99999999999],[1791493200,81830.99999999999,81830.99999999999,81624.0,81710.0],[1791496800,81710.0,81960.0,81702.99999999999,81927.0],[1791500400,81927.0,81973.0,81733.0,81795.0],[1791504000,81795.0,81937.99999999999,81740.99999999999,81852.0],[1791507600,81852.0,82051.99999999999,81670.99999999999,82032.0],[1791511200,82032.0,82391.0,81950.0,82165.99999999999],[1791514800,82165.99999999999,82468.0,82120.99999999999,82464.99999999999],[1791518400,82464.99999999999,82575.0,82266.00000000001,82283.0],[1791522000,82283.0,82664.0,82264.0,82413.0],[1791525600,82413.0,82692.0,82409.99999999999,82612.0],[1791529200,82612.0,82691.99999999999,82521.0,82676.99999999999],[1791532800,82676.99999999999,82788.67549668874,82545.0,82768.0],[1791536400,82768.0,82768.0,82576.0,82685.99999999999],[1791540000,82685.99999999999,82757.0,82436.0,82605.0],[1791543600,82605.0,83553.99999999999,82491.0,83248.99999999999],[1791547200,83248.99999999999,83436.0,82967.0,83068.0],[1791550800,83068.0,83202.99999999999,82516.0,82658.0],[1791554400,82658.0,83315.0,82509.0,83099.0],[1791558000,83099.0,83101.0,82867.0,82932.0],[1791561600,82932.0,83054.0,82746.0,82794.0],[1791565200,82794.0,82804.0,82570.0,82760.99999999999],[1791568800,82760.99999999999,82775.63599182005,82380.0,82487.0],[1791572400,82487.0,82610.00000000001,82315.73913043478,82399.0],[1791576000,82399.0,82591.0,82389.0,82570.99999999999],[1791579600,82570.99999999999,82711.0,82565.99999999999,82609.0],[1791583200,82609.0,82720.0,82512.0,82684.0],[1791586800,82684.0,82742.0,82623.99999999999,82677.99999999999],[1791590400,82677.99999999999,82706.0,82597.0,82623.0],[1791594000,82623.0,82816.0,82617.99999999999,82763.0],[1791597600,82763.0,82791.99999999999,82664.0,82684.99999999999],[1791601200,82684.99999999999,82701.00000000001,82612.0,82653.0],[1791604800,82653.0,82783.0,82653.0,82754.00000000001],[1791608400,82754.00000000001,82898.99999999999,82720.0,82898.99999999999],[1791612000,82898.99999999999,82925.0,82768.0,82783.99999999999],[1791615600,82783.99999999999,82872.0,82680.0,82872.0],[1791619200,82872.0,82930.00000000001,82819.0,82913.99999999999],[1791622800,82913.99999999999,83002.0,82886.0,82908.99999999999],[1791626400,82908.99999999999,82947.0,82837.1589997641,82931.0],[1791630000,82931.0,82987.17857948139,82848.0,82931.0],[1791633600,82931.0,82954.0,82808.0,82833.0],[1791637200,82833.0,82914.0,82814.0,82868.99999999999],[1791640800,82868.99999999999,83124.00000000001,82809.0,83035.99999999999],[1791644400,83035.99999999999,83116.0,82997.99999999999,83096.99999999999],[1791648000,83096.99999999999,83129.0,83032.0,83056.0],[1791651600,83056.0,83231.0,83051.99999999999,83161.0],[1791655200,83161.0,83176.0,83025.0,83082.99999999999],[1791658800,83082.99999999999,83147.0,83061.0,83117.0],[1791662400,83117.0,83164.0,83070.0,83073.99999999999],[1791666000,83073.99999999999,83146.0,83059.99999999999,83095.0],[1791669600,83095.0,83141.99999999999,82975.0,83141.99999999999],[1791673200,83141.99999999999,83146.0,83020.99999999999,83036.99999999999],[1791676800,83036.99999999999,83076.0,82876.0,82902.0],[1791680400,82902.0,83112.84125379172,82902.0,83064.00000000001],[1791684000,83064.00000000001,83187.0,83042.0,83124.0],[1791687600,83124.0,83124.0,82849.0,82872.0],[1791691200,82872.0,83069.00000000001,82830.99999999999,83069.00000000001],[1791694800,83069.00000000001,83137.0,83053.0,83076.0]],"1M":[[1789099200,76929.99999999999,77462.0,76917.0,77257.0],[1789113600,77257.0,77535.0,76761.00000000001,77043.0],[1789128000,77043.0,79897.0,76015.0,77755.0],[1789142400,77755.0,78085.0,76905.0,77295.0],[1789156800,77295.0,77492.0,76988.0,77245.0],[1789171200,77245.0,77394.0,77229.0,77284.0],[1789185600,77284.0,77373.0,77183.0,77283.0],[1789200000,77283.0,77422.0,77271.0,77367.0],[1789214400,77367.0,77499.0,77246.0,77381.0],[1789228800,77381.0,77416.0,77083.0,77150.99999999999],[1789243200,77150.99999999999,77332.0,77150.99999999999,77306.0],[1789257600,77306.0,77374.0,77202.0,77217.0],[1789272000,77217.0,77342.0,77058.0,77118.0],[1789286400,77118.0,77190.0,76543.0,76803.0],[1789300800,76803.0,77270.0,76558.0,77160.0],[1789315200,77160.0,77447.0,77149.0,77282.0],[1789329600,77282.0,77486.49854227404,76646.0,76862.0],[1789344000,76862.0,77867.0,76393.0,77584.0],[1789358400,77584.0,77883.0,77323.0,77855.00000000001],[1789372800,77855.00000000001,78356.0,77566.0,77764.0],[1789387200,77764.0,78686.0,77466.0,78574.0],[1789401600,78574.0,79296.0,78429.0,78967.0],[1789416000,78967.0,79621.00000000001,78110.0,78192.0],[1789430400,78192.0,78235.0,77695.0,77702.0],[1789444800,77702.0,77787.0,76877.0,76928.0],[1789459200,76928.0,77215.0,76699.0,76944.0],[1789473600,76944.0,77134.0,75607.0,76532.0],[1789488000,76532.0,77355.0,74946.0,76106.0],[1789502400,76106.0,76195.0,75096.0,75585.0],[1789516800,75585.0,76064.0,75437.0,75766.0],[1789531200,75766.0,76057.0,75629.0,75733.0],[1789545600,75733.0,76301.00000000001,75347.0,76243.99999999999],[1789560000,76243.99999999999,76297.0,75442.0,75791.0],[1789574400,75791.0,76549.0,75046.0,76125.0],[1789588800,76125.0,76469.0,75690.0,76251.0],[1789603200,76251.0,76821.0,76142.0,76493.0],[1789617600,76493.0,76741.0,76243.0,76516.0],[1789632000,76516.0,76835.0,76215.0,76485.0],[1789646400,76485.0,77193.0,76054.47328244275,76767.0],[1789660800,76767.0,76989.0,76500.0,76656.0],[1789675200,76656.0,76797.0,76298.0,76502.0],[1789689600,76502.0,77667.0,76349.0,77433.0],[1789704000,77433.0,77907.0,77286.0,77844.0],[1789718400,77844.0,78533.0,77723.0,78121.0],[1789732800,78121.0,81160.99999999999,78032.0,80654.0],[1789747200,80654.0,81354.0,80502.0,81156.0],[1789761600,81156.0,81303.0,80790.0,80828.0],[1789776000,80828.0,81669.0,80785.0,81076.99999999999],[1789790400,81076.99999999999,81202.4440433213,80877.99999999999,81077.99999999999],[1789804800,81077.99999999999,81463.0,81033.0,81271.0],[1789819200,81271.0,82027.0,81125.0,81648.99999999999],[1789833600,81648.99999999999,81930.99999999999,81327.99999999999,81394.0],[1789848000,81394.0,81473.0,80954.99999999999,81296.0],[1789862400,81296.0,81371.0,80159.0,80521.99999999999],[1789876800,80521.99999999999,80677.0,80275.0,80359.0],[1789891200,80359.0,80634.00000000001,80228.0,80528.0],[1789905600,80528.0,80932.70967741936,80348.0,80888.0],[1789920000,80888.0,81484.92920832208,80784.0,81182.99999999999],[1789934400,81182.99999999999,81304.0,80614.0,81175.99999999999],[1789948800,81175.99999999999,82137.0,80900.0,81479.0],[1789963200,81479.0,81913.0,81274.99999999999,81746.0],[1789977600,81746.0,85297.0,81746.0,84883.0],[1789992000,84883.0,86317.0,84810.0,85893.0],[1790006400,85893.0,86862.0,85602.0,86594.0],[1790020800,86594.0,87412.0,86290.99999999999,86588.99999999999],[1790035200,86588.99999999999,86590.0,85269.99999999999,85671.0],[1790049600,85671.0,85693.0,85096.00000000001,85342.0],[1790064000,85342.0,86368.0,85342.0,85982.0],[1790078400,85982.0,86647.63481228669,85444.0,86369.0],[1790092800,86369.0,86612.0,86061.99999999999,86150.0],[1790107200,86150.0,86481.99999999999,85985.99999999999,86182.0],[1790121600,86182.0,86887.0,86118.0,86632.0],[1790136000,86632.0,87244.0,85985.00000000001,86109.0],[1790150400,86109.0,86241.0,85432.0,85640.0],[1790164800,85640.0,85917.0,83867.0,83990.0],[1790179200,83990.0,84576.0,83545.40103920642,84488.0],[1790193600,84488.0,84695.0,84244.0,84420.0],[1790208000,84420.0,84520.0,83788.0,83954.0],[1790222400,83954.0,84612.99999999999,83824.0,84537.0],[1790236800,84537.0,84605.0,82930.61290322582,83538.99999999999],[1790251200,83538.99999999999,84960.0,83381.43807486631,84467.0],[1790265600,84467.0,84953.0,83928.0,84424.0],[1790280000,84424.0,84530.0,84009.0,84434.11308203991],[1790294400,84434.11308203991,84922.0,84174.0,84284.99999999999],[1790308800,84284.99999999999,84400.99999999999,83780.0,84065.00000000001],[1790323200,84065.00000000001,85271.0,84052.0,84589.99999999999],[1790337600,84589.99999999999,84705.0,83204.0,83827.0],[1790352000,83827.0,84155.0,83656.0,84038.0],[1790366400,84038.0,84232.0,83681.0,84128.0],[1790380800,84128.0,84179.99999999999,83827.99999999999,83985.0],[1790395200,83985.0,84161.0,83910.0,84147.0],[1790409600,84147.0,84352.0,83989.99999999999,84198.0],[1790424000,84198.0,84221.0,83905.99999999999,84179.99999999999],[1790438400,84179.99999999999,84198.0,83988.2,84039.0],[1790452800,84039.0,84467.0,83897.99999999999,84467.0],[1790467200,84467.0,84619.0,84268.0,84450.0],[1790481600,84450.0,84847.0,84351.0,84845.0],[1790496000,84845.0,85185.0,84661.0,84951.0],[1790510400,84951.0,85180.0,84388.0,84497.0],[1790524800,84497.0,84871.99999999999,84367.0,84765.99999999999],[1790539200,84765.99999999999,84847.0,84166.0,84492.99999999999],[1790553600,84492.99999999999,85010.99999999999,83255.0,83382.0],[1790568000,83382.0,83576.0,82763.0,83020.99999999999],[1790582400,83020.99999999999,83197.93617021276,82639.0,83126.0],[1790596800,83126.0,83853.0,82622.0,83419.7240398293],[1790611200,83419.7240398293,84393.0,83126.00000000001,83447.0],[1790625600,83447.0,83691.99999999999,83131.0,83537.0],[1790640000,83537.0,83656.0,82828.0,83128.0],[1790654400,83128.0,84217.00000000001,83015.0,84008.0],[1790668800,84008.0,84504.0,83794.0,84357.0],[1790683200,84357.0,84556.0,82921.0,83101.0],[1790697600,83101.0,83751.0,82966.0,83620.0],[1790712000,83620.0,83876.0,83405.0,83687.0],[1790726400,83687.0,83743.0,83208.0,83339.99999999999],[1790740800,83339.99999999999,83465.0,82931.0,83271.0],[1790755200,83271.0,83949.99999999999,82996.99999999999,83889.0],[1790769600,83889.0,85618.0,83391.0,84159.0],[1790784000,84159.0,84514.99999999999,83522.0,83640.0],[1790798400,83640.0,83883.22570016475,83556.0,83652.0],[1790812800,83652.0,83820.99999999999,83453.0,83796.0],[1790827200,83796.0,84452.1580775912,83382.0,83500.0],[1790841600,83500.0,84117.99999999999,83226.0,83968.0],[1790856000,83968.0,84381.0,83492.99999999999,84132.0],[1790870400,84132.0,85304.0,84122.0,84686.0],[1790884800,84686.0,84892.0,84502.0,84871.0],[1790899200,84871.0,85586.0,84517.0,85550.99999999999],[1790913600,85550.99999999999,86924.0,85473.99999999999,86037.0],[1790928000,86037.0,86596.0,86037.0,86416.0],[1790942400,86416.0,87201.0,85193.61616161616,85369.0],[1790956800,85369.0,85531.0,83930.0,84332.00000000001],[1790971200,84332.00000000001,84609.0,84281.0,84558.0],[1790985600,84558.0,84764.00000000001,84479.0,84745.0],[1791000000,84745.0,84773.0,84568.99999999999,84620.0],[1791014400,84620.0,84746.0,84596.0,84725.00000000001],[1791028800,84725.00000000001,85006.0,84725.00000000001,84915.0],[1791043200,84915.0,85085.59999999999,84772.0,84893.0],[1791057600,84893.0,84971.0,84619.0,84806.0],[1791072000,84806.0,84939.00000000001,84761.0,84885.0],[1791086400,84885.0,85159.0,84854.0,85159.0],[1791100800,85159.0,85470.0,85076.00000000001,85355.00000000001],[1791115200,85355.00000000001,85525.0,85127.0,85320.0],[1791129600,85320.0,85615.0,85213.0,85466.00000000001],[1791144000,85466.00000000001,86847.0,85436.99999999999,86569.0],[1791158400,86569.0,87039.0,86069.0,86147.00000000001],[1791172800,86147.00000000001,86492.86580086581,85471.0,86247.0],[1791187200,86247.0,86531.0,85824.0,86244.99999999999],[1791201600,86244.99999999999,86750.0,85230.00000000001,85292.99999999999],[1791216000,85292.99999999999,85829.0,85053.0,85746.00000000001],[1791230400,85746.00000000001,86099.99999999999,85698.0,85794.0],[1791244800,85794.0,86183.0,85370.0,85546.0],[1791259200,85546.0,85783.0,85174.0,85593.0],[1791273600,85593.0,86410.00000000001,85593.0,86271.0],[1791288000,86271.0,86731.0,85745.0,85745.0],[1791302400,85745.0,85879.0,85463.0,85672.99999999999],[1791316800,85672.99999999999,85710.00000000001,85407.0,85596.0],[1791331200,85596.0,85641.0,83655.0,84218.0],[1791345600,84218.0,84442.0,84104.00000000001,84223.99999999999],[1791360000,84223.99999999999,84224.99999999999,83538.0,83804.0],[1791374400,83804.0,83829.0,82824.0,83500.0],[1791388800,83500.0,83727.0,83126.0,83495.0],[1791403200,83495.0,83679.0,83186.0,83391.0],[1791417600,83391.0,83597.00000000001,82734.39153439154,82861.99999999999],[1791432000,82861.99999999999,83352.0,82372.0,83093.0],[1791446400,83093.0,83279.99999999999,82406.6955345061,82608.99999999999],[1791460800,82608.99999999999,82845.59999999999,80948.0,81002.0],[1791475200,81002.0,81868.99999999999,80387.0,81797.0],[1791489600,81797.0,81973.0,81624.0,81795.0],[1791504000,81795.0,82468.0,81670.99999999999,82464.99999999999],[1791518400,82464.99999999999,82692.0,82264.0,82676.99999999999],[1791532800,82676.99999999999,83553.99999999999,82436.0,83248.99999999999],[1791547200,83248.99999999999,83436.0,82509.0,82932.0],[1791561600,82932.0,83054.0,82315.73913043478,82399.0],[1791576000,82399.0,82742.0,82389.0,82677.99999999999],[1791590400,82677.99999999999,82816.0,82597.0,82653.0],[1791604800,82653.0,82925.0,82653.0,82872.0],[1791619200,82872.0,83002.0,82819.0,82931.0],[1791633600,82931.0,83124.00000000001,82808.0,83096.99999999999],[1791648000,83096.99999999999,83231.0,83025.0,83117.0],[1791662400,83117.0,83164.0,82975.0,83036.99999999999],[1791676800,83036.99999999999,83187.0,82849.0,82872.0]]}}
+      const price = (v, p) => usd(+v.toFixed(p.dp)).replace(p.dp === 0 ? '.00' : '\u0000', '')
+      const away = (p) => Math.abs((p.liq - p.mark) / p.mark * 100).toFixed(0)
+
+      // Liquidation, entry and mark on one honest scale: how much room is left.
+      function buffer(p) {
+        const long = p.side === 'long'
+        const ends = long ? [p.liq, Math.max(p.mark, p.entry) * 1.02] : [Math.min(p.mark, p.entry) * 0.98, p.liq]
+        const at = (v) => ((v - ends[0]) / (ends[1] - ends[0])) * 100
+        return `<div class="buf">
+          <p class="d-label">Room to liquidation <b>${away(p)}%</b></p>
+          <div class="buf-track">
+            <span class="buf-room" style="left:${Math.min(at(p.mark), at(p.liq))}%;right:${100 - Math.max(at(p.mark), at(p.liq))}%"></span>
+            <i class="buf-liq" style="left:${at(p.liq)}%"></i>
+            <i class="buf-entry" style="left:${at(p.entry)}%" title="Entry"></i>
+            <i class="buf-mark" style="left:${at(p.mark)}%" title="Mark"></i>
+          </div>
+          <div class="buf-ends"><span>${long ? `Liq ${price(p.liq, p)}` : `Mark ${price(p.mark, p)}`}</span><span>${long ? `Mark ${price(p.mark, p)}` : `Liq ${price(p.liq, p)}`}</span></div>
+        </div>`
+      }
+
+      function renderPerps() {
+        $('nav-tx').removeAttribute('aria-current')
+        $('net').textContent = 'Solana devnet · Phoenix on mainnet'
+        const address = state.address ?? WALLET
+        const mine = address === WALLET
+        const top = `
+          <a class="back" data-back>← Transactions</a>
+          <div class="acct-head">
+            <h1>Phoenix account</h1>
+            <span class="d-chip" style="color:var(--fg)">${mine ? 'Your LanaTools wallet' : 'Local wallet'} · ${short(address)}</span>
+            <span style="flex:1"></span>
+            <input class="d-input" id="addr" placeholder="View another address" spellcheck="false" style="width:18rem;font-family:var(--mono);font-size:12.5px" />
+          </div>`
+        if (state.empty) {
+          $('main').innerHTML = `${top}<div class="acct-empty"><h2 class="d-h2">No Phoenix account for this address</h2>
+            <p>An agent opens one with <span class="mono">phoenix_activate_account</span>, then deposits USDC to trade. Positions, orders and fills show up here once it does.</p></div>`
+          return wirePerps()
+        }
+        const p = POSITIONS.find((q) => q.market === focus)
+        const order = ORDERS.find((o) => o.market === p.market)
+        $('main').innerHTML = `${top}
+          <div class="strip">
+            <div><p class="d-label">Account value</p><p class="sv hero">${usd(ACCOUNT.value)}</p></div>
+            <div><p class="d-label">Unrealized PnL</p><p class="sv ${ACCOUNT.pnl >= 0 ? 'up' : 'down'}">${usd(ACCOUNT.pnl, true)}</p></div>
+            <div><p class="d-label">Collateral</p><p class="sv">${usd(ACCOUNT.collateral)}</p></div>
+            <div><p class="d-label">Leverage</p><p class="sv">${ACCOUNT.leverage.toFixed(2)}×</p></div>
+          </div>
+
+          <div class="d-card trade">
+            <div class="trade-top">
+              <div class="tabs mk-tabs">${POSITIONS.map((q) => `<button data-mk="${q.market}" aria-pressed="${q.market === focus}">${q.market} <span class="side ${q.side}">${q.side === 'long' ? 'Long' : 'Short'}</span></button>`).join('')}</div>
+              <div class="chart-tools">
+                <button class="d-btn d-btn-sm" id="fit-liq" aria-pressed="${fitLiq}">${fitLiq ? 'Hide' : 'Show'} liquidation</button>
+                <button class="d-btn d-btn-sm" id="reset">Reset view</button>
+                <div class="d-seg">${Object.keys(RANGES).map((r) => `<button data-r="${r}" aria-pressed="${r === range}">${r}</button>`).join('')}</div>
+              </div>
+            </div>
+            <div class="trade-body">
+              <div class="chart-wrap" id="chart">
+                <div class="ohlc"></div>
+                <div class="ll"></div>
+                <div class="key">
+                  <span><i class="k-entry"></i>Entry ${price(p.entry, p)}</span>
+                  <span class="k-liq"><i></i>Liquidation ${price(p.liq, p)} <small>${away(p)}% ${p.side === 'long' ? 'below' : 'above'}</small></span>
+                  ${order ? `<span><i class="k-order"></i>${sideWord(order.side)} limit ${price(order.price, p)}</span>` : ''}
+                  <span class="key-src">Drag to pan · scroll to zoom · drag an axis to scale</span>
+                </div>
+              </div>
+              <aside class="pos">
+                <p class="d-label">Your position</p>
+                <p class="pos-size"><span class="side ${p.side}">${p.side === 'long' ? 'Long' : 'Short'}</span> ${p.size} ${p.base}</p>
+                <p class="pos-pnl ${p.pnl >= 0 ? 'up' : 'down'}">${usd(p.pnl, true)} <small>${p.pnl >= 0 ? '+' : '−'}${Math.abs(p.pct).toFixed(2)}%</small></p>
+                ${buffer(p)}
+                <dl class="pos-facts">
+                  <dt>Entry</dt><dd>${price(p.entry, p)}</dd>
+                  <dt>Mark</dt><dd>${price(p.mark, p)}</dd>
+                  <dt class="liq-t">Liquidation</dt><dd>${price(p.liq, p)}<small>${away(p)}% ${p.side === 'long' ? 'below' : 'above'} mark</small></dd>
+                  <dt>Value</dt><dd>${usd(p.value)}</dd>
+                  <dt>Funding</dt><dd>${usd(p.funding, true) || '$0.00'}</dd>
+                  ${order ? `<dt>Open order</dt><dd>${sideWord(order.side)} ${order.size} at ${price(order.price, p)}</dd>` : ''}
+                </dl>
+              </aside>
+            </div>
+          </div>
+
+          <section class="sec">
+            <div class="sec-head"><h2 class="d-h2">Positions</h2><span class="d-label" style="text-transform:none">${POSITIONS.length} open</span></div>
+            <div class="d-card scroll-x"><table class="tbl">
+              <thead class="d-th"><tr><th>Market</th><th class="hide-xs">Side</th><th class="r">Size</th><th class="r hide-sm">Entry</th><th class="r hide-sm">Mark</th><th class="r hide-sm">Liquidation</th><th class="r">Unrealized PnL</th></tr></thead>
+              <tbody>${POSITIONS.map(
+                (q) => `<tr data-pos="${q.market}" class="${q.market === focus ? 'on' : ''}">
+                  <td class="mk"><b>${q.market}</b><small class="only-xs side ${q.side}">${q.side === 'long' ? 'Long' : 'Short'}</small></td>
+                  <td class="hide-xs"><span class="tag ${q.side}">${q.side === 'long' ? 'Long' : 'Short'}</span></td>
+                  <td class="r">${q.size} <span style="color:var(--fg-3)">${q.base}</span></td>
+                  <td class="r hide-sm">${price(q.entry, q)}</td>
+                  <td class="r hide-sm">${price(q.mark, q)}</td>
+                  <td class="r hide-sm">${price(q.liq, q)}</td>
+                  <td class="r pnl ${q.pnl >= 0 ? 'up' : 'down'}">${usd(q.pnl, true)}<small>${q.pnl >= 0 ? '+' : '−'}${Math.abs(q.pct).toFixed(2)}%</small></td>
+                </tr>`,
+              ).join('')}</tbody></table></div>
+          </section>
+
+          <section class="sec">
+            <div class="sec-head"><h2 class="d-h2">Open orders</h2><span class="d-label" style="text-transform:none">${ORDERS.length} resting</span></div>
+            <div class="d-card scroll-x"><table class="tbl">
+              <thead class="d-th"><tr><th>Market</th><th>Side</th><th class="r">Price</th><th class="r">Size</th><th class="hide-sm">Placed by</th></tr></thead>
+              <tbody>${ORDERS.map((o) => `<tr><td class="mk"><b>${o.market}</b></td><td><span class="side ${o.side === 'buy' ? 'long' : 'short'}">${sideWord(o.side)}</span> <span style="color:var(--fg-3)">${o.type.toLowerCase()}</span></td><td class="r">${usd(o.price)}</td><td class="r">${o.size} <span style="color:var(--fg-3)">${o.base}</span></td><td class="by hide-sm"><b>${o.by}</b></td></tr>`).join('')}</tbody></table></div>
+          </section>
+
+          <section class="sec">
+            <div class="sec-head"><h2 class="d-h2">Fills</h2></div>
+            <div class="d-card scroll-x"><table class="tbl">
+              <thead class="d-th"><tr><th>Time</th><th>Market</th><th>Side</th><th class="r">Size</th><th class="r">Price</th><th class="r hide-sm">Realized</th><th class="hide-sm">Placed by</th><th class="hide-sm">Signature</th></tr></thead>
+              <tbody>${FILLS.map(
+                (f) => `<tr><td style="color:var(--fg-3);font-weight:400">${f.t}</td><td class="mk"><b>${f.market}</b></td><td><span class="side ${f.side === 'buy' ? 'long' : 'short'}">${sideWord(f.side)}</span></td>
+                  <td class="r">${f.size}</td><td class="r">${usd(f.price)}</td>
+                  <td class="r hide-sm ${f.realized == null ? '' : f.realized >= 0 ? 'up' : 'down'}">${f.realized == null ? '<span style="color:var(--fg-3)">—</span>' : usd(f.realized, true)}</td>
+                  <td class="by hide-sm">${f.by ? `<b>${f.by}</b>` : 'Outside LanaTools'}</td><td class="sig hide-sm">${sig(f.sig)}</td></tr>`,
+              ).join('')}</tbody></table></div>
+            <p class="meta" style="text-align:center;padding-top:16px">Older fills load as you scroll.</p>
+          </section>`
+        drawChart()
+        wirePerps()
+      }
+
+      // The chart is TradingView Lightweight Charts: Phoenix candles, with
+      // entry, liquidation and resting orders as price lines. Drag to pan,
+      // scroll or pinch to zoom, drag either axis to scale it.
+      let chartApi
+      let fitLiq = true
+      function drawChart() {
+        const box = $('chart')
+        if (!box || !window.LightweightCharts) return
+        const LW = window.LightweightCharts
+        const css = getComputedStyle($('dash'))
+        const v = (name) => css.getPropertyValue(name).trim()
+        const p = POSITIONS.find((q) => q.market === focus)
+        const order = ORDERS.find((o) => o.market === p.market)
+        chartApi?.remove()
+        const host = box.querySelector('.ll')
+        chartApi = LW.createChart(host, {
+          autoSize: true,
+          layout: { background: { color: v('--panel') }, textColor: v('--fg-3'), fontFamily: "'Paper Mono', ui-monospace, monospace", fontSize: 11, attributionLogo: true },
+          grid: { vertLines: { visible: false }, horzLines: { color: v('--line'), style: LW.LineStyle.Dotted } },
+          rightPriceScale: { borderColor: v('--line'), scaleMargins: { top: 0.12, bottom: 0.1 } },
+          timeScale: {
+            borderColor: v('--line'), rightOffset: 4,
+            // Local time, as the rest of the dashboard.
+            tickMarkFormatter: (t, type) => new Date(t * 1000).toLocaleString('en-US', type >= 3 ? { hour: 'numeric', minute: '2-digit' } : { month: 'short', day: 'numeric' }),
+          },
+          crosshair: { mode: LW.CrosshairMode.Normal, vertLine: { color: v('--fg-3'), labelBackgroundColor: v('--fg') }, horzLine: { color: v('--fg-3'), labelBackgroundColor: v('--fg') } },
+          localization: {
+            priceFormatter: (x) => price(x, p),
+            timeFormatter: (t) => new Date(t * 1000).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
+          },
+        })
+        const series = chartApi.addSeries(LW.CandlestickSeries, {
+          upColor: v('--up'), downColor: v('--bad'), wickUpColor: v('--up'), wickDownColor: v('--bad'), borderVisible: false,
+          priceFormat: { type: 'price', precision: p.dp, minMove: p.dp ? 0.01 : 1 },
+          lastValueVisible: true, priceLineColor: v('--accent'),
+          // "Show liquidation" widens the fitted price range to reach it.
+          autoscaleInfoProvider: (original) => {
+            const r = original()
+            if (!r || !fitLiq) return r
+            return { ...r, priceRange: { minValue: Math.min(r.priceRange.minValue, p.liq, p.entry), maxValue: Math.max(r.priceRange.maxValue, p.liq, p.entry) } }
+          },
+        })
+        const rows = CANDLES[p.market][range].map(([time, open, high, low, close]) => ({ time, open, high, low, close }))
+        series.setData(rows)
+        series.createPriceLine({ price: p.entry, color: v('--fg-2'), lineWidth: 1, lineStyle: LW.LineStyle.Dashed, axisLabelVisible: true, title: 'Entry' })
+        series.createPriceLine({ price: p.liq, color: v('--bad'), lineWidth: 2, lineStyle: LW.LineStyle.Solid, axisLabelVisible: true, title: 'Liquidation' })
+        if (order) series.createPriceLine({ price: order.price, color: v('--fg-3'), lineWidth: 1, lineStyle: LW.LineStyle.SparseDotted, axisLabelVisible: true, title: `${sideWord(order.side)} limit` })
+        chartApi.timeScale().fitContent()
+
+        // OHLC of the candle under the cursor, else the latest one.
+        const legend = box.querySelector('.ohlc')
+        const show = (c) => {
+          if (!c) return
+          const cls = c.close >= c.open ? 'up' : 'down'
+          legend.innerHTML = ['O', 'H', 'L', 'C'].map((k, i) => `<span>${k} <b class="${cls}">${price([c.open, c.high, c.low, c.close][i], p)}</b></span>`).join('')
+        }
+        show(rows.at(-1))
+        chartApi.subscribeCrosshairMove((param) => show(param.seriesData?.get(series) ?? rows.at(-1)))
+      }
+
+      function wirePerps() {
+        document.querySelector('[data-back]').onclick = () => go('tx')
+        const input = $('addr')
+        input.onkeydown = (e) => e.key === 'Enter' && input.value.trim() && go('perps', input.value.trim())
+        document.querySelectorAll('[data-mk],[data-pos]').forEach((b) => (b.onclick = () => ((focus = b.dataset.mk ?? b.dataset.pos), renderPerps())))
+        document.querySelectorAll('[data-r]').forEach((b) => (b.onclick = () => ((range = b.dataset.r), renderPerps())))
+        const fit = $('fit-liq')
+        if (fit) fit.onclick = () => ((fitLiq = !fitLiq), renderPerps())
+        const reset = $('reset')
+        if (reset) reset.onclick = () => drawChart()
+      }
+      // ---------------------------------------------------------------------
+      function go(view, address) {
+        state.view = view
+        if (view === 'perps') state.address = address ?? state.address ?? WALLET
+        document.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === view)))
+        view === 'tx' ? renderTx() : renderPerps()
+        scrollTo(0, 0)
+      }
+      document.querySelectorAll('[data-view]').forEach((b) => (b.onclick = () => go(b.dataset.view)))
+      $('m-empty').onclick = () => {
+        state.empty = !state.empty
+        $('m-empty').setAttribute('aria-pressed', String(state.empty))
+        go('perps')
+      }
+      $('m-theme').onclick = () => {
+        const dark = $('dash').dataset.theme !== 'dark'
+        $('dash').dataset.theme = dark ? 'dark' : 'light'
+        $('m-theme').setAttribute('aria-pressed', String(dark))
+        if (state.view === 'perps' && !state.empty) drawChart()
+      }
+      go(location.hash === '#perps' ? 'perps' : 'tx')
+    </script>
+  </body>
+</html>
