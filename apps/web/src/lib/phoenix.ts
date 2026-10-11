@@ -3,7 +3,7 @@ import {
   PhoenixCandles,
   PhoenixFills,
 } from '@lanatools/contracts'
-import type { PhoenixCandleRange } from '@lanatools/contracts'
+import type { PhoenixCandleInterval } from '@lanatools/contracts'
 import { authorized } from './mcp-clients'
 import type { GetAccessToken } from './mcp-clients'
 
@@ -33,12 +33,12 @@ export async function getPhoenixAccount(
 export async function getPhoenixCandles(
   getAccessToken: GetAccessToken,
   symbol: string,
-  range: PhoenixCandleRange,
+  interval: PhoenixCandleInterval,
 ) {
   return PhoenixCandles.assert(
     await read(
       getAccessToken,
-      `/api/phoenix/candles/${encodeURIComponent(symbol)}?range=${range}`,
+      `/api/phoenix/candles/${encodeURIComponent(symbol)}?interval=${interval}`,
     ),
   )
 }

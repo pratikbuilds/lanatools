@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { type } from 'arktype'
 import { isAddress } from '@solana/kit'
-import { PhoenixCandleRange } from '@lanatools/contracts'
+import { PhoenixCandleInterval } from '@lanatools/contracts'
 import type { PhoenixAccount } from '@lanatools/contracts'
 import { readPhoenixAccount } from '@lanatools/phoenix'
 import type { PhoenixOpts } from '@lanatools/phoenix'
@@ -42,10 +42,12 @@ export function phoenixRoutes(opts: PhoenixOpts = {}) {
       )
     })
     .get('/candles/:symbol', async (c) => {
-      const range = PhoenixCandleRange(c.req.query('range') ?? '1D')
-      if (range instanceof type.errors) throw new HTTPException(400)
+      const interval = PhoenixCandleInterval(c.req.query('interval') ?? '1d')
+      if (interval instanceof type.errors) throw new HTTPException(400)
       return c.json(
-        await answer(() => phoenixCandles(c.req.param('symbol'), range, opts)),
+        await answer(() =>
+          phoenixCandles(c.req.param('symbol'), interval, opts),
+        ),
       )
     })
     .get('/fills/:address', async (c) => {

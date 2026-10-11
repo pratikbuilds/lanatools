@@ -3,7 +3,7 @@ import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
 import { type } from 'arktype'
 import type {
-  PhoenixCandleRange,
+  PhoenixCandleInterval,
   PhoenixCandles,
   PhoenixFills,
 } from '@lanatools/contracts'
@@ -17,13 +17,11 @@ import { mcpGrant, transactionRequest } from '../db/schema'
  * user's own transactions.
  */
 
-/** Each chart range is one Phoenix timeframe and a candle count (spec D13). */
-const RANGES: Record<PhoenixCandleRange, { timeframe: string; limit: number }> =
-  {
-    '1D': { timeframe: '15m', limit: 96 },
-    '1W': { timeframe: '1h', limit: 168 },
-    '1M': { timeframe: '4h', limit: 180 },
-  }
+/**
+ * Candles per chart: Phoenix's most per request, so each interval reaches
+ * as far back as one read allows (daily about 16 months, 15m about 5 days).
+ */
+const CANDLES_PER_CHART = 500
 
 /** Fills per page, as the Transactions tab pages its ledger. */
 export const PHOENIX_FILLS_PAGE = 50
@@ -71,15 +69,19 @@ async function read(name: string, input: unknown, opts: PhoenixOpts) {
 
 export async function phoenixCandles(
   symbol: string,
-  range: PhoenixCandleRange,
+  interval: PhoenixCandleInterval,
   opts: PhoenixOpts = {},
 ): Promise<PhoenixCandles> {
   const result = CandleResult.assert(
-    await read('phoenix_get_candles', { symbol, ...RANGES[range] }, opts),
+    await read(
+      'phoenix_get_candles',
+      { symbol, timeframe: interval, limit: CANDLES_PER_CHART },
+      opts,
+    ),
   )
   return {
     symbol,
-    range,
+    interval,
     candles: result.candles.map(({ time, open, high, low, close }) => ({
       time: Math.floor(Date.parse(time) / 1000),
       open,

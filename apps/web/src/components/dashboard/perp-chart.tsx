@@ -196,7 +196,9 @@ export function PerpChart({
               ? LineStyle.SparseDotted
               : LineStyle.Solid,
       })
-    api.timeScale().fitContent()
+    // The latest candles at the library's default width, like a trading
+    // screen; older ones are a drag away.
+    api.timeScale().scrollToRealTime()
     api.subscribeCrosshairMove((param) => {
       const data = param.seriesData.get(series)
       setHovered(

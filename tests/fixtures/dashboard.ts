@@ -336,7 +336,7 @@ function phoenixCandles(symbol: string, mark: number): PhoenixCandles {
       close,
     }
   })
-  return { symbol, range: '1D', candles }
+  return { symbol, interval: '15m', candles }
 }
 
 export const phoenixFills: PhoenixFills = {

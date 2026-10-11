@@ -111,7 +111,7 @@ test('fills name the client that placed them, for the signed-in user only', asyn
   expect(asked[0]?.searchParams.get('limit')).toBe('50')
 })
 
-test('a chart range is one timeframe of Phoenix candles, in Unix seconds', async () => {
+test('a chart interval is one Phoenix timeframe at its longest read, in Unix seconds', async () => {
   const { fetch, asked } = fakeFetch({
     '/v1/candles/SOL': [
       {
@@ -126,9 +126,9 @@ test('a chart range is one timeframe of Phoenix candles, in Unix seconds', async
       },
     ],
   })
-  expect(await phoenixCandles('SOL', '1W', { fetch })).toEqual({
+  expect(await phoenixCandles('SOL', '1h', { fetch })).toEqual({
     symbol: 'SOL',
-    range: '1W',
+    interval: '1h',
     candles: [
       {
         time: 1791612900,
@@ -140,5 +140,5 @@ test('a chart range is one timeframe of Phoenix candles, in Unix seconds', async
     ],
   })
   expect(asked[0]?.searchParams.get('timeframe')).toBe('1h')
-  expect(asked[0]?.searchParams.get('limit')).toBe('168')
+  expect(asked[0]?.searchParams.get('limit')).toBe('500')
 })

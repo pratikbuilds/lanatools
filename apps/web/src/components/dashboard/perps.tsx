@@ -3,10 +3,10 @@ import { Link } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { isAddress } from '@solana/kit'
-import { PHOENIX_CANDLE_RANGES } from '@lanatools/contracts'
+import { PHOENIX_CANDLE_INTERVALS } from '@lanatools/contracts'
 import type {
   PhoenixAccount,
-  PhoenixCandleRange,
+  PhoenixCandleInterval,
   PhoenixOrder,
   PhoenixPosition,
 } from '@lanatools/contracts'
@@ -252,13 +252,14 @@ function TradeCard({
   onFocus: (symbol: string) => void
 }) {
   const { userId, getAccessToken } = useDashboardSession()
-  const [range, setRange] = useState<PhoenixCandleRange>('1D')
+  // Daily first, as trading screens open.
+  const [interval, setCandleInterval] = useState<PhoenixCandleInterval>('1d')
   // Candles first; levels far from price would flatten them.
   const [fitLiquidation, setFitLiquidation] = useState(false)
   const [resetKey, setResetKey] = useState(0)
   const candles = useQuery({
-    queryKey: ['phoenix-candles', userId, focus, range],
-    queryFn: () => getPhoenixCandles(getAccessToken, focus, range),
+    queryKey: ['phoenix-candles', userId, focus, interval],
+    queryFn: () => getPhoenixCandles(getAccessToken, focus, interval),
     refetchInterval: 60_000,
   })
   const position = account.positions.find((each) => each.symbol === focus)
@@ -336,15 +337,15 @@ function TradeCard({
           >
             Reset view
           </button>
-          <div className="d-seg" role="group" aria-label="Chart range">
-            {PHOENIX_CANDLE_RANGES.map((each) => (
+          <div className="d-seg" role="group" aria-label="Candle interval">
+            {PHOENIX_CANDLE_INTERVALS.map((each) => (
               <button
                 key={each}
                 type="button"
-                aria-pressed={each === range}
-                onClick={() => setRange(each)}
+                aria-pressed={each === interval}
+                onClick={() => setCandleInterval(each)}
               >
-                {each}
+                {each === '15m' ? each : each.toUpperCase()}
               </button>
             ))}
           </div>

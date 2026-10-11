@@ -620,14 +620,17 @@ export const PhoenixAccount = type({
 })
 export type PhoenixAccount = typeof PhoenixAccount.infer
 
-export const PHOENIX_CANDLE_RANGES = ['1D', '1W', '1M'] as const
-export const PhoenixCandleRange = type.enumerated(...PHOENIX_CANDLE_RANGES)
-export type PhoenixCandleRange = typeof PhoenixCandleRange.infer
+/** Candle intervals the chart offers, longest first; Phoenix's timeframes. */
+export const PHOENIX_CANDLE_INTERVALS = ['1d', '4h', '1h', '15m'] as const
+export const PhoenixCandleInterval = type.enumerated(
+  ...PHOENIX_CANDLE_INTERVALS,
+)
+export type PhoenixCandleInterval = typeof PhoenixCandleInterval.infer
 
 /** OHLC candles for one market; `time` is Unix seconds. */
 export const PhoenixCandles = type({
   symbol: 'string',
-  range: PhoenixCandleRange,
+  interval: PhoenixCandleInterval,
   candles: type({
     time: 'number',
     open: 'number',
