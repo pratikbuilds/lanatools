@@ -70,9 +70,92 @@ const swap: TransactionActivityItem = {
   createdAt: Date.now() - 2 * minute,
   expiresAt: Date.now() + 13 * minute,
 }
+/** Jupiter and Phoenix transactions that carry their typed trade. */
+const trading: TransactionActivityItem[] = [
+  {
+    ...swap,
+    id: 'swap-traded',
+    network: 'mainnet',
+    review: {
+      ...swap.review,
+      trade: {
+        kind: 'swap',
+        venue: 'jupiter',
+        pay: {
+          mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+          symbol: 'USDC',
+          amount: '1',
+        },
+        receive: {
+          mint: 'So11111111111111111111111111111111111111112',
+          symbol: 'SOL',
+          estimated: '0.00913',
+          minimum: '0.00908',
+        },
+        maxSlippageBps: 50,
+      },
+    },
+    createdAt: Date.now() - 3 * minute,
+  },
+  {
+    ...swap,
+    id: 'perp-buy',
+    tool: 'phoenix_market_order',
+    network: 'mainnet',
+    review: {
+      title: 'Place a Phoenix market order',
+      description:
+        'Market buy (long): 0.1 SOL perp now, paying at most $110.15 each',
+      actionLabel: 'Place a Phoenix market order',
+      fields: [
+        {
+          label: 'Notice',
+          value:
+            'This order expires about a minute after it was prepared; after that it is not sent.',
+        },
+      ],
+      trade: {
+        kind: 'perp',
+        venue: 'phoenix',
+        action: 'order',
+        symbol: 'SOL',
+        side: 'buy',
+        orderType: 'market',
+        size: '0.1',
+        worstPrice: '110.15',
+        bestPrice: '109.6',
+        notionalUsd: '10.96',
+        feeUsd: '0.003836',
+        reduceOnly: false,
+      },
+    },
+    createdAt: Date.now() - 4 * minute,
+  },
+  {
+    ...swap,
+    id: 'perp-deposit',
+    tool: 'phoenix_deposit',
+    network: 'mainnet',
+    review: {
+      title: 'Deposit USDC into Phoenix',
+      description: 'Deposit 250 USDC into the Phoenix cross-margin account',
+      actionLabel: 'Deposit USDC into Phoenix',
+      fields: [],
+      trade: {
+        kind: 'perp',
+        venue: 'phoenix',
+        action: 'deposit',
+        amountUsdc: '250',
+      },
+    },
+    createdAt: Date.now() - 6 * minute,
+  },
+]
+
 /** A mixed day of agent transactions, a deposit and withdrawals. */
 export const transactions: TransactionActivityItem[] = [
   swap,
+  ...trading,
   {
     kind: 'deposit',
     id: 'deposit-usdc',

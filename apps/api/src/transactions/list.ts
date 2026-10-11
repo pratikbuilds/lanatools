@@ -1,4 +1,4 @@
-import { and, desc, eq, or, sql } from 'drizzle-orm'
+import { and, desc, eq, like, or, sql } from 'drizzle-orm'
 import type { SQL } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
@@ -81,13 +81,23 @@ const WALLET_STATUS: Record<TransactionStatusGroup, SQL | undefined> = {
   expired: sql`0`,
 }
 
+/** Agent kinds that are one family of trading tools. */
+const TOOL_FAMILIES = {
+  swap: eq(transactionRequest.toolName, 'jupiter_swap'),
+  // Every Phoenix trade tool is named phoenix_*; no other tool starts so.
+  perp: like(transactionRequest.toolName, 'phoenix_%'),
+}
+
 function agentSelected(
   userId: string,
   filter: Omit<TransactionsFilter, 'status' | 'before' | 'limit'>,
 ) {
-  if (filter.kind !== undefined && filter.kind !== 'agent') return null
+  if (filter.kind === 'withdrawal' || filter.kind === 'deposit') return null
   return and(
     eq(transactionRequest.creatorUserId, userId),
+    filter.kind === 'swap' || filter.kind === 'perp'
+      ? TOOL_FAMILIES[filter.kind]
+      : undefined,
     filter.client === undefined
       ? undefined
       : eq(transactionRequest.creatorClientId, filter.client),
@@ -108,7 +118,12 @@ function walletSelected(
   filter: Omit<TransactionsFilter, 'status' | 'before' | 'limit'>,
 ) {
   // Wallet transfers have no client or signing method to match.
-  if (filter.kind === 'agent') return null
+  if (
+    filter.kind === 'agent' ||
+    filter.kind === 'swap' ||
+    filter.kind === 'perp'
+  )
+    return null
   if (filter.client !== undefined || filter.delivery !== undefined) return null
   return and(
     eq(walletTransfer.privyUserId, userId),

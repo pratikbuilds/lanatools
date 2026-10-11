@@ -317,14 +317,30 @@ test('kind, client, delivery and address narrow the feed', async () => {
     counterparty: RECIPIENT,
     createdAt: NOON - 4 * MINUTE,
   })
+  const perp = await request(grant, {
+    toolName: 'phoenix_market_order',
+    argumentsJson: JSON.stringify({ symbol: 'SOL', side: 'buy', size: '1' }),
+    reviewJson: JSON.stringify({
+      title: 'Place a Phoenix market order',
+      description: 'd',
+      actionLabel: 'Place',
+      fields: [],
+    }),
+    delivery: 'link',
+    counterparty: null,
+    createdAt: NOON - 5 * MINUTE,
+  })
   const ids = async (filter: Partial<TransactionsFilter>) =>
     (await list(filter)).items.map((i) => i.id)
-  expect(await ids({})).toEqual([swap, send, deposit, withdrawal])
-  expect(await ids({ kind: 'agent' })).toEqual([swap, send])
+  expect(await ids({})).toEqual([swap, send, deposit, withdrawal, perp])
+  expect(await ids({ kind: 'agent' })).toEqual([swap, send, perp])
+  expect(await ids({ kind: 'swap' })).toEqual([swap])
+  expect(await ids({ kind: 'perp' })).toEqual([perp])
   expect(await ids({ kind: 'deposit' })).toEqual([deposit])
   expect(await ids({ kind: 'withdrawal' })).toEqual([withdrawal])
   expect(await ids({ client: 'client-b' })).toEqual([send])
   expect(await ids({ delivery: 'embedded' })).toEqual([swap])
+  expect(await ids({ kind: 'perp', delivery: 'embedded' })).toEqual([])
   // The signing wallet, the recipient and the user's own wallet all match.
   expect(await ids({ address: OTHER })).toEqual([send, deposit])
   expect(await ids({ address: RECIPIENT })).toEqual([send, withdrawal])

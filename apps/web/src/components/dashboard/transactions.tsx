@@ -7,6 +7,8 @@ import {
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type {
+  PerpTrade,
+  SwapTrade,
   TransactionActivityItem,
   TransactionStatusGroup,
   TransactionsPage as Page,
@@ -32,6 +34,13 @@ import {
   transactionTitle,
 } from '#/lib/transactions'
 import type { TransactionsFilter } from '#/lib/transactions'
+import {
+  formatUSD,
+  orderTicket,
+  perpNotional,
+  swapRate,
+  tradeOf,
+} from '#/lib/trades'
 import { Transaction as SignatureBlock } from './activity'
 import { Drawer, DrawerFacts, DrawerHeader } from './drawer'
 import { PageHead } from './page-head'
@@ -435,22 +444,11 @@ function Source({ item }: { item: TransactionActivityItem }) {
   return null
 }
 
-/** Money that arrived is lime; everything else is set large with its unit small. */
-function Amount({
-  item,
-  muted,
-}: {
-  item: TransactionActivityItem
-  muted: boolean
-}) {
-  const amounts = transactionAmounts(item)
-  const value = amounts.in && !amounts.out ? amounts.in : amounts.out
-  if (!value) return <span className="text-fg-3">—</span>
-  const sign = amounts.in && !amounts.out ? '+' : '−'
+/** A value set large with its unit small, as amounts are. */
+function Unit({ value }: { value: string }) {
   const [, number = value, unit] = /^(\S+)\s+(.+)$/.exec(value) ?? []
-  const inner = (
+  return (
     <>
-      {sign}
       {number}
       {unit && (
         <>
@@ -460,6 +458,59 @@ function Amount({
           </span>
         </>
       )}
+    </>
+  )
+}
+
+/**
+ * Money that arrived is lime; everything else is set large with its unit
+ * small. A swap shows what came back under what it paid. A perp order moves
+ * no wallet money, so it shows its notional, unsigned and quiet.
+ */
+function Amount({
+  item,
+  muted,
+}: {
+  item: TransactionActivityItem
+  muted: boolean
+}) {
+  const amounts = transactionAmounts(item)
+  const trade = tradeOf(item)
+  const notional = trade && perpNotional(trade)
+  if (notional && !amounts.out && !amounts.in)
+    return (
+      <span
+        className={`inline-flex flex-col items-end font-mono text-[15px] tracking-tight ${muted ? 'text-fg-3 line-through' : ''}`}
+      >
+        {notional}
+        <span className="text-[11px] font-normal tracking-normal text-fg-3 no-underline">
+          notional
+        </span>
+      </span>
+    )
+  if (trade?.kind === 'swap' && amounts.out)
+    return (
+      <span
+        className={`inline-flex flex-col items-end font-mono text-[15px] tracking-tight ${muted ? 'font-normal text-fg-3 line-through' : 'font-semibold'}`}
+      >
+        <span>
+          −<Unit value={amounts.out} />
+        </span>
+        {amounts.in && !muted && (
+          <span className="text-[12px] font-medium text-live">
+            {statusGroup(item) === 'confirmed' ? '≈ ' : ''}+
+            <Unit value={amounts.in} />
+          </span>
+        )}
+      </span>
+    )
+  const value = amounts.in && !amounts.out ? amounts.in : amounts.out
+  if (!value) return <span className="text-fg-3">—</span>
+  const sign = amounts.in && !amounts.out ? '+' : '−'
+  const inner = (
+    <>
+      {sign}
+      <Unit value={value} />
     </>
   )
   return (
@@ -567,8 +618,15 @@ export function TransactionDetail({
   const group = statusGroup(item)
   const gone = group === 'failed' || group === 'expired'
   const amounts = transactionAmounts(item)
-  const main =
-    amounts.in && !amounts.out
+  const trade = tradeOf(item)
+  const order =
+    trade?.kind === 'perp' &&
+    (trade.action === 'order' || trade.action === 'close')
+      ? trade
+      : undefined
+  const main = order
+    ? order.size && `${order.size} ${order.symbol ?? ''}`.trim()
+    : amounts.in && !amounts.out
       ? `+${amounts.in}`
       : amounts.out && `−${amounts.out}`
   const who =
@@ -582,8 +640,20 @@ export function TransactionDetail({
 
   const facts: Array<[string, ReactNode]> = []
   if (item.kind === 'agent') {
-    for (const field of item.review.fields)
-      facts.push([field.label, field.value])
+    if (trade?.kind === 'swap') {
+      const rate = swapRate(trade)
+      if (rate) facts.push(['Rate', rate])
+      if (trade.receive.minimum)
+        facts.push([
+          'Minimum receive',
+          `${trade.receive.minimum} ${trade.receive.symbol}`,
+        ])
+      facts.push(['Max slippage', `${trade.maxSlippageBps / 100}%`])
+      facts.push(['Route', 'Jupiter'])
+    } else if (!trade)
+      // The trade already says what these fields do, more plainly.
+      for (const field of item.review.fields)
+        facts.push([field.label, field.value])
     facts.push(['Kind', `Agent transaction, ${item.tool}`])
     facts.push(['Client', item.connected ? who : `${who}, disconnected`])
     facts.push([
@@ -628,14 +698,28 @@ export function TransactionDetail({
           </span>
         )}
       </p>
-      {main && (
-        <p
-          className={`mt-3 mb-1 font-mono text-[2.6rem] leading-none font-semibold tracking-[-0.05em] ${gone ? 'text-fg-3 line-through' : ''}`}
-        >
-          {main}
+      {trade?.kind === 'swap' ? (
+        <SwapFlow trade={trade} done={group === 'confirmed'} gone={gone} />
+      ) : (
+        main && (
+          <p
+            className={`mt-3 mb-1 font-mono text-[2.6rem] leading-none font-semibold tracking-[-0.05em] ${gone ? 'text-fg-3 line-through' : ''}`}
+          >
+            {main}
+          </p>
+        )
+      )}
+      {order?.notionalUsd && (
+        <p className="mb-1 font-mono text-[13px] font-medium text-fg-2">
+          {formatUSD(order.notionalUsd)} notional
+          {order.orderType === 'limit' && order.limitPrice
+            ? ` at ${formatUSD(order.limitPrice)} each`
+            : order.bestPrice
+              ? ` at the best price, ${formatUSD(order.bestPrice)}`
+              : ''}
         </p>
       )}
-      {amounts.in && amounts.out && (
+      {amounts.in && amounts.out && trade?.kind !== 'swap' && (
         <p className="mb-1 font-mono text-[1.1rem] font-semibold tracking-tight">
           +{amounts.in}
           {group !== 'confirmed' && (
@@ -650,6 +734,22 @@ export function TransactionDetail({
           ? 'Checking the chain…'
           : (STATUS_NOTES[raw] ?? STATUS_NOTES[group] ?? '')}
       </p>
+      {trade?.kind === 'perp' && item.kind === 'agent' && (
+        <>
+          {order && <OrderTicket trade={order} />}
+          {item.review.fields
+            .filter((field) => field.label === 'Notice')
+            .map((field) => (
+              <p
+                key={field.value}
+                className="mt-3 border-l-2 border-line-2 pl-3 text-[12.5px] text-fg-2"
+              >
+                {field.value}
+              </p>
+            ))}
+          <AccountLink account={item.account} />
+        </>
+      )}
       <DrawerFacts facts={facts} />
       {item.signature && (
         <SignatureBlock signature={item.signature} network={item.network} />
@@ -658,6 +758,141 @@ export function TransactionDetail({
         <ReviewLink url={item.reviewUrl} />
       )}
     </>
+  )
+}
+
+/** What a swap paid and what came back, each with its token's logo. */
+function SwapFlow({
+  trade,
+  done,
+  gone,
+}: {
+  trade: SwapTrade
+  done: boolean
+  gone: boolean
+}) {
+  const legs = [
+    {
+      label: done ? 'You paid' : 'You pay',
+      token: trade.pay,
+      amount: trade.pay.amount,
+    },
+    {
+      label: done
+        ? 'You received, estimated'
+        : gone
+          ? 'Would have received'
+          : 'You receive, estimated',
+      token: trade.receive,
+      amount: trade.receive.estimated ?? trade.receive.minimum,
+    },
+  ]
+  return (
+    <div className="d-inset mt-3">
+      {legs.map((leg, index) => (
+        <div
+          key={leg.label}
+          className={`grid grid-cols-[2rem_minmax(0,1fr)] items-center gap-3 px-4 py-3.5 ${index ? 'border-t border-line' : ''} ${index && done ? 'bg-[color-mix(in_srgb,var(--color-lime)_22%,var(--d-panel))]' : ''}`}
+        >
+          {leg.token.icon ? (
+            <img
+              src={leg.token.icon}
+              alt=""
+              width={32}
+              height={32}
+              className="size-8 rounded-full"
+            />
+          ) : (
+            <span
+              aria-hidden="true"
+              className="grid size-8 place-items-center rounded-full bg-panel-2 font-mono text-[11px] font-semibold"
+            >
+              {leg.token.symbol.slice(0, 3)}
+            </span>
+          )}
+          <div className="min-w-0">
+            <p className="d-label">{leg.label}</p>
+            <p
+              className={`truncate font-mono text-[22px] leading-tight font-semibold tracking-tight ${gone ? 'text-fg-3 line-through' : ''}`}
+            >
+              {leg.amount ? (
+                <>
+                  {index && leg.amount === trade.receive.estimated ? '≈ ' : ''}
+                  {leg.amount}{' '}
+                  <span className="text-[14px]">{leg.token.symbol}</span>
+                </>
+              ) : (
+                leg.token.symbol
+              )}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** A perp order's terms, as an exchange's order ticket lays them out. */
+function OrderTicket({ trade }: { trade: PerpTrade }) {
+  const rows = orderTicket(trade)
+  const long = trade.side === 'buy'
+  return (
+    <div className="d-inset mt-4">
+      <div className="flex items-center justify-between gap-3 border-b border-line px-3.5 py-2.5">
+        <span className="font-mono text-[13px] font-semibold">
+          {trade.action === 'close' ? 'Close' : 'Order'}
+        </span>
+        {trade.side && (
+          <span
+            className={`rounded-md px-2 py-0.5 font-mono text-[11.5px] font-semibold ${long ? 'bg-[color-mix(in_srgb,var(--d-live)_14%,transparent)] text-live' : 'bg-[color-mix(in_srgb,var(--d-bad)_14%,transparent)] text-bad'}`}
+          >
+            {long ? 'Buy' : 'Sell'}
+            {trade.closing
+              ? ` · closes ${trade.closing}`
+              : long
+                ? ' · long'
+                : ' · short'}
+          </span>
+        )}
+      </div>
+      <dl className="grid grid-cols-2">
+        {rows.map(([label, value], index) => (
+          <div
+            key={label}
+            className={`px-3.5 py-2.5 ${index > 1 ? 'border-t border-line' : ''} ${index % 2 === 0 ? 'border-r border-line' : ''}`}
+          >
+            <dt className="font-mono text-[10.5px] tracking-[0.06em] text-fg-3 uppercase">
+              {label}
+            </dt>
+            <dd className="mt-0.5 font-mono text-[13px] font-semibold">
+              {value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  )
+}
+
+/** Where a perp transaction's account lives: the wallet that signed it. */
+function AccountLink({ account }: { account: string | null }) {
+  return (
+    <a
+      href={account ? `/dashboard/perps/${account}` : '/dashboard/perps'}
+      className="mt-4 flex items-center justify-between gap-3 rounded-[10px] border border-line bg-surface px-4 py-3 hover:border-fg-3"
+    >
+      <span className="min-w-0">
+        <span className="block font-mono text-[13px] font-semibold">
+          Phoenix account
+        </span>
+        <span className="block truncate font-mono text-[11.5px] text-fg-3">
+          {account ? shortAddress(account) : 'Your LanaTools wallet'}
+        </span>
+      </span>
+      <span className="font-mono text-[12px] font-semibold">
+        Open account →
+      </span>
+    </a>
   )
 }
 

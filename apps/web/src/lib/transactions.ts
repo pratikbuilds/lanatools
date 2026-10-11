@@ -14,6 +14,7 @@ import type {
 import { authorized } from './mcp-clients'
 import type { GetAccessToken } from './mcp-clients'
 import { formatUnits } from './solana'
+import { tradeAmounts, tradeDetail, tradeOf, tradeTitle } from './trades'
 
 export type TransactionKind = NonNullable<TransactionsQuery['kind']>
 
@@ -41,9 +42,17 @@ export const STATUS_LABELS: Record<TransactionStatusGroup, string> = {
   failed: 'Failed',
   expired: 'Expired',
 }
-export const KINDS: TransactionKind[] = ['agent', 'withdrawal', 'deposit']
+export const KINDS: TransactionKind[] = [
+  'agent',
+  'swap',
+  'perp',
+  'withdrawal',
+  'deposit',
+]
 export const KIND_LABELS: Record<TransactionKind, string> = {
   agent: 'Agent',
+  swap: 'Swaps',
+  perp: 'Perps',
   withdrawal: 'Withdrawals',
   deposit: 'Deposits',
 }
@@ -135,8 +144,13 @@ export async function getTransaction(
   return TransactionActivityItem.assert(await response.json())
 }
 
-/** The title a row shows: the review's for an agent, the asset's for the wallet. */
+/**
+ * The title a row shows: the trade for a swap or perp, the review's for
+ * another agent transaction, the asset's for the wallet.
+ */
 export function transactionTitle(item: TransactionActivityItem) {
+  const trade = tradeOf(item)
+  if (trade) return tradeTitle(trade)
   if (item.kind === 'agent') return item.review.title
   return `${item.kind === 'deposit' ? 'Deposit' : 'Withdrawal'} ${item.symbol ?? shortAddress(item.mint)}`
 }
@@ -171,6 +185,7 @@ export function transactionAmounts(item: TransactionActivityItem): {
       ? { out: null, in: amount }
       : { out: amount, in: null }
   }
+  if (item.review.trade) return tradeAmounts(item.review.trade)
   return {
     out: field(item, ['You pay', 'Amount']),
     in: field(item, ['Estimated receive', 'You receive']),
@@ -185,6 +200,12 @@ export function transactionDetail(item: TransactionActivityItem) {
     return { text: `From ${shortAddress(item.counterparty)}`, bad: false }
   if (item.kind === 'withdrawal')
     return { text: `To ${shortAddress(item.counterparty)}`, bad: false }
+  const trade = tradeOf(item)
+  if (trade)
+    return {
+      text: tradeDetail(trade, statusGroup(item) === 'confirmed'),
+      bad: false,
+    }
   if (item.counterparty)
     return { text: `To ${shortAddress(item.counterparty)}`, bad: false }
   const received = transactionAmounts(item).in

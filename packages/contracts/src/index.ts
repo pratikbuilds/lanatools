@@ -523,7 +523,8 @@ export const TransactionActivityItem =
 export type TransactionActivityItem = typeof TransactionActivityItem.infer
 
 export const TransactionsQuery = type({
-  'kind?': "'agent' | 'withdrawal' | 'deposit'",
+  /** `swap` and `perp` narrow agent transactions to Jupiter or Phoenix tools. */
+  'kind?': "'agent' | 'swap' | 'perp' | 'withdrawal' | 'deposit'",
   'status?': TransactionStatusGroup,
   'client?': 'string',
   'delivery?': TransactionDelivery,
