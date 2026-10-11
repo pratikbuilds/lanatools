@@ -568,3 +568,93 @@ export const TransactionsSync = type({
   more: 'boolean',
 })
 export type TransactionsSync = typeof TransactionsSync.infer
+
+/**
+ * A wallet's Phoenix perps account, as the dashboard shows it. Money is
+ * decimal USD strings, sizes decimal tokens. Liquidation prices are
+ * Phoenix's own; null when Phoenix has none for the position.
+ */
+export const PhoenixPosition = type({
+  /** Market, e.g. "SOL". */
+  symbol: 'string',
+  subaccount: 'number',
+  marginMode: "'cross' | 'isolated'",
+  side: "'long' | 'short'",
+  size: 'string',
+  entryPrice: 'string | null',
+  markPrice: 'string | null',
+  valueUsd: 'string | null',
+  unrealizedPnlUsd: 'string | null',
+  liquidationPrice: 'string | null',
+  fundingUsdc: 'string',
+})
+export type PhoenixPosition = typeof PhoenixPosition.infer
+
+export const PhoenixOrder = type({
+  symbol: 'string',
+  subaccount: 'number',
+  orderId: 'string',
+  side: "'buy' | 'sell'",
+  type: 'string',
+  price: 'string',
+  size: 'string',
+  reduceOnly: 'boolean',
+})
+export type PhoenixOrder = typeof PhoenixOrder.infer
+
+export const PhoenixAccount = type({
+  wallet: 'string',
+  /** False when the wallet has never opened a Phoenix account. */
+  exists: 'boolean',
+  /** Collateral plus unrealized PnL, as Phoenix margins it. */
+  accountValueUsd: 'string',
+  collateralUsdc: 'string',
+  unrealizedPnlUsd: 'string',
+  maintenanceMarginUsd: 'string',
+  /** Position value over account value; null with nothing in the account. */
+  leverage: 'string | null',
+  /** Phoenix's word for the account's margin health, e.g. "healthy". */
+  riskState: 'string | null',
+  positions: PhoenixPosition.array(),
+  orders: PhoenixOrder.array(),
+})
+export type PhoenixAccount = typeof PhoenixAccount.infer
+
+export const PHOENIX_CANDLE_RANGES = ['1D', '1W', '1M'] as const
+export const PhoenixCandleRange = type.enumerated(...PHOENIX_CANDLE_RANGES)
+export type PhoenixCandleRange = typeof PhoenixCandleRange.infer
+
+/** OHLC candles for one market; `time` is Unix seconds. */
+export const PhoenixCandles = type({
+  symbol: 'string',
+  range: PhoenixCandleRange,
+  candles: type({
+    time: 'number',
+    open: 'number',
+    high: 'number',
+    low: 'number',
+    close: 'number',
+  }).array(),
+})
+export type PhoenixCandles = typeof PhoenixCandles.infer
+
+/**
+ * A wallet's Phoenix fills, newest first. `placedBy` names the signed-in
+ * user's client when one of their LanaTools transactions placed it.
+ */
+export const PhoenixFills = type({
+  fills: type({
+    /** Unix milliseconds. */
+    time: 'number',
+    symbol: 'string',
+    side: "'buy' | 'sell'",
+    size: 'string',
+    price: 'string',
+    feeUsdc: 'string',
+    realizedPnlUsdc: 'string',
+    signature: 'string | null',
+    placedBy: 'string | null',
+  }).array(),
+  nextCursor: 'string | null',
+})
+export type PhoenixFills = typeof PhoenixFills.infer

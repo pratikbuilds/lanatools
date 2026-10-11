@@ -69,10 +69,10 @@ P1 to P5 below are waiting for sign-off. Builds on
 | D9  | Account page address | `/dashboard/perps/$address`. `/dashboard/perps` redirects to the embedded wallet. Any valid Solana address is accepted. Phoenix data is public, so there is no ownership check. |
 | D10 | Navigation | Not in the nav. Reached from perp rows and drawers ("Open account →"). |
 | D11 | Account API | Privy-authed `GET /api/phoenix/account/:address` (positions, orders, collateral, liquidation prices, leverage, risk state), `GET /api/phoenix/candles/:symbol?range=1D\|1W\|1M`, `GET /api/phoenix/fills/:address?cursor`. Upstream errors become 502s without leaking URLs, as `wallet-balances.ts` does. |
-| D12 | Liquidation and leverage | Computed on the API with Rise's margin calculator, in a new `packages/phoenix/src/trade/margin.ts` (the trade entry already loads Rise). SOL spot collateral included. Shown with "Estimate" in its tooltip. |
+| D12 | Liquidation and leverage | Read from Phoenix's own trader view, `GET /v1/view/trader/<trader account>`, which returns each position's liquidation price and the account's margin and risk state (found while building P4; it replaces running Rise's margin calculator ourselves, and matches Phoenix's app by construction). The trader account is derived per subaccount (seeds `trader`, wallet, 0, subaccount), so isolated positions get theirs too. Phoenix's `-1` means no liquidation price and shows as none. Leverage is Σ position value ÷ account value. |
 | D13 | Chart | TradingView Lightweight Charts 5.2.1 (Apache-2.0), with the TradingView attribution logo left on as its licence asks. Candles: 1D = 96 × 15m, 1W = 168 × 1h, 1M = 180 × 4h. Entry, liquidation and order price lines. Drag, wheel and pinch zoom; a "Show/Hide liquidation" toggle widens the fitted range to reach it. Loaded only on the perps route. |
 | D14 | Refresh | Account every 15 s while the page is visible (as the Transactions list). Candles on range change and every 60 s. Please confirm these numbers. |
-| D15 | "Placed by" on fills and orders | A fill whose signature matches one of this user's `transaction_request` rows shows that client's name. Otherwise "Outside LanaTools". Only the signed-in user's own rows are matched. |
+| D15 | "Placed by" on fills | A fill whose signature matches one of this user's `transaction_request` rows shows that client's name; otherwise "Outside LanaTools". Only the signed-in user's own rows are matched. Resting orders carry no signature in Phoenix's data, so the orders table has no "Placed by". |
 | D16 | Network | Phoenix is mainnet only, as the read tools. A devnet wallet usually has no Phoenix account and gets the empty state. E2E tests use fixtures. |
 | D17 | Out of scope | Placing, cancelling or closing from the dashboard (agents trade), isolated margin, TP/SL, PnL history chart, funding and deposit history tabs, live WebSocket prices. |
 
@@ -121,16 +121,17 @@ your go.
 
 ### P4. Phoenix account API (D11, D12, D15)
 
-- `packages/phoenix/src/trade/margin.ts`: market params adapter, spot
-  collateral, liquidation prices and leverage for a wallet.
+- `packages/phoenix/src/account-view.ts`: `readPhoenixAccount`, from the
+  trader state, Phoenix's trader view per active subaccount, market configs
+  and marks.
 - `apps/api/src/routes/phoenix.ts`: the three routes; fills joined to the
   user's transaction signatures.
 - Contracts for the three responses.
-- **Tests:** margin maths against Rise fixtures (`test-fixtures/` in the
-  package) and a recorded trader state; route tests with fakes.
-- **Gate:** checks pass, plus a live mainnet read of one wallet with open
-  positions whose liquidation price matches Phoenix's own app. I need an
-  address for this; yours if you have a position, or one you pick.
+- **Tests:** the reader against responses recorded from a live wallet;
+  fills, placed-by matching and candles with fakes.
+- **Gate:** checks pass, plus live mainnet reads: wallet
+  `TEY5zgBjT247DQ5n9EiHrLmHW6TZmxRFRqLqGf4FQNQ` (one SOL short) and a wallet
+  with 82 cross positions, and all three candle ranges.
 
 ### P5. Phoenix account page (D9, D10, D13, D14)
 
@@ -149,5 +150,4 @@ your go.
 1. D4 and D5 add one read per confirmed swap or perp order. Fine, or show
    estimates only?
 2. D14 refresh intervals (15 s account, 60 s candles).
-3. P4 gate: which wallet with an open Phoenix position should I check
-   against?
+3. ~~P4 gate wallet~~: found public mainnet wallets with open positions.
