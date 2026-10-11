@@ -7,7 +7,8 @@ and account grants. MCP clients never receive a wallet key or Privy token.
 
 The Worker also serves a small Privy consent page at `/connect` on the same
 origin as OAuth. It cannot create a grant without the browser-bound OAuth
-consent cookie and a verified Privy access token.
+consent cookie and a verified Privy access token. LanaTools' own apps approve
+through `/first-party/authorize` instead (below).
 
 ## Tool families and consent
 
@@ -233,6 +234,36 @@ removes the wallet's signers; only the user sets it up again.
 The API signs through an in-repo Kit signer over `@privy-io/node`
 (`privy-signer.ts`). `@solana/keychain-privy` cannot run on Workers: its HTTP
 helper passes `redirect: 'error'` to `fetch`, which Workers rejects.
+
+## First-party apps
+
+LanaTools' own native apps, such as LanaTools Mobile, hold a Privy session but
+cannot run the browser-bound consent. They call
+`POST /first-party/authorize` with `Authorization: Bearer <Privy access token>`
+and a JSON body: `client_id`, `redirect_uri`, `code_challenge`,
+`code_challenge_method` (`S256` only), `state`, `resource`, `decision`
+(`approve` or `deny`), `scopes` and, with Pay, `limitUsd`.
+
+- Only client IDs in the comma-separated `FIRST_PARTY_CLIENT_IDS` variable are
+  accepted (403 otherwise). Every other client uses the consent page.
+- The OAuth parameters get the same checks as `/authorize`, and the tool
+  families and limit the same checks as the consent page.
+- An approval returns `200 { code, state }`. The code comes back in the body,
+  not through a redirect, so no other app can catch it; exchange it at
+  `/token` as usual. A deny returns 403 `access_denied` and writes nothing.
+  A bad request is 400, and any failure to verify the Privy token is 401,
+  including a Privy outage. Other unexpected failures are 500.
+- All installs share one client ID, so each approval signs the user's previous
+  device out of that client, even one that then fails with 500. Treat
+  `invalid_grant` on refresh as signed out; do not approve again on your own,
+  or two devices keep signing each other out.
+- An approval replaces the connection's tool families and limit, so send the
+  user's current choice.
+
+Register the app once per environment through `/register` as a public client
+(`token_endpoint_auth_method: "none"`) with its custom-scheme redirect, then
+add its client ID to `FIRST_PARTY_CLIENT_IDS` in `wrangler.jsonc`, or in
+`.dev.vars` locally.
 
 ## Connected apps and revocation
 

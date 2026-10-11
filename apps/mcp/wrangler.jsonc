@@ -32,6 +32,7 @@
   ],
   "vars": {
     "MCP_ORIGIN": "https://mcp.lanatools.sh",
+    "FIRST_PARTY_CLIENT_IDS": "",
   },
   "routes": [{ "pattern": "mcp.lanatools.sh", "custom_domain": true }],
 }

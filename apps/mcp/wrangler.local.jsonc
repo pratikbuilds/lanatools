@@ -24,5 +24,8 @@
   ],
   "vars": {
     "MCP_ORIGIN": "http://localhost:8788",
+    // To try LanaTools Mobile locally, register it on the local /register
+    // and set its client ID here or in .dev.vars.
+    "FIRST_PARTY_CLIENT_IDS": "",
   },
 }

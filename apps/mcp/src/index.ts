@@ -13,6 +13,8 @@ import { Identity } from './identity'
 import { ToolChoice, approveGrant, toolAccess } from './approve-grant'
 import type { GrantEnv } from './approve-grant'
 import { revokeClientTokens } from './revoke-tokens'
+import { authorizeFirstParty } from './first-party-authorize'
+import { json } from './json'
 
 type McpEnv = Env &
   GrantEnv & {
@@ -22,13 +24,6 @@ type McpEnv = Env &
 const OAuthContext = z.object({
   auth: z.object({ scope: z.array(z.string()) }),
 })
-
-function json(value: unknown, status = 200, extra?: Headers) {
-  const headers = new Headers(extra)
-  headers.set('Content-Type', 'application/json')
-  headers.set('Cache-Control', 'no-store')
-  return new Response(JSON.stringify(value), { status, headers })
-}
 
 const defaultHandler = {
   async fetch(request: Request, env: McpEnv) {
@@ -125,6 +120,9 @@ const defaultHandler = {
         }
       }
     }
+
+    if (url.pathname === '/first-party/authorize' && request.method === 'POST')
+      return authorizeFirstParty(request, env)
 
     return new Response('Not found', { status: 404 })
   },
