@@ -512,12 +512,13 @@ export async function sendWithdrawal(
         .getSignatureStatuses([toSignature(signature)])
         .send(send())
       const status = statuses[0]
-      if (status?.err) throw new TransferError('The transfer failed on chain')
       if (
         status?.confirmationStatus === 'confirmed' ||
         status?.confirmationStatus === 'finalized'
-      )
+      ) {
+        if (status.err) throw new TransferError('The transfer failed on chain')
         return { signature, confirmed: true }
+      }
       const { value: valid } = await rpc
         .isBlockhashValid(blockhash, { commitment: 'confirmed' })
         .send(send())

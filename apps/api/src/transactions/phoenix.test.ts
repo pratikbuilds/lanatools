@@ -505,7 +505,7 @@ for (const activation of [false, true])
     }
   })
 
-test('an expired Phoenix order is never sent', async () => {
+test('an expired Phoenix order is never sent and waits for chain expiry', async () => {
   const f = await fixture()
   try {
     const result = await createTransactionRequest(
@@ -534,7 +534,7 @@ test('an expired Phoenix order is never sent', async () => {
         { transaction: await signed(result.result.transaction.transaction) },
         { rpc: f.rpc, observation },
       ),
-    ).toMatchObject({ ok: true, result: { status: 'failed' } })
+    ).toMatchObject({ ok: true, result: { status: 'unknown' } })
     expect(f.sent()).toBe(0)
   } finally {
     f.fetch.mockRestore()

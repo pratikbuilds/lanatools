@@ -1039,8 +1039,12 @@ export async function sendTransactionLink(
                 : 'submission_unknown',
           }),
         )
-        // A checked refusal is definitive only on the first submission attempt.
-        if (error instanceof TransactionNotSubmittedError && acceptedHere) {
+        // Another retry may broadcast even when this attempt is refused.
+        if (
+          error instanceof TransactionNotSubmittedError &&
+          acceptedHere &&
+          tool.resubmit === false
+        ) {
           await persistObservation(
             env.DB,
             id,

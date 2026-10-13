@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
+import { TransactionNotSubmittedError } from '@lanatools/toolkit/transactions'
 import { drizzle } from 'drizzle-orm/d1'
 import type { D1Database } from '@cloudflare/workers-types'
 import {
@@ -1381,3 +1382,79 @@ test('a concurrent expiry observation definitively rejects an old pending send',
   expect(delayed.calls).not.toContain('send')
   expect((await row(id))?.signature).toBeNull()
 })
+
+test('a first relay refusal cannot override a concurrent successful submission', async () => {
+  const { id } = await create()
+  let landed = false
+  let signature = ''
+  let firstEntered!: () => void
+  const entered = new Promise<void>((resolve) => {
+    firstEntered = resolve
+  })
+  let refuseFirst!: () => void
+  const refusal = new Promise<void>((resolve) => {
+    refuseFirst = resolve
+  })
+  let finishSecond!: () => void
+  const finish = new Promise<void>((resolve) => {
+    finishSecond = resolve
+  })
+  let secondEntered!: () => void
+  const second = new Promise<void>((resolve) => {
+    secondEntered = resolve
+  })
+  const fake = mockRpc({
+    status: async () =>
+      landed
+        ? { err: null, slot: 123n, confirmationStatus: 'confirmed' }
+        : null,
+  })
+  let sends = 0
+  const tools = {
+    solana_transfer: {
+      ...solTransfer,
+      relay: () => async () => {
+        if (++sends === 1) {
+          firstEntered()
+          await refusal
+          throw new TransactionNotSubmittedError(
+            'preflight refused this attempt',
+          )
+        }
+        secondEntered()
+        await finish
+        landed = true
+        return signature
+      },
+    },
+  }
+  const candidate = await prepare(id, fake.rpc)
+  const wire = await signed(candidate)
+  signature = await verifySignedTransaction(wire, candidate)
+  const firstRequest = sendTransactionLink(
+    env(),
+    id,
+    { transaction: wire },
+    { rpc: fake.rpc, tools, observation },
+  )
+  await entered
+  const secondRequest = sendTransactionLink(
+    env(),
+    id,
+    { transaction: wire },
+    { rpc: fake.rpc, tools, observation },
+  )
+  await second
+  refuseFirst()
+  await firstRequest
+  finishSecond()
+  await secondRequest
+  const recovered = await observeTransactionLink(env(), id, {
+    rpc: fake.rpc,
+    tools,
+    observation,
+  })
+  expect(sends).toBe(2)
+  expect(landed).toBe(true)
+  expect(recovered?.status).toBe('confirmed')
+}, 20_000)

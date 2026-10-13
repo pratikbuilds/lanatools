@@ -134,17 +134,18 @@ export async function findPayment(
           maxSupportedTransactionVersion: 0,
         })
         .send(send())
+      if (!transaction?.meta) return { status: 'pending' }
       if (
-        !transaction?.transaction.signatures.some(
+        !transaction.transaction.signatures.some(
           (signature) => signature === payerSignature,
         )
       )
         continue
-      if (transaction.meta?.err) return { status: 'unpaid' }
       if (entry.confirmationStatus !== 'finalized') return { status: 'pending' }
+      if (transaction.meta.err) return { status: 'unpaid' }
       const spent =
-        balance(transaction.meta?.preTokenBalances, wallet, mint) -
-        balance(transaction.meta?.postTokenBalances, wallet, mint)
+        balance(transaction.meta.preTokenBalances, wallet, mint) -
+        balance(transaction.meta.postTokenBalances, wallet, mint)
       return spent > 0n
         ? { status: 'paid', signature: entry.signature, spentAtomic: spent }
         : { status: 'unpaid' }
