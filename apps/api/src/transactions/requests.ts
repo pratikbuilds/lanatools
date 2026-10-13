@@ -3,7 +3,7 @@ import {
   TransactionNotSubmittedError,
   TransactionPreparationError,
 } from '@lanatools/toolkit/transactions'
-import { isAddress } from '@solana/kit'
+import { isAddress, isSolanaError } from '@solana/kit'
 import { readSolanaNetwork } from '@lanatools/contracts/networks'
 import { z } from 'zod'
 import {
@@ -555,6 +555,7 @@ async function persistObservation(
   signature: string,
   observed: ChainObservation,
   now: number,
+  errorCode?: string,
 ) {
   await drizzle(database)
     .update(transactionRequest)
@@ -562,18 +563,23 @@ async function persistObservation(
       status: observed.status,
       receiptJson: observed.receipt ? JSON.stringify(observed.receipt) : null,
       errorCode:
-        observed.status === 'failed'
+        errorCode ??
+        (observed.status === 'failed'
           ? 'chain_failed'
-          : observed.status === 'unknown'
-            ? 'confirmation_unknown'
-            : null,
+          : observed.status === 'expired'
+            ? 'blockhash_expired'
+            : observed.status === 'unknown'
+              ? 'confirmation_unknown'
+              : null),
       updatedAt: now,
     })
     .where(
       and(
         eq(transactionRequest.id, id),
         eq(transactionRequest.signature, signature),
-        sql`${transactionRequest.status} in ('submitting', 'unknown')`,
+        observed.status === 'confirmed' || observed.status === 'failed'
+          ? sql`${transactionRequest.status} in ('submitting', 'unknown', 'expired')`
+          : sql`${transactionRequest.status} in ('submitting', 'unknown')`,
       ),
     )
     .run()
@@ -590,7 +596,11 @@ export async function observeTransactionLink(
   if (!link) return null
   if (link.network !== configuration(env).network)
     throw new Error('Transaction network mismatch')
-  if (!['ready', 'submitting', 'unknown'].includes(link.status)) return link
+  if (
+    !['ready', 'submitting', 'unknown'].includes(link.status) &&
+    !(link.status === 'expired' && link.signature)
+  )
+    return link
   const rpc = options.rpc ?? transactionRpc(env.SOLANA_RPC_URL)
   // A failing provider must not make a persisted signature disappear from GET.
   try {
@@ -599,10 +609,17 @@ export async function observeTransactionLink(
     return link
   }
   if (link.signature) {
+    const row = await storedLink(env.DB, id)
+    const candidate = row?.candidateJson
+      ? PreparedTransaction.assert(JSON.parse(row.candidateJson))
+      : null
     const observed = await observeSubmission(rpc, link.signature, {
       attempts: 1,
       intervalMs: 0,
       ...options.observation,
+      ...(candidate
+        ? { lastValidBlockHeight: candidate.lastValidBlockHeight }
+        : {}),
     })
     try {
       await persistObservation(env.DB, id, link.signature, observed, now)
@@ -841,7 +858,11 @@ export async function sendTransactionLink(
       )
       return result ? { ok: true as const, result } : failed('not_found')
     }
-    if (row.status === 'confirmed' || row.status === 'failed') return snapshot()
+    if (
+      ['confirmed', 'failed', 'expired'].includes(row.status) &&
+      row.signature
+    )
+      return snapshot()
     if (!row.signature) {
       const link = await readTransactionLink(
         env.DB,
@@ -866,7 +887,10 @@ export async function sendTransactionLink(
     const db = drizzle(env.DB)
     let acceptedHere = false
     if (row.signature) {
-      const observed = await observeSubmission(rpc, extracted, { attempts: 1 })
+      const observed = await observeSubmission(rpc, extracted, {
+        attempts: 1,
+        lastValidBlockHeight: candidate.lastValidBlockHeight,
+      })
       if (observed.status !== 'unknown') {
         await persistObservation(
           env.DB,
@@ -919,11 +943,10 @@ export async function sendTransactionLink(
             'conflict',
             'This link already has an accepted transaction.',
           )
-        const observed = await observeSubmission(
-          rpc,
-          extracted,
-          options.observation,
-        )
+        const observed = await observeSubmission(rpc, extracted, {
+          ...options.observation,
+          lastValidBlockHeight: candidate.lastValidBlockHeight,
+        })
         await persistObservation(
           env.DB,
           id,
@@ -1003,6 +1026,19 @@ export async function sendTransactionLink(
         if (sent !== extracted)
           throw new Error('Submission returned a different signature')
       } catch (error) {
+        console.warn(
+          JSON.stringify({
+            event: 'transaction_relay_error',
+            requestId: id,
+            tool: row.toolName,
+            signature: extracted,
+            code: isSolanaError(error)
+              ? error.context.__code
+              : error instanceof TransactionNotSubmittedError
+                ? 'submission_refused'
+                : 'submission_unknown',
+          }),
+        )
         // A checked refusal is definitive only on the first submission attempt.
         if (error instanceof TransactionNotSubmittedError && acceptedHere) {
           await persistObservation(
@@ -1011,17 +1047,17 @@ export async function sendTransactionLink(
             extracted,
             { status: 'failed', receipt: null },
             options.now ?? Date.now(),
+            'submission_refused',
           )
           return snapshot()
         }
         // A lost response may follow a successful broadcast. Observe the signature.
       }
     }
-    const observed = await observeSubmission(
-      rpc,
-      extracted,
-      options.observation,
-    )
+    const observed = await observeSubmission(rpc, extracted, {
+      ...options.observation,
+      lastValidBlockHeight: candidate.lastValidBlockHeight,
+    })
     await persistObservation(
       env.DB,
       id,

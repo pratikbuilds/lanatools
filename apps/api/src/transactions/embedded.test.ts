@@ -426,7 +426,7 @@ test.each(['removed access', 'expired blockhash'] as const)(
     expect(retry).toMatchObject(
       reason === 'removed access'
         ? { ok: false, error: { code: 'embedded_unavailable' } }
-        : { ok: true, result: { status: 'unknown' } },
+        : { ok: true, result: { status: 'expired' } },
     )
     expect(fake.sent).toHaveLength(1)
     expect(sign).toHaveBeenCalledTimes(1)

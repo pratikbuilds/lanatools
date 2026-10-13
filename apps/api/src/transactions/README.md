@@ -88,6 +88,14 @@ The link service preserves its original deadline, one accepted signature, exact
 message/signature checks, identical-payload retries and renewal only after
 finalized expiry. Provider acknowledgments alone never establish confirmation.
 
+SOL/token transfers and Phoenix RPC transactions use the RPC's default forwarding
+retries. Ordinary Phoenix retries resend the same signed bytes; referral activation
+only observes its original submission. Phoenix uses a 100,000 micro-lamport/CU
+priority price with its simulated compute limit. A missing signature becomes
+`expired` only after finalized block-height expiry and a fresh history lookup;
+read failures remain `unknown`. Expiry never signs a replacement, and later chain
+evidence can still recover the receipt.
+
 Request keys remain scoped to the user and client across reconnections. Reusing
 a key from a previous grant returns a conflict requesting a new key; it never
 returns or reassigns the old grant's link. Retries under the same grant still

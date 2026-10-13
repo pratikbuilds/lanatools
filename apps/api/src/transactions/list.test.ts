@@ -400,45 +400,48 @@ test('one transaction can be read by its owner only', async () => {
   expect(await readTransaction(env(), user, 'missing')).toBeNull()
 })
 
-test('a sent request is checked against the chain when it is read', async () => {
-  const grant = await connect('client-a')
-  const id = await request(grant, {
-    status: 'submitting',
-    signature: SIGNATURE,
-    account: WALLET,
-    candidateJson: JSON.stringify({
-      transaction: 'c2lnbmVk',
+test.each(['submitting', 'expired'] as const)(
+  'a %s request recovers chain evidence when read',
+  async (status) => {
+    const grant = await connect('client-a')
+    const id = await request(grant, {
+      status,
+      signature: SIGNATURE,
       account: WALLET,
-      network: 'devnet',
-      review: {
-        title: 'Send SOL',
-        description: 'd',
-        actionLabel: 'Send',
-        fields: [],
-      },
-      blockhash: 'b',
-      lastValidBlockHeight: '1',
-    }),
-  })
-  const rpc: TransactionRpc = {
-    accounts: {} as TransactionRpc['accounts'],
-    genesisHash: async () => SOLANA_NETWORKS.devnet.genesisHash,
-    latestBlockhash: () => Promise.reject(new Error('unused')),
-    blockHeight: async () => 1n,
-    send: async () => SIGNATURE,
-    status: async () => ({
-      err: null,
-      slot: 42n,
-      confirmationStatus: 'finalized',
-    }),
-  }
-  const item = await readTransaction(env(), user, id, { now: NOON, rpc })
-  expect(item).toMatchObject({
-    kind: 'agent',
-    status: 'confirmed',
-    receipt: { signature: SIGNATURE, slot: '42', commitment: 'finalized' },
-  })
-})
+      candidateJson: JSON.stringify({
+        transaction: 'c2lnbmVk',
+        account: WALLET,
+        network: 'devnet',
+        review: {
+          title: 'Send SOL',
+          description: 'd',
+          actionLabel: 'Send',
+          fields: [],
+        },
+        blockhash: 'b',
+        lastValidBlockHeight: '1',
+      }),
+    })
+    const rpc: TransactionRpc = {
+      accounts: {} as TransactionRpc['accounts'],
+      genesisHash: async () => SOLANA_NETWORKS.devnet.genesisHash,
+      latestBlockhash: () => Promise.reject(new Error('unused')),
+      blockHeight: async () => 1n,
+      send: async () => SIGNATURE,
+      status: async () => ({
+        err: null,
+        slot: 42n,
+        confirmationStatus: 'finalized',
+      }),
+    }
+    const item = await readTransaction(env(), user, id, { now: NOON, rpc })
+    expect(item).toMatchObject({
+      kind: 'agent',
+      status: 'confirmed',
+      receipt: { signature: SIGNATURE, slot: '42', commitment: 'finalized' },
+    })
+  },
+)
 
 test('a pending withdrawal asks the chain once when it is read', async () => {
   const id = await transfer({

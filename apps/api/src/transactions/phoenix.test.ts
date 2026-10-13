@@ -1,10 +1,11 @@
-import { afterAll, beforeAll, expect, spyOn, test } from 'bun:test'
+import { afterAll, beforeAll, expect, mock, spyOn, test } from 'bun:test'
 import type { D1Database } from '@cloudflare/workers-types'
 import {
   generateKeyPairSigner,
   getBase58Decoder,
   getBase64EncodedWireTransaction,
   getBase64Encoder,
+  getCompiledTransactionMessageDecoder,
   getTransactionDecoder,
   partiallySignTransaction,
   signBytes,
@@ -73,6 +74,8 @@ async function fixture({
   const usdc = await usdcAccountAddress(wallet.address)
   let slot = 1000n
   let sent = 0
+  let landed = false
+  const sentWires: string[] = []
   const message = `phoenix-wallet-login-v1\nwallet:${wallet.address}\nnonce:nonce-1\nexpires_at:2099-01-01T00:00:00Z`
   const phoenix = fakePhoenix({
     '/v1/view/exchange/keys': KEYS,
@@ -92,6 +95,7 @@ async function fixture({
     '/v1/referral/activate-tx': () => {
       sent++
       if (uncertain) throw new Error('response lost after submission')
+      landed = true
       return { status: 'submitted', trader_pda: trader }
     },
     [`/v1/trader/state/${wallet.address}`]: {
@@ -152,9 +156,12 @@ async function fixture({
         logs: [],
       },
     }),
-    sendTransaction: (wire) => {
+    sendTransaction: (wire, options) => {
       sent++
+      sentWires.push(String(wire))
+      expect(options).not.toHaveProperty('maxRetries')
       if (uncertain) throw new Error('response lost after submission')
+      landed = true
       const transaction = getTransactionDecoder().decode(
         getBase64Encoder().encode(String(wire)),
       )
@@ -173,7 +180,7 @@ async function fixture({
       throw new Error('Phoenix owns its relay')
     },
     status: async () =>
-      sent && !uncertain
+      landed
         ? { err: null, slot: 1200n, confirmationStatus: 'confirmed' }
         : null,
   }
@@ -205,6 +212,10 @@ async function fixture({
     message,
     fetch,
     sent: () => sent,
+    sentWires,
+    recover: () => {
+      uncertain = false
+    },
     expire: () => {
       slot = 10_000n
     },
@@ -430,7 +441,7 @@ test('trade tools preserve validation, scopes, mainnet and signing boundaries', 
 })
 
 for (const activation of [false, true])
-  test(`uncertain Phoenix ${activation ? 'activation' : 'trade'} retries observe without resubmitting`, async () => {
+  test(`uncertain Phoenix ${activation ? 'activation only observes' : 'trade resends identical bytes'} on retry`, async () => {
     const f = await fixture({ activation, uncertain: true })
     try {
       const result = await createTransactionRequest(
@@ -487,7 +498,8 @@ for (const activation of [false, true])
           options,
         ),
       ).toMatchObject({ ok: true, result: { status: 'unknown' } })
-      expect(f.sent()).toBe(1)
+      expect(f.sent()).toBe(activation ? 1 : 3)
+      if (!activation) expect(new Set(f.sentWires).size).toBe(1)
     } finally {
       f.fetch.mockRestore()
     }
@@ -620,6 +632,71 @@ test('already activated accounts report no work without signing or sending', asy
       },
     })
     expect(f.sent()).toBe(0)
+  } finally {
+    f.fetch.mockRestore()
+  }
+})
+
+test('an embedded Phoenix deposit recovers by resending without signing again', async () => {
+  const f = await fixture({ uncertain: true })
+  try {
+    await drizzle(db).insert(paymentSigner).values({
+      privyUserId: f.identity.userId,
+      walletId: 'test-wallet',
+      walletAddress: wallet.address,
+      policyId: 'payment-policy',
+      transactionPolicyId: 'transaction-policy',
+      status: 'enabled',
+      updatedAt: Date.now(),
+    })
+    const embeddedSigner = mock(async (_wallet: unknown, wire: string) =>
+      signed(wire),
+    )
+    const options = { rpc: f.rpc, observation, embeddedSigner }
+    const input = {
+      amount: '10',
+      delivery: 'embedded',
+      idempotencyKey: crypto.randomUUID(),
+    }
+    const first = await createTransactionRequest(
+      env(),
+      f.identity,
+      'phoenix_deposit',
+      input,
+      options,
+    )
+    expect(first).toMatchObject({ ok: true, result: { status: 'unknown' } })
+    if (!first.ok) throw new Error(first.error.message)
+    f.recover()
+    const second = await createTransactionRequest(
+      env(),
+      f.identity,
+      'phoenix_deposit',
+      input,
+      options,
+    )
+    expect(second).toMatchObject({
+      ok: true,
+      result: { status: 'confirmed', signature: first.result.signature },
+    })
+    expect(embeddedSigner).toHaveBeenCalledTimes(1)
+    const unsigned = embeddedSigner.mock.calls[0]?.[1]
+    if (!unsigned) throw new Error('No transaction was signed')
+    const message = getCompiledTransactionMessageDecoder().decode(
+      getTransactionDecoder().decode(getBase64Encoder().encode(unsigned))
+        .messageBytes,
+    )
+    if (message.version !== 0) throw new Error('Expected a v0 transaction')
+    const price = message.instructions.find(
+      (instruction) =>
+        message.staticAccounts[instruction.programAddressIndex] ===
+          'ComputeBudget111111111111111111111111111111' &&
+        instruction.data?.[0] === 3,
+    )
+    if (!price?.data) throw new Error('Missing priority fee')
+    expect(Buffer.from(price.data).readBigUInt64LE(1)).toBe(100_000n)
+    expect(f.sent()).toBe(2)
+    expect(f.sentWires[1]).toBe(f.sentWires[0])
   } finally {
     f.fetch.mockRestore()
   }

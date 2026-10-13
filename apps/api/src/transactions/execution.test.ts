@@ -1003,9 +1003,9 @@ test('expiry rejection cannot tell the browser to discard bytes accepted by a co
   release()
   expect(await expiredSend).toMatchObject({
     ok: true,
-    result: { status: 'unknown', signature },
+    result: { status: 'expired', signature },
   })
-  expect(await row(id)).toMatchObject({ signature, status: 'unknown' })
+  expect(await row(id)).toMatchObject({ signature, status: 'expired' })
   expect(delayed.calls).not.toContain('send')
 })
 
@@ -1090,7 +1090,11 @@ test('accepted signature survives blockhash expiry and closure; retries observe 
       ),
     ).toMatchObject({
       ok: true,
-      result: { status: 'unknown', signature: sig, receipt: null },
+      result: {
+        status: closure === 'height' ? 'expired' : 'unknown',
+        signature: sig,
+        receipt: null,
+      },
     })
     expect(fake.calls.filter((call) => call === 'send')).toHaveLength(sends)
     fake.rpc.status = async () => ({
