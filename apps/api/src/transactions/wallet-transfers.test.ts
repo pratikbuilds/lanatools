@@ -164,6 +164,23 @@ const rows = () =>
     .where(eq(walletTransfer.privyUserId, user))
     .orderBy(walletTransfer.createdAt)
 
+test('missing transaction details retry the page without duplicating earlier inserts', async () => {
+  const history: Parameters<typeof fakeChain>[0] = [
+    { entry: entry('readable'), tx: solTransfer(FRIEND, WALLET, 1n) },
+    { entry: entry('delayed'), tx: null },
+  ]
+  const { rpc, calls } = fakeChain(history)
+  const sync = () =>
+    syncWalletTransfers(db, { userId: user, network: 'devnet', rpc })
+  await expect(sync()).rejects.toThrow('not available yet')
+  expect(await rows()).toHaveLength(1)
+  history[1]!.tx = solTransfer(FRIEND, WALLET, 2n)
+  expect(await sync()).toEqual({ inserted: 1, settled: 0, more: false })
+  expect(await rows()).toHaveLength(2)
+  expect(calls.filter((call) => call === 'transaction delayed')).toHaveLength(2)
+  expect(await sync()).toEqual({ inserted: 0, settled: 0, more: false })
+})
+
 test('symbols are known for SOL and the network USDC only', () => {
   expect(assetSymbol('devnet', 'native')).toBe('SOL')
   expect(assetSymbol('devnet', USDC)).toBe('USDC')
@@ -557,15 +574,13 @@ test('a withdrawal confirmed before the first sync does not hide older deposits'
   ])
 })
 
-test('signature discovery is bounded and progresses past missing and unchanged transactions', async () => {
+test('signature discovery is bounded and progresses past unchanged transactions', async () => {
   const history = Array.from({ length: 2100 }, (_, i) => ({
     entry: entry(`history-${i}`, { slot: BigInt(3000 - i) }),
     tx:
       i === 26
         ? solTransfer(FRIEND, WALLET, 9n)
-        : i === 1
-          ? solTransfer(FRIEND, WALLET, 0n)
-          : null,
+        : solTransfer(FRIEND, WALLET, 0n),
   }))
   const { rpc, calls } = fakeChain(history)
   const sync = () =>

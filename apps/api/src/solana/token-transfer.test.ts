@@ -372,7 +372,7 @@ test('a transfer that fails, expires or cannot be sent is reported', async () =>
   const { rpc: failed } = fakeRpc({
     sendTransaction: () => 'sig',
     getSignatureStatuses: () => ({
-      value: [{ confirmationStatus: 'processed', err: { Custom: 1 } }],
+      value: [{ confirmationStatus: 'confirmed', err: { Custom: 1 } }],
     }),
   })
   await expect(sendWithdrawal(failed, withdrawal)).rejects.toThrow(
@@ -593,4 +593,30 @@ test('a restricted token is refused before the user signs or pays a fee', async 
   await expect(
     prepareTokenTransfer(rpc, { owner: OWNER, to: TO, mint: MINT, amount: 1n }),
   ).rejects.toThrow('token transfer restrictions')
+})
+
+test('a processed fork error waits for the confirmed withdrawal outcome', async () => {
+  const owner = await generateKeyPairSigner()
+  const { wire, signature } = await signedWithdrawal(owner)
+  const withdrawal = await readSignedWithdrawal(wire)
+  let polls = 0
+  const { rpc } = fakeRpc({
+    sendTransaction: () => signature,
+    getSignatureStatuses: () => ({
+      value: [
+        ++polls === 1
+          ? {
+              confirmationStatus: 'processed',
+              err: { InstructionError: [0, { Custom: 1 }] },
+            }
+          : { confirmationStatus: 'confirmed', err: null },
+      ],
+    }),
+    isBlockhashValid: () => ({ value: true }),
+  })
+  expect(await sendWithdrawal(rpc, withdrawal, { intervalMs: 0 })).toEqual({
+    signature,
+    confirmed: true,
+  })
+  expect(polls).toBe(2)
 })

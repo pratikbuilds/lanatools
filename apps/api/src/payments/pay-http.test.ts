@@ -8,6 +8,7 @@ import { listClients } from '../mcp-grants'
 import { recordSigning, reserve } from './ledger'
 import { testDatabase } from '../test-database'
 import { PayHttpError, payHttp } from './pay-http'
+import { findPayment } from './settlement'
 import type { ChainOutcome } from './settlement'
 import type { Payer, PayHttpDeps, PayHttpInput } from './pay-http'
 import type { PaymentNetwork } from '../solana/network'
@@ -823,3 +824,104 @@ test('concurrent calls closing the same ended reservation both go through', asyn
     'paid',
   ])
 })
+
+test('missing transaction details keep the reservation until a later read proves payment', async () => {
+  const grant = await connectClient(10_000)
+  await enableSigner()
+  let readable = false
+  const methods: string[] = []
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    async fetch(request) {
+      const call: { id: unknown; method: string } = await request.json()
+      methods.push(call.method)
+      let result: unknown
+      if (call.method === 'isBlockhashValid')
+        result = { context: { slot: 200 }, value: false }
+      else if (call.method === 'getSignaturesForAddress')
+        result = [
+          {
+            signature: SIGNATURE,
+            slot: 123,
+            blockTime: Math.floor(Date.now() / 1000),
+            err: null,
+            memo: null,
+            confirmationStatus: 'finalized',
+          },
+        ]
+      else if (call.method === 'getTransaction')
+        result = readable
+          ? {
+              slot: 123,
+              blockTime: Math.floor(Date.now() / 1000),
+              transaction: {
+                signatures: [SIGNATURE, PAYER_SIGNATURE],
+                message: {
+                  accountKeys: [],
+                  instructions: [],
+                  recentBlockhash: BLOCKHASH,
+                },
+              },
+              meta: {
+                err: null,
+                preTokenBalances: [
+                  {
+                    owner: WALLET,
+                    mint: DEVNET.usdcMint,
+                    uiTokenAmount: { amount: '20000' },
+                  },
+                ],
+                postTokenBalances: [
+                  {
+                    owner: WALLET,
+                    mint: DEVNET.usdcMint,
+                    uiTokenAmount: { amount: '10000' },
+                  },
+                ],
+              },
+            }
+          : null
+      else throw new Error(call.method)
+      return Response.json({ jsonrpc: '2.0', id: call.id, result })
+    },
+  })
+  try {
+    const lookup = (query: Parameters<typeof findPayment>[1]) =>
+      findPayment(server.url.toString(), query)
+    const lostResponse = fakePayer(() => {
+      throw new Error('merchant response lost')
+    })
+    let message = ''
+    try {
+      await payHttp(deps({ payer: () => lostResponse, lookup }), grant, input())
+    } catch (error) {
+      if (!(error instanceof Error)) throw error
+      message = error.message
+    }
+    const saved = (await activity())[0]!
+    readable = true
+    const chain = await lookup({
+      wallet: WALLET,
+      payerSignature: PAYER_SIGNATURE,
+      blockhash: BLOCKHASH,
+      mint: DEVNET.usdcMint,
+      since: Date.now(),
+    })
+    expect(methods).toContain('getTransaction')
+    expect(message).toContain('not known yet')
+    expect(saved.status).toBe('reserved')
+    expect(chain.status).toBe('paid')
+    expect(await totals()).toEqual({ spent: 0, reserved: 10_000 })
+    await drizzle(db)
+      .update(paymentActivity)
+      .set({ createdAt: Date.now() - 6 * 60_000 })
+      .where(eq(paymentActivity.id, saved.id))
+    await expect(payHttp(deps({ lookup }), grant, input())).rejects.toThrow(
+      'remaining limit',
+    )
+    expect(await totals()).toEqual({ spent: 10_000, reserved: 0 })
+  } finally {
+    await server.stop(true)
+  }
+}, 20_000)

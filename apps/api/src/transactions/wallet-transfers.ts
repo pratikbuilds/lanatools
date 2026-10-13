@@ -494,7 +494,9 @@ export async function syncWalletTransfers(
     }
     if (entry.err || owned.has(entry.signature)) continue
     const tx = await input.rpc.transaction(entry.signature)
-    if (!tx || tx.err) continue
+    // Keep the checkpoint until every transaction on this page is readable.
+    if (!tx) throw new Error('Transaction details are not available yet')
+    if (tx.err) continue
     for (const change of walletChanges(tx, wallet)) {
       const result = await db
         .insert(walletTransfer)
