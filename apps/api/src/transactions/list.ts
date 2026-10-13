@@ -356,7 +356,10 @@ export async function readTransaction(
       now,
       options.tools,
     )
-    if (['ready', 'submitting', 'unknown'].includes(link.status))
+    if (
+      ['ready', 'submitting', 'unknown'].includes(link.status) ||
+      (link.status === 'expired' && link.signature)
+    )
       await observeTransactionLink(env, id, options)
     let fresh = await agentQuery(env.DB).where(owned).get()
     // A confirmed trade learns what actually filled the first time it is
@@ -405,7 +408,7 @@ export async function readTransaction(
         intervalMs: 0,
         ...options.observation,
       })
-      if (observed.status !== 'unknown')
+      if (observed.status === 'confirmed' || observed.status === 'failed')
         await settleWalletTransfer(env.DB, {
           userId,
           signature: transfer.signature,

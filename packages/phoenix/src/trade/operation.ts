@@ -127,7 +127,7 @@ export function phoenixTransactionTool<TSchema extends z.ZodObject>(
     transaction: defineTransactionOperation({
       arguments: tool.arguments,
       supportedNetworks: ['mainnet'],
-      resubmit: false,
+      resubmit: !activation,
       describe: (input) => {
         const trade = intendedTrade(tool.name, input)
         return {
@@ -267,7 +267,6 @@ export function phoenixTransactionTool<TSchema extends z.ZodObject>(
                 encoding: 'base64',
                 preflightCommitment: 'confirmed',
                 skipPreflight: false,
-                maxRetries: 0n,
               })
               .send(rpcTimeout())
           } catch (error) {

@@ -58,7 +58,6 @@ export function transactionRpc(url: string): TransactionRpc {
           encoding: 'base64',
           preflightCommitment: 'confirmed',
           skipPreflight: false,
-          maxRetries: 2n,
         })
         .send(request()),
     status: async (value) =>
@@ -150,15 +149,19 @@ export function restoreSignedTransaction(
 
 export type ChainObservation =
   | { status: 'confirmed'; receipt: TransactionReceipt }
-  | { status: 'failed' | 'unknown'; receipt: null }
+  | { status: 'failed' | 'unknown' | 'expired'; receipt: null }
 
 /** Bounded observation; RPC acceptance (or a timeout) never means confirmation. */
 export async function observeSubmission(
   rpc: TransactionRpc,
   transactionSignature: string,
-  options: { attempts?: number; intervalMs?: number } = {},
+  options: {
+    attempts?: number
+    intervalMs?: number
+    lastValidBlockHeight?: string
+  } = {},
 ): Promise<ChainObservation> {
-  const { attempts = 4, intervalMs = 750 } = options
+  const { attempts = 8, intervalMs = 750, lastValidBlockHeight } = options
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
       const result = await rpc.status(transactionSignature)
@@ -177,10 +180,35 @@ export async function observeSubmission(
         }
       }
     } catch {
-      return { status: 'unknown', receipt: null }
+      // A transient read failure must not end the remaining observation window.
     }
     if (attempt + 1 < attempts)
       await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+  if (lastValidBlockHeight !== undefined) {
+    try {
+      if ((await rpc.blockHeight('finalized')) > BigInt(lastValidBlockHeight)) {
+        // Re-read history after expiry; a transaction may have landed in its last block.
+        const result = await rpc.status(transactionSignature)
+        if (result === null) return { status: 'expired', receipt: null }
+        if (
+          result.confirmationStatus === 'confirmed' ||
+          result.confirmationStatus === 'finalized'
+        )
+          return result.err !== null
+            ? { status: 'failed', receipt: null }
+            : {
+                status: 'confirmed',
+                receipt: {
+                  signature: transactionSignature,
+                  slot: result.slot.toString(),
+                  commitment: result.confirmationStatus,
+                },
+              }
+      }
+    } catch {
+      // Without a successful expiry and history read, the outcome stays unknown.
+    }
   }
   return { status: 'unknown', receipt: null }
 }

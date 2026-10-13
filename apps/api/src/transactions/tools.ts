@@ -33,7 +33,11 @@ export const transactionTools: Readonly<Record<string, TransactionTool>> = {
         operation: bindTransaction(tool.transaction, (context) => ({
           network: context.network,
           rpc: context.rpc.accounts,
-          fees: { computeUnitMargin: 0.2, microLamportsPerComputeUnit: 0n },
+          // shortcut: Fixed price, capped at 0.00014 SOL; estimate fees if congestion outbids it.
+          fees: {
+            computeUnitMargin: 0.2,
+            microLamportsPerComputeUnit: 100_000n,
+          },
         })),
       },
     ]),
