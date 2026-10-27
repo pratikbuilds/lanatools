@@ -6,11 +6,7 @@ import {
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ACTIVITY_CHART_DAYS, formatUsd } from '@lanatools/contracts'
-import type {
-  ActivityDays,
-  ActivityItem,
-  ActivityPage as Page,
-} from '@lanatools/contracts'
+import type { ActivityDays, ActivityItem } from '@lanatools/contracts'
 import { CopyStatus, copyLabel, useCopy } from '#/components/landing/copy-url'
 import {
   ACTIVITY_OUTCOMES,
@@ -26,15 +22,16 @@ import {
   listActivityDays,
 } from '#/lib/activity'
 import type { ActivityFilter } from '#/lib/activity'
+import { ActivityTotals, HeatmapSkeleton } from './activity-summary'
+import { CallSkeleton, CallTable, ROW } from './call-table'
 import { Drawer, DrawerFacts, DrawerHeader } from './drawer'
 import { useDashboardSession } from './session'
 import { useMcpClients } from './use-mcp-clients'
 import { PageHead, SectionHead } from './page-head'
-import { Skeleton } from './skeleton'
+
+export { ActivityTotals, HeatmapSkeleton, CallSkeleton }
 
 const DAY_MS = 86_400_000
-const ROW =
-  'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3.5 lg:grid-cols-[5.5rem_minmax(0,1.7fr)_minmax(0,1fr)_4rem_10rem] lg:gap-x-4 lg:px-4'
 const PROTOCOL_LABELS = { mpp: 'MPP', x402: 'x402' }
 
 function clientName(item: ActivityItem) {
@@ -217,36 +214,6 @@ export function ActivityPage({
   )
 }
 
-export function ActivityTotals({
-  totals,
-  pending = false,
-}: {
-  totals: Page['totals'] | undefined
-  pending?: boolean
-}) {
-  return (
-    <dl className="flex flex-wrap gap-x-14 gap-y-5">
-      {(
-        [
-          ['Spent', totals && formatUsd(totals.spentMicroUsd)],
-          ['Calls', totals?.calls.toLocaleString('en-US')],
-          [
-            'Estimated credits',
-            totals?.estimatedCredits.toLocaleString('en-US'),
-          ],
-        ] as const
-      ).map(([label, value]) => (
-        <div key={label}>
-          <dt className="d-label mb-2">{label}</dt>
-          <dd className="font-mono text-[1.75rem] leading-[1.1] font-semibold tracking-[-0.04em]">
-            {value ?? (pending ? <Skeleton className="h-[1.1em] w-24" /> : '—')}
-          </dd>
-        </div>
-      ))}
-    </dl>
-  )
-}
-
 const HEAT = ['bg-panel-2', 'bg-heat-1', 'bg-heat-2', 'bg-heat-3', 'bg-heat-4']
 const CHART_DAY = new Intl.DateTimeFormat('en-US', {
   month: 'short',
@@ -290,22 +257,6 @@ export function ActivityHeatmap({
         Calls per day, last {ACTIVITY_CHART_DAYS / 7} weeks
       </figcaption>
     </figure>
-  )
-}
-
-/** The calls' table: a hatched head over the rows. */
-function CallTable({ children }: { children: ReactNode }) {
-  return (
-    <div className="d-card">
-      <div aria-hidden="true" className={`${ROW} d-th hidden min-h-9 lg:grid`}>
-        <span className="d-label">Time</span>
-        <span className="d-label">Request</span>
-        <span className="d-label">Client</span>
-        <span className="d-label">Source</span>
-        <span className="d-label text-right">Outcome</span>
-      </div>
-      {children}
-    </div>
   )
 }
 
@@ -570,33 +521,6 @@ function LoadMore({
     <p ref={ref} className="pt-5 text-center font-mono text-[12px] text-fg-3">
       Loading older calls…
     </p>
-  )
-}
-
-export function HeatmapSkeleton() {
-  return <Skeleton className="h-[104px] w-[165px]" />
-}
-
-export function CallSkeleton() {
-  return (
-    <div role="status" aria-label="Loading activity">
-      <div aria-hidden="true">
-        <CallTable>
-          {[0, 1, 2].map((row) => (
-            <div
-              key={row}
-              className={`${ROW} min-h-[54px] border-t border-line py-2`}
-            >
-              <Skeleton className="h-3 w-16" />
-              <Skeleton className="col-span-2 row-start-2 h-3.5 w-48 max-w-full lg:col-span-1 lg:row-auto" />
-              <Skeleton className="hidden h-3.5 w-28 lg:block" />
-              <Skeleton className="hidden h-3 w-12 lg:block" />
-              <Skeleton className="col-start-2 row-start-1 ml-auto h-3.5 w-20 lg:col-auto lg:row-auto" />
-            </div>
-          ))}
-        </CallTable>
-      </div>
-    </div>
   )
 }
 

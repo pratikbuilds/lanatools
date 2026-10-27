@@ -62,6 +62,14 @@ const PAGES: Array<[prefix: string, modules: Array<string>]> = [
   ['', [APP]],
 ]
 
+function fontPreload(bundle: Rollup.OutputBundle | undefined) {
+  const font = Object.values(bundle ?? {}).find(
+    (file) => file.type === 'asset' && file.fileName.endsWith('.woff2'),
+  )
+  if (!font) return ''
+  return `<link rel="preload" href="/${font.fileName}" as="font" type="font/woff2" crossorigin>`
+}
+
 function pagePreload(
   bundle: Rollup.OutputBundle | undefined,
   entry: Rollup.OutputChunk | undefined,
@@ -128,7 +136,7 @@ export function createWebConfig(network: string | undefined): UserConfig {
             return html
               .replace(
                 '</head>',
-                `${pagePreload(ctx.bundle, ctx.chunk)}</head>`,
+                `${fontPreload(ctx.bundle)}${pagePreload(ctx.bundle, ctx.chunk)}</head>`,
               )
               .replace(
                 '<div id="app"></div>',

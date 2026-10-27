@@ -1,6 +1,11 @@
-import { useExportWallet } from '@privy-io/react-auth/solana'
-import { useMutation } from '@tanstack/react-query'
+import { lazy, Suspense, useState } from 'react'
 import { useDashboardSession } from './session'
+
+const RunExport = lazy(() =>
+  import('./export-wallet-run').then((module) => ({
+    default: module.RunExport,
+  })),
+)
 
 /**
  * Lets the user take the payment wallet's private key to another wallet app.
@@ -9,10 +14,7 @@ import { useDashboardSession } from './session'
  */
 export function ExportWallet() {
   const { walletAddress } = useDashboardSession()
-  const { exportWallet } = useExportWallet()
-  const exporting = useMutation({
-    mutationFn: (address: string) => exportWallet({ address }),
-  })
+  const [phase, setPhase] = useState<'idle' | 'running' | 'failed'>('idle')
   if (!walletAddress)
     return (
       <p className="d-empty">
@@ -20,11 +22,21 @@ export function ExportWallet() {
       </p>
     )
   return (
-    <ExportWalletView
-      exporting={exporting.isPending}
-      failed={exporting.isError}
-      onExport={() => exporting.mutate(walletAddress)}
-    />
+    <>
+      {phase === 'running' && (
+        <Suspense fallback={null}>
+          <RunExport
+            onDone={() => setPhase('idle')}
+            onError={() => setPhase('failed')}
+          />
+        </Suspense>
+      )}
+      <ExportWalletView
+        exporting={phase === 'running'}
+        failed={phase === 'failed'}
+        onExport={() => setPhase('running')}
+      />
+    </>
   )
 }
 

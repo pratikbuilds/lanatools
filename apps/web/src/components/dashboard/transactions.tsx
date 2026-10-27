@@ -85,8 +85,9 @@ export function TransactionsPage({
     queryFn: () => syncTransactions(getAccessToken),
     staleTime: 0,
     refetchOnWindowFocus: 'always',
-    // A long history comes in batches; keep asking until it is caught up.
-    refetchInterval: (query) => (query.state.data?.more ? 250 : false),
+    // A long history comes in batches. Each batch reads the chain, so the
+    // next one waits a few seconds instead of hammering the API.
+    refetchInterval: (query) => (query.state.data?.more ? 3_000 : false),
     retry: false,
   })
   useEffect(() => {

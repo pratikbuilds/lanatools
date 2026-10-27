@@ -1,8 +1,8 @@
 import { MCP_HOST } from '#/components/landing/copy-url'
-import { NETWORK } from '#/lib/solana'
 import { usePaymentsState } from './agent-payments'
-import { SolanaMark } from './solana-mark'
 import { useMcpClients } from './use-mcp-clients'
+
+export { NetworkStatus } from './network-status'
 
 const LABELS = {
   on: 'Agent payments on',
@@ -38,15 +38,5 @@ export function PaymentStatus() {
           ` · ${count} ${count === 1 ? 'client' : 'clients'} connected`}
       </span>
     </>
-  )
-}
-
-/** The network the dashboard reads and pays on. */
-export function NetworkStatus() {
-  return (
-    <span>
-      <SolanaMark />
-      {NETWORK.label}
-    </span>
   )
 }

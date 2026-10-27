@@ -107,11 +107,15 @@ export function useAttachPaymentSigner() {
     if (signer.data.status === 'disabled') return
     if (paymentsOn(signer.data, walletAddress)) return
     // One automatic attempt per account and wallet per visit, so switching
-    // accounts sets up the new one. Settings retries a failure.
+    // accounts sets up the new one. Settings retries a failure. It waits
+    // until the wallet, clients, and activity have asked for their tokens.
     const attempt = `${userId}:${walletAddress}`
     if (attempted.current === attempt) return
-    attempted.current = attempt
-    attach.mutate({ address: walletAddress, restore: false })
+    const timer = window.setTimeout(() => {
+      attempted.current = attempt
+      attach.mutate({ address: walletAddress, restore: false })
+    }, 1_000)
+    return () => window.clearTimeout(timer)
   }, [userId, walletAddress, signer.data, running, attach])
 }
 

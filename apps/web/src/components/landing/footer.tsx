@@ -1,6 +1,11 @@
 import { BrandMark } from './brand'
-import { LedgerMark } from './ledger-mark'
 import { Logo } from './logo'
+import { WhenVisible } from './when-visible'
+
+const loadLedger = () =>
+  import('./ledger-mark').then((module) => ({
+    default: module.LedgerMark,
+  }))
 
 const LINKS = [
   { label: 'Why', href: '#why' },
@@ -55,7 +60,10 @@ export function Footer({ wide }: { wide: string }) {
       </div>
 
       <div className="mx-auto w-full max-w-[90rem] px-2 pt-5">
-        <LedgerMark />
+        <WhenVisible
+          load={loadLedger}
+          fallback={<div className="min-h-40 w-full" />}
+        />
       </div>
     </footer>
   )

@@ -30,6 +30,8 @@ export const walletBalances = new Hono<{
     const { network, rpcUrl } = await solanaConfig(c.env)
     const rpc = createSolanaRpc(rpcUrl)
     const options = { abortSignal: AbortSignal.timeout(RPC_TIMEOUT_MS) }
+    // Withdraw asks for every token. The wallet page only shows SOL and USDC.
+    const includeTokens = c.req.query('tokens') === '1'
     let sol: bigint
     let usdc: bigint
     let tokens: Awaited<ReturnType<typeof walletTokens>>
@@ -47,7 +49,9 @@ export const walletBalances = new Hono<{
             commitment: 'confirmed',
           }),
         ),
-        walletTokens(rpc, address(owner), rpcUrl),
+        includeTokens
+          ? walletTokens(rpc, address(owner), rpcUrl)
+          : Promise.resolve([]),
       ])
       tokens = holdings
       for (const token of tokens) {

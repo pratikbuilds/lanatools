@@ -364,6 +364,29 @@ async function knownSignatures(
   return found
 }
 
+/** Starts fetches in order and keeps a few in flight. */
+async function mapLimited<T, TResult>(
+  items: readonly T[],
+  limit: number,
+  run: (item: T) => Promise<TResult>,
+) {
+  const results = new Array<TResult>(items.length)
+  let next = 0
+  async function worker() {
+    for (;;) {
+      const index = next
+      next += 1
+      const item = items[index]
+      if (item === undefined) return
+      results[index] = await run(item)
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, () => worker()),
+  )
+  return results
+}
+
 type SyncState = {
   // A checkpoint per wallet or token-account history, independent of ledger rows.
   checkpoints: Record<string, string | undefined>
@@ -478,6 +501,18 @@ export async function syncWalletTransfers(
 
   let inserted = 0
   let settled = 0
+  const needed = entries.filter(
+    (entry) =>
+      !recorded.has(entry.signature) &&
+      !entry.err &&
+      !owned.has(entry.signature),
+  )
+  const fetched = await mapLimited(needed, 4, (entry) =>
+    input.rpc.transaction(entry.signature),
+  )
+  const transactions = new Map(
+    needed.map((entry, index) => [entry.signature, fetched[index]]),
+  )
   for (const entry of entries) {
     if (recorded.has(entry.signature)) {
       if (pending.has(entry.signature))
@@ -493,7 +528,7 @@ export async function syncWalletTransfers(
       continue
     }
     if (entry.err || owned.has(entry.signature)) continue
-    const tx = await input.rpc.transaction(entry.signature)
+    const tx = transactions.get(entry.signature)
     // Keep the checkpoint until every transaction on this page is readable.
     if (!tx) throw new Error('Transaction details are not available yet')
     if (tx.err) continue

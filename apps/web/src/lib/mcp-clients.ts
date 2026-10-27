@@ -3,8 +3,20 @@ import type { McpClient } from '@lanatools/contracts'
 
 export type GetAccessToken = () => Promise<string | null>
 
+// Concurrent dashboard requests share one token read. Privy serializes
+// getAccessToken, so four callers would otherwise queue four times.
+const pendingTokens = new WeakMap<GetAccessToken, Promise<string | null>>()
+
 export async function authorized(getAccessToken: GetAccessToken) {
-  const token = await getAccessToken()
+  let pending = pendingTokens.get(getAccessToken)
+  if (!pending) {
+    pending = getAccessToken().finally(() => {
+      if (pendingTokens.get(getAccessToken) === pending)
+        pendingTokens.delete(getAccessToken)
+    })
+    pendingTokens.set(getAccessToken, pending)
+  }
+  const token = await pending
   if (!token) throw new Error('Sign in again to manage connected apps.')
   return { Authorization: `Bearer ${token}` }
 }

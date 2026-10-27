@@ -3,16 +3,13 @@ import type { Address } from '@solana/kit'
 import { WalletBalances } from '@lanatools/contracts'
 import { authorized } from './mcp-clients'
 import type { GetAccessToken } from './mcp-clients'
-import { NETWORKS, checkNetworkEnv } from './networks'
+import { selectedNetwork } from './networks'
+
+export { formatSol, formatUnits } from './units'
 
 function lookupNetwork() {
-  // Vite validates dev/build configuration. Only unit tests may omit it.
-  const { id } = checkNetworkEnv({
-    SOLANA_NETWORK:
-      import.meta.env.SOLANA_NETWORK ??
-      (process.env.NODE_ENV === 'test' ? 'devnet' : undefined),
-  })
-  return { ...NETWORKS[id], id, usdcMint: address(NETWORKS[id].usdcMint) }
+  const network = selectedNetwork()
+  return { ...network, usdcMint: address(network.usdcMint) }
 }
 
 export const NETWORK = lookupNetwork()
@@ -28,11 +25,15 @@ export const USDC_DECIMALS = 6
 export async function getWalletBalances(
   getAccessToken: GetAccessToken,
   owner: Address,
+  options?: { tokens?: boolean },
 ) {
-  const response = await fetch(
-    `/api/wallet/balances?owner=${encodeURIComponent(owner)}`,
-    { headers: await authorized(getAccessToken) },
-  )
+  const params = new URLSearchParams({ owner })
+  // The wallet figure needs SOL and USDC. Other tokens are read when
+  // Withdraw opens, so the home page does not wait on account scans.
+  if (options?.tokens) params.set('tokens', '1')
+  const response = await fetch(`/api/wallet/balances?${params}`, {
+    headers: await authorized(getAccessToken),
+  })
   if (!response.ok) throw new Error('Could not read the wallet balance.')
   const balances = WalletBalances.assert(await response.json())
   if (balances.network !== NETWORK.id)
@@ -44,34 +45,4 @@ export async function getWalletBalances(
     usdc: BigInt(balances.usdc),
     tokens: balances.tokens,
   }
-}
-
-/**
- * Formats base units as a decimal string, truncated (never rounded up) to
- * `maxFraction` digits and padded to `minFraction`.
- */
-export function formatUnits(
-  amount: bigint,
-  decimals: number,
-  {
-    maxFraction,
-    minFraction = 0,
-  }: { maxFraction: number; minFraction?: number },
-) {
-  const base = 10n ** BigInt(decimals)
-  const whole = amount / base
-  const fraction = (amount % base)
-    .toString()
-    .padStart(decimals, '0')
-    .slice(0, maxFraction)
-    .replace(/0+$/, '')
-    .padEnd(minFraction, '0')
-  const grouped = whole.toLocaleString('en-US')
-  return fraction ? `${grouped}.${fraction}` : grouped
-}
-
-/** Lamports as SOL for display: up to four decimals, with dust shown as such. */
-export function formatSol(lamports: bigint) {
-  const text = formatUnits(lamports, SOL_DECIMALS, { maxFraction: 4 })
-  return text === '0' && lamports > 0n ? '<0.0001' : text
 }

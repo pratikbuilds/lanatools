@@ -13,10 +13,15 @@ import { EarlyAccess } from '#/components/landing/early-access'
 import { Footer } from '#/components/landing/footer'
 import { UrlBox } from '#/components/landing/copy-url'
 import { Logo } from '#/components/landing/logo'
-import { Playground } from '#/components/landing/playground'
 import { EASE, Reveal } from '#/components/landing/reveal'
+import { WhenVisible } from '#/components/landing/when-visible'
 import { Toolset } from '#/components/landing/toolset'
 import { WalletFan } from '#/components/landing/wallet-fan'
+
+const loadPlayground = () =>
+  import('#/components/landing/playground').then((module) => ({
+    default: module.Playground,
+  }))
 
 const col = 'mx-auto w-full max-w-[60rem] px-5 sm:px-8'
 const wide = 'mx-auto w-full max-w-[76rem] px-5 sm:px-8'
@@ -220,7 +225,10 @@ export function Home() {
               </p>
             </Reveal>
             <Reveal className="mt-10" delay={0.1}>
-              <Playground />
+              <WhenVisible
+                load={loadPlayground}
+                fallback={<div className="min-h-[28rem]" />}
+              />
             </Reveal>
           </div>
         </section>

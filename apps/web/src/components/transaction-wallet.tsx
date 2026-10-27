@@ -3,7 +3,7 @@ import {
   readSolanaNetwork,
 } from '@lanatools/contracts/networks'
 import type { NetworkId } from '@lanatools/contracts/networks'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   ConnectionProvider,
@@ -14,9 +14,7 @@ import {
   WalletAdapterNetwork,
   WalletReadyState,
 } from '@solana/wallet-adapter-base'
-import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom'
-import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare'
-import type { WalletName } from '@solana/wallet-adapter-base'
+import type { Adapter, WalletName } from '@solana/wallet-adapter-base'
 import { Modal } from './dashboard/modal'
 
 export function TransactionWalletProvider({
@@ -31,22 +29,27 @@ export function TransactionWalletProvider({
       network ??
         readSolanaNetwork({ SOLANA_NETWORK: import.meta.env.SOLANA_NETWORK })
     ]
-  const additionalAdapters = useMemo(
-    () => [
-      new PhantomWalletAdapter(),
-      new SolflareWalletAdapter({
-        network: WalletAdapterNetwork[selected.walletAdapterNetwork],
-      }),
-    ],
-    [selected.walletAdapterNetwork],
-  )
+  const [wallets, setWallets] = useState<Adapter[]>([])
+  useEffect(() => {
+    let live = true
+    const adapterNetwork = WalletAdapterNetwork[selected.walletAdapterNetwork]
+    void Promise.all([
+      import('@solana/wallet-adapter-phantom'),
+      import('@solana/wallet-adapter-solflare'),
+    ]).then(([phantom, solflare]) => {
+      if (!live) return
+      setWallets([
+        new phantom.PhantomWalletAdapter(),
+        new solflare.SolflareWalletAdapter({ network: adapterNetwork }),
+      ])
+    })
+    return () => {
+      live = false
+    }
+  }, [selected.walletAdapterNetwork])
   return (
     <ConnectionProvider endpoint={selected.publicRpcUrl}>
-      <WalletProvider
-        wallets={additionalAdapters}
-        autoConnect={false}
-        onError={() => {}}
-      >
+      <WalletProvider wallets={wallets} autoConnect={false} onError={() => {}}>
         {children}
       </WalletProvider>
     </ConnectionProvider>

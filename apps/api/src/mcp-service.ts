@@ -49,15 +49,35 @@ export type McpEnv = ProviderEnv &
      */
     PRIVY_TRANSACTION_SIGNER_ID?: string
     PRIVY_TRANSACTION_SIGNER_KEY?: string
+    /**
+     * SPKI verification key from the Privy dashboard. When set, access
+     * tokens are checked locally instead of fetching the app JWKS.
+     */
+    PRIVY_JWT_VERIFICATION_KEY?: string
   }
 
 export type McpDashboardEnv = McpEnv & { MCP: McpTokenRevoker }
 
+/**
+ * One client per isolate. Verification caches its JWKS on the client, so a
+ * new client on every request downloads the key set before any other work.
+ * A verification key from the Privy dashboard skips that fetch entirely.
+ */
+const privyClients = new Map<string, PrivyClient>()
+
 export function privyClient(env: McpEnv) {
-  return new PrivyClient({
+  const key = `${env.PRIVY_APP_ID}\0${env.PRIVY_APP_SECRET}\0${env.PRIVY_JWT_VERIFICATION_KEY ?? ''}`
+  const existing = privyClients.get(key)
+  if (existing) return existing
+  const client = new PrivyClient({
     appId: env.PRIVY_APP_ID,
     appSecret: env.PRIVY_APP_SECRET,
+    ...(env.PRIVY_JWT_VERIFICATION_KEY
+      ? { jwtVerificationKey: env.PRIVY_JWT_VERIFICATION_KEY }
+      : {}),
   })
+  privyClients.set(key, client)
+  return client
 }
 
 export async function verifyPrivyToken(env: McpEnv, privyToken: string) {

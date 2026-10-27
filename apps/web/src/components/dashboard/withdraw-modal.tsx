@@ -1,9 +1,9 @@
 import { useSignTransaction, useWallets } from '@privy-io/react-auth/solana'
-import { isAddress } from '@solana/kit'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { address, isAddress } from '@solana/kit'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { WalletToken } from '@lanatools/contracts'
 import { useState } from 'react'
-import { NETWORK } from '#/lib/solana'
+import { NETWORK, getWalletBalances } from '#/lib/solana'
 import {
   formatTokenAmount,
   parseTokenAmount,
@@ -105,14 +105,25 @@ export function WithdrawModal({
   const { getAccessToken } = useDashboardSession()
   const sign = useWalletSigner(walletAddress)
   const queryClient = useQueryClient()
-  const tokens: WalletToken[] = balances
+  // Token accounts are not on the wallet figure's request. Load them here.
+  const holdings = useQuery({
+    queryKey: ['wallet-tokens', NETWORK.id, walletAddress],
+    queryFn: () =>
+      getWalletBalances(getAccessToken, address(walletAddress), {
+        tokens: true,
+      }),
+    staleTime: 15_000,
+  })
+  const listed = holdings.data?.tokens
+  const [picked, setPicked] = useState<string>()
+  const tokens: WalletToken[] = listed
     ? [
-        ...balances.tokens,
+        ...listed,
         {
           account: 'native',
           mint: 'native',
           program: '11111111111111111111111111111111',
-          amount: String(balances.sol),
+          amount: String(balances?.sol ?? 0n),
           decimals: 9,
           name: 'Solana',
           symbol: 'SOL',
@@ -120,11 +131,10 @@ export function WithdrawModal({
         },
       ]
     : []
-  const [selected, setSelected] = useState(
-    balances?.tokens.find((item) => item.mint === NETWORK.usdcMint)?.account ??
-      balances?.tokens[0]?.account ??
-      'native',
-  )
+  const usdcAccount = listed?.find(
+    (item) => item.mint === NETWORK.usdcMint,
+  )?.account
+  const selected = picked ?? usdcAccount ?? listed?.[0]?.account ?? 'native'
   const token = tokens.find((item) => item.account === selected) ?? null
   const [form, setForm] = useState({ to: '', amount: '' })
   const withdraw = useMutation({
@@ -148,12 +158,21 @@ export function WithdrawModal({
         sign,
       )
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['balances', NETWORK.id] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['balances', NETWORK.id] })
+      void queryClient.invalidateQueries({
+        queryKey: ['wallet-tokens', NETWORK.id],
+      })
+    },
   })
 
-  const problem = checkForm(form, walletAddress, balances, token)
-  const fee = feeNote(balances, loadFailed)
+  const problem = checkForm(
+    form,
+    walletAddress,
+    listed && balances ? { ...balances, tokens: listed } : null,
+    token,
+  )
+  const fee = feeNote(balances, loadFailed || holdings.isError)
   const canSubmit = problem === null && !fee.blocked && !withdraw.isPending
   const available = token ? BigInt(token.amount) : null
   // shortcut: one plain SOL transfer costs 5000 lamports; prepare verifies the actual fee.
@@ -201,7 +220,7 @@ export function WithdrawModal({
             token={token}
             disabled={withdraw.isPending}
             onChange={(item) => {
-              setSelected(item.account)
+              setPicked(item.account)
               setForm({ ...form, amount: '' })
               withdraw.reset()
             }}

@@ -1,11 +1,11 @@
-import { Navigate, createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import {
   useConnectWallet,
   useLoginWithOAuth,
   useLoginWithSiws,
   usePrivy,
 } from '@privy-io/react-auth'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type {
   BaseConnectedSolanaWallet,
@@ -117,7 +117,8 @@ function SignInRoute() {
 }
 
 function SignIn() {
-  const { ready, authenticated } = usePrivy()
+  const { ready, authenticated, user } = usePrivy()
+  const navigate = useNavigate()
   const [message, setMessage] = useState('')
   const [walletBusy, setWalletBusy] = useState(false)
   const { initOAuth, loading: googleBusy } = useLoginWithOAuth({
@@ -179,16 +180,38 @@ function SignIn() {
     }
   }
 
+  const userId = user?.id
+  // Privy strips privy_oauth_* with history.replaceState, which the router
+  // does not see. Navigating in that same moment leaves the page on sign-in
+  // even though the session is already saved. Wait until the callback is
+  // gone, then open the dashboard; if that navigation never commits, load
+  // /dashboard directly from the saved session.
+  useEffect(() => {
+    if (!ready || !authenticated || !userId) return
+    const oauth = new URLSearchParams(window.location.search).has(
+      'privy_oauth_code',
+    )
+    if (googleBusy || oauth) {
+      const timer = window.setTimeout(() => {
+        window.location.assign('/dashboard')
+      }, 4_000)
+      return () => window.clearTimeout(timer)
+    }
+    let left = false
+    const timer = window.setTimeout(() => {
+      if (!left && window.location.pathname === '/sign-in')
+        window.location.assign('/dashboard')
+    }, 4_000)
+    void navigate({ to: '/dashboard', replace: true })
+    return () => {
+      left = true
+      window.clearTimeout(timer)
+    }
+  }, [ready, authenticated, userId, googleBusy, navigate])
+
   // Signed-in users belong on the dashboard, including right after sign-in.
   // This page stays up while the dashboard loads, instead of a blank one.
-  if (authenticated)
-    return (
-      <>
-        {/* OAuth finishes by rewriting the URL; let it finish before navigating. */}
-        {ready && !googleBusy && <Navigate to="/dashboard" replace />}
-        <Preparing label="Opening your dashboard" />
-      </>
-    )
+  if (authenticated) return <Preparing label="Opening your dashboard" />
   // Until Privy knows whether the visitor is signed in, showing the form
   // would flash it before the dashboard for one who already is.
   if (!ready) return <Preparing label="Preparing sign-in" />

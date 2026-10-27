@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import type { AgentId } from '#/components/landing/logos'
-import { NETWORK } from '#/lib/solana'
 import { LatestActivity } from './activity'
 import { ConnectClientModal, DEFAULT_CLIENT } from './connect-client'
 import { ConnectedClients } from './connected-clients'
-import { PageHead } from './page-head'
 import { useDashboardSession } from './session'
-import { SolanaMark } from './solana-mark'
 import { CreateWallet, WalletPanel } from './wallet-panel'
+import { WalletPageHead } from './wallet-page-head'
+
+export { WalletPageHead } from './wallet-page-head'
 
 /**
  * The dashboard's home, in the order the data nests: the wallet, the clients
@@ -40,24 +40,5 @@ export function WalletPage({
         onClose={() => setConnecting(null)}
       />
     </>
-  )
-}
-
-export function WalletPageHead({ onConnect }: { onConnect?: () => void }) {
-  return (
-    <PageHead title="Wallet">
-      <span className="d-chip">
-        <SolanaMark />
-        {NETWORK.label}
-      </span>
-      <button
-        type="button"
-        className="d-btn sm:ml-auto"
-        disabled={!onConnect}
-        onClick={onConnect}
-      >
-        <span aria-hidden="true">＋</span> Connect a client
-      </button>
-    </PageHead>
   )
 }
