@@ -126,8 +126,11 @@ gets a Jupiter quote with no login, and calling `call` starts login.
   in the browser, the 401 on `embedded`, and that logged-in transactions are
   unchanged.
 
-Done when: an agent with its own keypair swaps on devnet through the MCP URL
-with no account.
+Done when: an agent with its own keypair sends a transaction on devnet
+through the MCP URL with no account. Met 2026-10-30 with a 0.001 SOL
+`solana_transfer` (local delivery), signature
+`2EyJC6xmz4sVNDfpcEGQkALybjyjEvxWa3wy9ygqUnnXDo8GxSP3vqp3NXphWdonWHubnsNNQG4ayMhFDQ1fd7GH`.
+Swaps were not tested.
 
 ### Phase 3: SKILL.md and tool text
 
