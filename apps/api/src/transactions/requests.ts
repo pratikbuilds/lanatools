@@ -74,6 +74,8 @@ const ERRORS = {
     'Signing with the LanaTools wallet is not set up. The user can set it up by opening LanaTools.',
   signing_refused:
     "The LanaTools wallet's signing policy refused this transaction.",
+  login_required:
+    'Signing with the LanaTools wallet needs login. Use delivery "local" or "link", or ask the user to log in.',
 } as const
 
 export type TransactionLinkOutcome<T> =
@@ -138,6 +140,40 @@ function toResult(
   }
 }
 
+/**
+ * The creator of a request made by an agent that is not logged in. It owns
+ * no grant and no wallet, so the dashboard, which reads by user, never shows
+ * it, and such a request can only be signed by the agent's or user's wallet.
+ */
+export const NO_LOGIN = 'no-login'
+
+/**
+ * The creator columns that own a request and scope its idempotency key.
+ * Without login a local request's key is scoped to its signing wallet; a link
+ * has no wallet until it is signed, so its key is never reused.
+ */
+function requestCreator(
+  identity: GrantIdentity | null,
+  wallet: string | undefined,
+) {
+  if (identity) return identity
+  return {
+    userId: NO_LOGIN,
+    clientId: wallet ? `wallet:${wallet}` : `link:${crypto.randomUUID()}`,
+    grantId: NO_LOGIN,
+  }
+}
+
+/** Requests a caller may read or send: its own, or any without login. */
+function ownedBy(identity: GrantIdentity | null) {
+  return identity
+    ? and(
+        eq(transactionRequest.creatorUserId, identity.userId),
+        eq(transactionRequest.creatorClientId, identity.clientId),
+      )
+    : eq(transactionRequest.creatorUserId, NO_LOGIN)
+}
+
 const RequestEnvelope = z.looseObject({
   delivery: z.enum(['link', 'local', 'embedded']),
   wallet: z.string().refine(isAddress).optional(),
@@ -148,10 +184,12 @@ const RequestEnvelope = z.looseObject({
  * Stores a transaction intent. A link waits for its review page; a local
  * request is built at once for the agent's wallet and returned unsigned; an
  * embedded request is built, signed with the user's LanaTools wallet and sent.
+ * A null identity is an agent that is not logged in: it may use link and
+ * local delivery only.
  */
 export async function createTransactionRequest(
   env: TransactionExecutionEnv,
-  identity: GrantIdentity,
+  identity: GrantIdentity | null,
   name: string,
   input: unknown,
   options: ExecutionOptions = {},
@@ -160,18 +198,17 @@ export async function createTransactionRequest(
   const tools = options.tools
   try {
     const tool = transactionOperation(name, tools)
-    const access = await authorizeGrant(
-      env.DB,
-      identity,
-      transactionScope(name),
-      now,
-    )
+    const access = identity
+      ? await authorizeGrant(env.DB, identity, transactionScope(name), now)
+      : 'active'
     if (access === 'revoked') return failed('unauthorized')
     if (access === 'insufficient_scope') return failed('insufficient_scope')
     if (!tool) return failed('invalid_input')
     const envelope = RequestEnvelope.safeParse(input)
     if (!envelope.success) return failed('invalid_input')
     const { delivery, wallet, idempotencyKey, ...rawArguments } = envelope.data
+    if (!identity && delivery === 'embedded') return failed('login_required')
+    const creator = requestCreator(identity, wallet)
     if ((delivery === 'local') !== (wallet !== undefined))
       return failed(
         'invalid_input',
@@ -190,7 +227,7 @@ export async function createTransactionRequest(
     const embedded =
       delivery === 'embedded'
         ? {
-            wallet: await embeddedWallet(env.DB, identity.userId),
+            wallet: await embeddedWallet(env.DB, creator.userId),
             sign:
               options.embeddedSigner === undefined
                 ? privyEmbeddedSigner(env)
@@ -209,24 +246,28 @@ export async function createTransactionRequest(
       rpc: options.rpc ?? transactionRpc(env.SOLANA_RPC_URL),
       jupiterApiKey: env.JUPITER_API_KEY,
     })
-    // Recheck access atomically so concurrent revocation or wallet removal wins.
-    await db.run(sql`
-      insert into transaction_request
-        (id, tool_name, arguments_json, network, creator_user_id,
-         creator_client_id, creator_grant_id, idempotency_key, delivery,
-         review_json, account, counterparty, created_at, updated_at, expires_at)
-      select ${id}, ${name}, ${argumentsJson}, ${config.network},
-        ${identity.userId}, ${identity.clientId}, ${identity.grantId}, ${idempotencyKey},
-        ${delivery}, ${JSON.stringify(review)}, ${embedded?.wallet?.walletAddress ?? null},
-        ${counterparty}, ${now}, ${now}, ${now + 15 * 60_000}
-      from mcp_grant where id = ${identity.grantId}
+    // Recheck access atomically so concurrent revocation or wallet removal
+    // wins. Without login there is no grant to check.
+    const grantCheck = identity
+      ? sql`from mcp_grant where id = ${identity.grantId}
         and privy_user_id = ${identity.userId} and client_id = ${identity.clientId}
         and status = 'active'
         and (${delivery} != 'embedded' or exists (
           select 1 from payment_signer
           where privy_user_id = ${identity.userId} and status = 'enabled'
             and wallet_id = ${embedded?.wallet?.walletId ?? null}
-            and transaction_policy_id is not null))
+            and transaction_policy_id is not null))`
+      : sql`where true`
+    await db.run(sql`
+      insert into transaction_request
+        (id, tool_name, arguments_json, network, creator_user_id,
+         creator_client_id, creator_grant_id, idempotency_key, delivery,
+         review_json, account, counterparty, created_at, updated_at, expires_at)
+      select ${id}, ${name}, ${argumentsJson}, ${config.network},
+        ${creator.userId}, ${creator.clientId}, ${creator.grantId}, ${idempotencyKey},
+        ${delivery}, ${JSON.stringify(review)}, ${embedded?.wallet?.walletAddress ?? null},
+        ${counterparty}, ${now}, ${now}, ${now + 15 * 60_000}
+      ${grantCheck}
       on conflict (creator_user_id, creator_client_id, idempotency_key) do nothing
     `)
     const row = await db
@@ -234,19 +275,21 @@ export async function createTransactionRequest(
       .from(transactionRequest)
       .where(
         and(
-          eq(transactionRequest.creatorUserId, identity.userId),
-          eq(transactionRequest.creatorClientId, identity.clientId),
+          eq(transactionRequest.creatorUserId, creator.userId),
+          eq(transactionRequest.creatorClientId, creator.clientId),
           eq(transactionRequest.idempotencyKey, idempotencyKey),
         ),
       )
       .get()
     if (!row)
       return failed(
-        (await authorizeGrant(env.DB, identity, null, now)) === 'active'
-          ? 'embedded_unavailable'
-          : 'unauthorized',
+        !identity
+          ? 'unavailable'
+          : (await authorizeGrant(env.DB, identity, null, now)) === 'active'
+            ? 'embedded_unavailable'
+            : 'unauthorized',
       )
-    if (row.creatorGrantId !== identity.grantId)
+    if (row.creatorGrantId !== creator.grantId)
       return failed(
         'conflict',
         'This request key belongs to a previous connection. Use a new idempotency key.',
@@ -287,7 +330,7 @@ export async function createTransactionRequest(
           { ...options, now },
         )
         if (!prepared.ok) return prepared
-        const currentWallet = await embeddedWallet(env.DB, identity.userId)
+        const currentWallet = await embeddedWallet(env.DB, creator.userId)
         if (
           currentWallet?.walletId !== embedded.wallet.walletId ||
           currentWallet.walletAddress !== embedded.wallet.walletAddress
@@ -433,7 +476,9 @@ export async function readTransactionLink(
       row.account
   return projectTransactionLink(
     row,
-    grant?.status === 'active' && walletAvailable,
+    row.creatorGrantId === NO_LOGIN
+      ? row.delivery !== 'embedded'
+      : grant?.status === 'active' && walletAvailable,
     now,
     tools,
   )
@@ -441,23 +486,17 @@ export async function readTransactionLink(
 
 export async function transactionStatus(
   env: TransactionExecutionEnv,
-  identity: GrantIdentity,
+  identity: GrantIdentity | null,
   id: string,
   options: ExecutionOptions = {},
 ): Promise<TransactionLinkOutcome<TransactionResult>> {
   try {
-    if ((await authorizeGrant(env.DB, identity, null)) !== 'active')
+    if (identity && (await authorizeGrant(env.DB, identity, null)) !== 'active')
       return failed('unauthorized')
     const owned = await drizzle(env.DB)
       .select({ delivery: transactionRequest.delivery })
       .from(transactionRequest)
-      .where(
-        and(
-          eq(transactionRequest.id, id),
-          eq(transactionRequest.creatorUserId, identity.userId),
-          eq(transactionRequest.creatorClientId, identity.clientId),
-        ),
-      )
+      .where(and(eq(transactionRequest.id, id), ownedBy(identity)))
       .get()
     if (!owned) return failed('not_found')
     const link = await observeTransactionLink(env, id, options)
@@ -513,8 +552,13 @@ export const SendTransactionInput = z.strictObject({
     .regex(/^[A-Za-z0-9+/]+={0,2}$/),
 })
 
-/** The creator's grant is active and, for embedded delivery, its wallet still signs. */
-export const liveAccess = sql`exists (select 1 from mcp_grant
+/**
+ * The creator's grant is active and, for embedded delivery, its wallet still
+ * signs. A request without login has no grant and is never embedded.
+ */
+export const liveAccess = sql`((transaction_request.creator_grant_id = ${NO_LOGIN}
+  and transaction_request.delivery != 'embedded')
+  or (exists (select 1 from mcp_grant
   where mcp_grant.id = transaction_request.creator_grant_id
   and mcp_grant.privy_user_id = transaction_request.creator_user_id
   and mcp_grant.client_id = transaction_request.creator_client_id
@@ -524,7 +568,7 @@ export const liveAccess = sql`exists (select 1 from mcp_grant
     where payment_signer.privy_user_id = transaction_request.creator_user_id
       and payment_signer.status = 'enabled'
       and payment_signer.wallet_address = transaction_request.account
-      and payment_signer.transaction_policy_id is not null))`
+      and payment_signer.transaction_policy_id is not null))))`
 
 async function storedLink(database: D1Database, id: string) {
   return drizzle(database)
@@ -1088,24 +1132,18 @@ export async function requestDelivery(database: D1Database, id: string) {
 /** Accepts the agent's signed bytes for its own local request, then relays them. */
 export async function sendTransaction(
   env: TransactionExecutionEnv,
-  identity: GrantIdentity,
+  identity: GrantIdentity | null,
   id: string,
   input: unknown,
   options: ExecutionOptions = {},
 ): Promise<TransactionLinkOutcome<TransactionResult>> {
   try {
-    if ((await authorizeGrant(env.DB, identity, null)) !== 'active')
+    if (identity && (await authorizeGrant(env.DB, identity, null)) !== 'active')
       return failed('unauthorized')
     const owned = await drizzle(env.DB)
       .select({ delivery: transactionRequest.delivery })
       .from(transactionRequest)
-      .where(
-        and(
-          eq(transactionRequest.id, id),
-          eq(transactionRequest.creatorUserId, identity.userId),
-          eq(transactionRequest.creatorClientId, identity.clientId),
-        ),
-      )
+      .where(and(eq(transactionRequest.id, id), ownedBy(identity)))
       .get()
     if (!owned) return failed('not_found')
     if (owned.delivery !== 'local')

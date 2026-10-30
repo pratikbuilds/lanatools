@@ -1,7 +1,7 @@
 # No-login access: tech spec
 
 Status: Phase 0 checked in Claude Code (headless); Cursor and Codex untested.
-Phase 1 built. Phases 2 to 4 waiting for approval.
+Phases 1 and 2 built. Phases 3 and 4 waiting for approval.
 
 ## 1. Goal
 
@@ -113,19 +113,24 @@ gets a Jupiter quote with no login, and calling `call` starts login.
 - Transaction tools, `send_transaction` and `get_transaction_status` work
   with no token, with `delivery` limited to `local` and `link`.
   `delivery: "embedded"` with no token answers 401.
-- `transaction_request`: make the creator columns nullable for no-login rows
-  (migration). No-login idempotency is unique per `(account,
-  idempotency_key)` for `local`. `link` rows have no account until signing,
-  so they skip reuse by key and rely on the rate limit.
+- `transaction_request`: no migration. No-login rows store the creator
+  `no-login` (`NO_LOGIN` in `apps/api/src/transactions/requests.ts`) as user
+  and grant, so `liveAccess` and the review page treat them as available
+  unless embedded, and the dashboard, which reads by user, never shows them.
+  The creator client scopes the idempotency key: `wallet:<address>` for
+  `local`, and a random `link:<uuid>` for `link`, whose keys are never reused.
 - The transaction id, a random UUID as today, is the only way to reach a
-  no-login row.
-- Same per-IP limit, counted separately from reads.
+  no-login row. No-login and logged-in callers cannot read each other's rows.
+- The same per-IP limit as reads (30 calls per minute), shared.
 - Tests: a local swap prepared and sent with no login, a link review signed
   in the browser, the 401 on `embedded`, and that logged-in transactions are
   unchanged.
 
-Done when: an agent with its own keypair swaps on devnet through the MCP URL
-with no account.
+Done when: an agent with its own keypair sends a transaction on devnet
+through the MCP URL with no account. Met 2026-10-30 with a 0.001 SOL
+`solana_transfer` (local delivery), signature
+`2EyJC6xmz4sVNDfpcEGQkALybjyjEvxWa3wy9ygqUnnXDo8GxSP3vqp3NXphWdonWHubnsNNQG4ayMhFDQ1fd7GH`.
+Swaps were not tested.
 
 ### Phase 3: SKILL.md and tool text
 

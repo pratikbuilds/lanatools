@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { MCP_SCOPES } from '@lanatools/contracts'
 import { WorkerEntrypoint, env as bindings } from 'cloudflare:workers'
 import type { McpTokenRevoker } from '../../api/src/mcp-service'
-import { NO_LOGIN_TOOLS, createServer } from './server'
+import { createServer, needsLogin } from './server'
 import type { ServerAccess } from './server'
 import { Identity } from './identity'
 import { ToolChoice, approveGrant, toolAccess } from './approve-grant'
@@ -30,7 +30,9 @@ const OAuthContext = z.object({
 const RpcMessage = z.object({
   id: z.union([z.string(), z.number()]).optional(),
   method: z.string(),
-  params: z.object({ name: z.string().optional() }).optional(),
+  params: z
+    .object({ name: z.string().optional(), arguments: z.unknown() })
+    .optional(),
 })
 
 /** The JSON-RPC messages in an MCP POST, or none when it is not JSON. */
@@ -221,8 +223,8 @@ const oauthProvider = new OAuthProvider<McpEnv>(oauthOptions)
 
 /**
  * One MCP URL for everyone. A request with a token goes through OAuthProvider
- * as before. Without one, the agent gets the no-login tools; calling any other
- * tool gets OAuthProvider's own 401, which makes the client ask the user to
+ * as before. Without one, the agent gets the no-login tools; a call that needs
+ * login gets OAuthProvider's own 401, which makes the client ask the user to
  * log in.
  */
 export default {
@@ -238,7 +240,9 @@ export default {
     // The limit counts requests, so a batch of several calls needs login.
     if (
       calls.length > 1 ||
-      calls.some((call) => !NO_LOGIN_TOOLS.has(call.params?.name ?? ''))
+      calls.some((call) =>
+        needsLogin(call.params?.name ?? '', call.params?.arguments),
+      )
     )
       return oauthProvider.fetch(request, env, ctx)
     if (calls.length > 0) {

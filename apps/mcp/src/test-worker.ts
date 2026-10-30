@@ -60,6 +60,12 @@ export const api = {
     ok: true,
     result: { markets: [] },
   })),
+  createTransactionRequest: mock(
+    async (_identity: unknown, _name: string, _input: unknown) => ({
+      ok: false,
+      error: { code: 'unavailable', message: 'Test', retryable: true },
+    }),
+  ),
 }
 
 /** Whether the no-login rate limit lets the next call through. */

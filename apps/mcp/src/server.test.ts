@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'bun:test'
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client'
 import { heliusTools } from '@lanatools/helius'
-import { NO_LOGIN_TOOLS, createServer } from './server'
+import { NO_LOGIN_TOOLS, createServer, needsLogin } from './server'
 import { chainFixtures } from '../scripts/verify-chain'
 import type { ServerDependencies } from './server'
 
@@ -742,10 +742,13 @@ test('without login every tool is listed, and the ones that need login say so', 
   const session = await connect([], true, undefined, false)
   try {
     const listed = (await session.client.listTools()).tools
-    for (const name of ['call', 'jupiter_swap', 'send_feedback'])
+    for (const name of ['call', 'send_feedback'])
       expect(listed.find((tool) => tool.name === name)?.description).toContain(
         'Needs login',
       )
+    expect(
+      listed.find((tool) => tool.name === 'jupiter_swap')?.description,
+    ).toContain('delivery "embedded" asks the user to log in')
     for (const tool of listed.filter((each) => NO_LOGIN_TOOLS.has(each.name)))
       expect(tool.description).not.toContain('Needs login')
     expect(listed.map((tool) => tool.name)).toEqual(
@@ -793,19 +796,67 @@ test('without login, data and catalog tools run with no grant and are not record
 test('without login, tools that need login refuse before any API call', async () => {
   const session = await connect([], true, undefined, false)
   try {
-    for (const [name, args] of [
-      ['send_feedback', { feedback: 'hi' }],
-      ['solana_transfer', transferInput],
-      ['get_transaction_status', { id: requestId }],
-    ] as const) {
-      const result = await session.client.callTool({ name, arguments: args })
-      expect(result.isError).toBe(true)
-      expect(JSON.stringify(result.content)).toContain('login_required')
-    }
+    const result = await session.client.callTool({
+      name: 'send_feedback',
+      arguments: { feedback: 'hi' },
+    })
+    expect(result.isError).toBe(true)
+    expect(JSON.stringify(result.content)).toContain('login_required')
     expect(session.api.sendFeedback).not.toHaveBeenCalled()
-    expect(session.api.createTransactionRequest).not.toHaveBeenCalled()
-    expect(session.api.transactionStatus).not.toHaveBeenCalled()
   } finally {
     await session.close()
   }
+})
+
+test('without login, transactions run in the API with no grant', async () => {
+  const session = await connect([], true, undefined, false)
+  try {
+    const prepared = await session.client.callTool({
+      name: 'solana_transfer',
+      arguments: transferInput,
+    })
+    expect(prepared.isError).not.toBe(true)
+    expect(session.api.createTransactionRequest).toHaveBeenCalledWith(
+      null,
+      'solana_transfer',
+      expect.objectContaining({ delivery: 'link' }),
+    )
+    await session.client.callTool({
+      name: 'get_transaction_status',
+      arguments: { id: requestId },
+    })
+    expect(session.api.transactionStatus).toHaveBeenCalledWith(null, requestId)
+    await session.client.callTool({
+      name: 'send_transaction',
+      arguments: { id: requestId, transaction: 'AQID' },
+    })
+    expect(session.api.sendTransaction).toHaveBeenCalledWith(null, requestId, {
+      transaction: 'AQID',
+    })
+
+    session.api.createTransactionRequest.mockImplementationOnce(async () => ({
+      ok: false,
+      error: { code: 'unauthorized', message: 'no', retryable: false },
+    }))
+    await session.client.callTool({
+      name: 'solana_transfer',
+      arguments: transferInput,
+    })
+    expect(session.revokeClient).not.toHaveBeenCalled()
+    expect(session.api.whoami).not.toHaveBeenCalled()
+  } finally {
+    await session.close()
+  }
+})
+
+test('only embedded delivery and tools outside the no-login set need login', () => {
+  expect(needsLogin('jupiter_swap', { delivery: 'local' })).toBe(false)
+  expect(needsLogin('jupiter_swap', { delivery: 'link' })).toBe(false)
+  expect(needsLogin('jupiter_swap', { delivery: 'embedded' })).toBe(true)
+  expect(needsLogin('solana_transfer', { delivery: 'embedded' })).toBe(true)
+  expect(needsLogin('send_transaction', { id: requestId })).toBe(false)
+  expect(needsLogin('phoenix_list_markets', {})).toBe(false)
+  expect(needsLogin('call', {})).toBe(true)
+  expect(needsLogin('send_feedback', {})).toBe(true)
+  expect(needsLogin('unknown', {})).toBe(true)
 })
