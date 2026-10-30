@@ -8,7 +8,8 @@ import { z } from 'zod'
 import { MCP_SCOPES } from '@lanatools/contracts'
 import { WorkerEntrypoint, env as bindings } from 'cloudflare:workers'
 import type { McpTokenRevoker } from '../../api/src/mcp-service'
-import { createServer } from './server'
+import { NO_LOGIN_TOOLS, createServer } from './server'
+import type { ServerAccess } from './server'
 import { Identity } from './identity'
 import { ToolChoice, approveGrant, toolAccess } from './approve-grant'
 import type { GrantEnv } from './approve-grant'
@@ -24,6 +25,49 @@ type McpEnv = Env &
 const OAuthContext = z.object({
   auth: z.object({ scope: z.array(z.string()) }),
 })
+
+/** The tool call parts of a JSON-RPC message; other fields are not read. */
+const RpcMessage = z.object({
+  id: z.union([z.string(), z.number()]).optional(),
+  method: z.string(),
+  params: z.object({ name: z.string().optional() }).optional(),
+})
+
+/** The JSON-RPC messages in an MCP POST, or none when it is not JSON. */
+async function rpcMessages(request: Request) {
+  const body: unknown = await request
+    .clone()
+    .json()
+    .catch(() => null)
+  return (Array.isArray(body) ? body : [body]).flatMap((message) => {
+    const parsed = RpcMessage.safeParse(message)
+    return parsed.success ? [parsed.data] : []
+  })
+}
+
+function serveMcp(
+  request: Request,
+  env: McpEnv,
+  ctx: ExecutionContext,
+  access: ServerAccess,
+) {
+  return createMcpHandler(
+    () =>
+      createServer(
+        {
+          api: env.API,
+          typesafeApiKey: env.TYPESAFE_API_KEY,
+          revokeClient: ({ userId, clientId, grantId }) => {
+            ctx.waitUntil(
+              revokeClientTokens(env.OAUTH_PROVIDER, userId, clientId, grantId),
+            )
+          },
+        },
+        access,
+      ),
+    { route: '/mcp' },
+  )(request, env, ctx)
+}
 
 const defaultHandler = {
   async fetch(request: Request, env: McpEnv) {
@@ -139,28 +183,10 @@ const oauthOptions: OAuthProviderOptions<McpEnv> = {
   apiHandler: {
     fetch(request, env, ctx) {
       const auth = OAuthContext.safeParse(ctx)
-      return createMcpHandler(
-        () =>
-          createServer(
-            {
-              api: env.API,
-              typesafeApiKey: env.TYPESAFE_API_KEY,
-              revokeClient: ({ userId, clientId, grantId }) => {
-                ctx.waitUntil(
-                  revokeClientTokens(
-                    env.OAUTH_PROVIDER,
-                    userId,
-                    clientId,
-                    grantId,
-                  ),
-                )
-              },
-            },
-            ctx.props,
-            auth.success ? auth.data.auth.scope : [],
-          ),
-        { route: '/mcp' },
-      )(request, env, ctx)
+      return serveMcp(request, env, ctx, {
+        props: ctx.props,
+        scopes: auth.success ? auth.data.auth.scope : [],
+      })
     },
   },
   defaultHandler,
@@ -191,7 +217,54 @@ const oauthOptions: OAuthProviderOptions<McpEnv> = {
   },
 }
 
-export default new OAuthProvider<McpEnv>(oauthOptions)
+const oauthProvider = new OAuthProvider<McpEnv>(oauthOptions)
+
+/**
+ * One MCP URL for everyone. A request with a token goes through OAuthProvider
+ * as before. Without one, the agent gets the no-login tools; calling any other
+ * tool gets OAuthProvider's own 401, which makes the client ask the user to
+ * log in.
+ */
+export default {
+  async fetch(request: Request, env: McpEnv, ctx: ExecutionContext) {
+    if (
+      new URL(request.url).pathname !== '/mcp' ||
+      request.headers.has('authorization')
+    )
+      return oauthProvider.fetch(request, env, ctx)
+    const calls = (await rpcMessages(request)).filter(
+      (message) => message.method === 'tools/call',
+    )
+    // The limit counts requests, so a batch of several calls needs login.
+    if (
+      calls.length > 1 ||
+      calls.some((call) => !NO_LOGIN_TOOLS.has(call.params?.name ?? ''))
+    )
+      return oauthProvider.fetch(request, env, ctx)
+    if (calls.length > 0) {
+      const { success } = await env.NO_LOGIN_LIMITER.limit({
+        key: request.headers.get('cf-connecting-ip') ?? 'unknown',
+      })
+      // A tool error the agent can read, rather than an HTTP error a client
+      // may treat as the server being down.
+      if (!success)
+        return json({
+          jsonrpc: '2.0',
+          id: calls[0]?.id ?? null,
+          result: {
+            isError: true,
+            content: [
+              {
+                type: 'text',
+                text: 'Too many calls without login. Wait a minute, or log in to LanaTools.',
+              },
+            ],
+          },
+        })
+    }
+    return serveMcp(request, env, ctx, null)
+  },
+} satisfies ExportedHandler<McpEnv>
 
 /** Called by the API Worker when a user revokes a client from the dashboard. */
 export class McpTokenService

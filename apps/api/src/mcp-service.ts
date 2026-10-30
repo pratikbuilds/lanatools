@@ -22,7 +22,7 @@ import {
 } from './transactions/requests'
 import type { TransactionLinkEnv } from './transactions/requests'
 import { paymentConfig } from './solana/network'
-import { callTool } from './tools/call-tool'
+import { callPublicTool, callTool } from './tools/call-tool'
 import type { ProviderEnv } from './tools/providers'
 
 /** The MCP Worker's RPC surface for deleting OAuth tokens held in its KV. */
@@ -191,6 +191,11 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
   /** Runs any provider tool, recording it in the client's activity. */
   async callTool(identity: GrantIdentity, name: string, input: unknown) {
     return callTool({ db: this.env.DB, env: this.env }, identity, name, input)
+  }
+
+  /** Runs a read tool for an agent that is not logged in; nothing is recorded. */
+  async callPublicTool(name: string, input: unknown) {
+    return callPublicTool({ env: this.env }, name, input)
   }
 
   /**

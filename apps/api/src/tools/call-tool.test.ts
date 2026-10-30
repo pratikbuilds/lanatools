@@ -20,7 +20,7 @@ import {
 } from '../mcp-grants'
 import type { GrantIdentity } from '../mcp-grants'
 import { testDatabase } from '../test-database'
-import { callTool } from './call-tool'
+import { callPublicTool, callTool } from './call-tool'
 import type { CallToolDeps } from './call-tool'
 import type { ConfiguredProvider, HostedProvider } from './providers'
 
@@ -565,4 +565,29 @@ test('all ten Jupiter tools run through the API grant boundary and revocation bl
       await callTool(served(fetcher), grant, call.tool, call.input),
     ).toMatchObject({ ok: false, error: { code: 'unauthorized' } })
   expect(calls).toBe(successfulCalls)
+})
+
+test('a call without login runs the tool and records nothing', async () => {
+  const before = await drizzle(db).select().from(toolActivity)
+  const run = mock(defaultRun)
+  const outcome = await callPublicTool(dependencies({ run }), 'stub_tool', {})
+  expect(outcome).toEqual({ ok: true, result: { content: 'private-result' } })
+  expect(run).toHaveBeenCalledWith('stub_tool', {})
+  expect(await drizzle(db).select().from(toolActivity)).toHaveLength(
+    before.length,
+  )
+
+  const failure = await callPublicTool(
+    dependencies({ config: async () => Promise.reject(new Error(RPC_URL)) }),
+    'stub_tool',
+    {},
+  )
+  expect(failure).toMatchObject({
+    ok: false,
+    error: { code: 'network_unavailable' },
+  })
+  expect(JSON.stringify(failure)).not.toContain('private-provider-key')
+  expect(
+    await callPublicTool(dependencies(), 'missing_tool', {}),
+  ).toMatchObject({ ok: false, error: { code: 'invalid_input' } })
 })

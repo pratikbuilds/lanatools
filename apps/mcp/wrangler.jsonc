@@ -17,6 +17,14 @@
     "binding": "ASSETS",
     "run_worker_first": true,
   },
+  // Calls from agents that are not logged in, per IP (specs/no-login-access.md).
+  "ratelimits": [
+    {
+      "name": "NO_LOGIN_LIMITER",
+      "namespace_id": "2001004",
+      "simple": { "limit": 30, "period": 60 },
+    },
+  ],
   "kv_namespaces": [
     {
       "binding": "OAUTH_KV",

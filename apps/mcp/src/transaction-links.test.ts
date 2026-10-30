@@ -55,13 +55,13 @@ test('an MCP transaction tool creates a D1 link that the anonymous HTTP route re
         walletAddress: unused,
         payHttp: unused,
         callTool: unused,
+        callPublicTool: unused,
         sendFeedback: unused,
       },
       typesafeApiKey: undefined,
       revokeClient: () => {},
     },
-    identity,
-    ['account:read', 'solana:transfer'],
+    { props: identity, scopes: ['account:read', 'solana:transfer'] },
   )
   const client = new Client({
     name: 'transaction-link integration',

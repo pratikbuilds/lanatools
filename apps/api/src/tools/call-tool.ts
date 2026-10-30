@@ -81,6 +81,53 @@ export async function callTool(
   }
   if (access !== 'active') return denied(access, provider.scope)
 
+  const { network, credits, outcome } = await run(deps, provider, name, input)
+
+  try {
+    await drizzle(deps.db)
+      .insert(toolActivity)
+      .values({
+        id: crypto.randomUUID(),
+        privyUserId: identity.userId,
+        clientId: identity.clientId,
+        grantId: identity.grantId,
+        provider: provider.name,
+        tool: name,
+        network,
+        status: outcome.ok ? 'ok' : 'failed',
+        credits,
+        errorCode: outcome.ok ? null : outcome.error.code,
+        durationMs: Math.max(0, now() - startedAt),
+        createdAt: startedAt,
+      })
+  } catch {
+    // D1 may include bound values in its errors. Log only a fixed diagnostic.
+    console.error('Could not record tool activity')
+  }
+  return outcome
+}
+
+/**
+ * Runs a public provider tool for a caller that is not logged in. Nothing
+ * is recorded: the call belongs to no account.
+ */
+export async function callPublicTool(
+  deps: Omit<CallToolDeps, 'db' | 'now'>,
+  name: string,
+  input: unknown,
+): Promise<ToolReply> {
+  const found = lookupTool(deps.providers ?? PROVIDERS, name)
+  if (!found) return failed('invalid_input')
+  return (await run(deps, found.provider, name, input)).outcome
+}
+
+/** Configures the provider and runs one tool, never throwing. */
+async function run(
+  deps: Pick<CallToolDeps, 'env' | 'fetch'>,
+  provider: HostedProvider,
+  name: string,
+  input: unknown,
+) {
   let network: SolanaNetwork['name'] | null = null
   let credits = 0
   let outcome: ToolReply
@@ -109,26 +156,5 @@ export async function callTool(
     outcome = failed('network_unavailable')
   }
 
-  try {
-    await drizzle(deps.db)
-      .insert(toolActivity)
-      .values({
-        id: crypto.randomUUID(),
-        privyUserId: identity.userId,
-        clientId: identity.clientId,
-        grantId: identity.grantId,
-        provider: provider.name,
-        tool: name,
-        network,
-        status: outcome.ok ? 'ok' : 'failed',
-        credits,
-        errorCode: outcome.ok ? null : outcome.error.code,
-        durationMs: Math.max(0, now() - startedAt),
-        createdAt: startedAt,
-      })
-  } catch {
-    // D1 may include bound values in its errors. Log only a fixed diagnostic.
-    console.error('Could not record tool activity')
-  }
-  return outcome
+  return { network, credits, outcome }
 }
