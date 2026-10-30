@@ -54,6 +54,8 @@ const LOGIN_REQUIRED: ToolError = {
 }
 const NEEDS_LOGIN =
   'Needs login: the first call asks the user to log in to LanaTools.'
+const EMBEDDED_NEEDS_LOGIN =
+  'Without login, use delivery "local" or "link"; delivery "embedded" asks the user to log in to LanaTools.'
 const SERVICE_UNAVAILABLE: ToolError = {
   code: 'service_unavailable',
   message: 'Access service is unavailable right now',
@@ -65,17 +67,32 @@ const cachedFetch = (url: string, init?: RequestInit) =>
   fetch(url, { ...init, cf: { cacheEverything: true } })
 
 /**
- * Tools an agent may call without logging in: public Solana data and the
- * pay.sh catalog. The Worker answers a call to any other tool from a client
- * without a token with 401, which makes the client ask the user to log in.
+ * Tools an agent may call without logging in: public Solana data, the pay.sh
+ * catalog, and transactions its own wallet or the user's browser wallet signs.
  */
 export const NO_LOGIN_TOOLS: ReadonlySet<string> = new Set([
   ...PROVIDERS.flatMap((provider) => provider.tools.map((tool) => tool.name)),
+  ...Object.keys(transactionTools),
+  'send_transaction',
+  'get_transaction_status',
   'list_catalog',
   'search_catalog',
   'get_catalog_entry',
   'whoami',
 ])
+
+const Embedded = z.object({ delivery: z.literal('embedded') })
+
+/**
+ * Whether a tool call from a client without a token must log in first: any
+ * tool not in NO_LOGIN_TOOLS, and a transaction signed by the LanaTools
+ * wallet. The Worker answers such a call with 401, which makes the client
+ * ask the user to log in.
+ */
+export function needsLogin(name: string, args: unknown) {
+  if (!NO_LOGIN_TOOLS.has(name)) return true
+  return name in transactionTools && Embedded.safeParse(args).success
+}
 
 /** A logged-in client's OAuth grant props and scopes; null when not logged in. */
 export type ServerAccess = { props: unknown; scopes: string[] } | null
@@ -89,8 +106,13 @@ export function createServer(
   // Without login every tool is listed, so the agent can find the ones that
   // need login; calling one makes the client start the login.
   const scopes: string[] = access?.scopes ?? [...MCP_SCOPES]
-  const lockable = (description: string) =>
-    loggedIn ? description : `${description} ${NEEDS_LOGIN}`
+  // Transaction tools run for the grant, or without login for no one.
+  const asCaller = (
+    scope: string | null,
+    run: (
+      grant: GrantIdentity | null,
+    ) => CallToolResult | Promise<CallToolResult>,
+  ) => (loggedIn ? withGrant(scope, run) : run(null))
   // A client is only shown the tool families the user allowed it; every call
   // is still checked against its scope here and again in the API.
   const allows = (scope: string | null) => !scope || scopes.includes(scope)
@@ -174,7 +196,9 @@ export function createServer(
       name,
       {
         title: tool.title,
-        description: lockable(`${tool.description} ${signing}`),
+        description: loggedIn
+          ? `${tool.description} ${signing}`
+          : `${tool.description} ${signing} ${EMBEDDED_NEEDS_LOGIN}`,
         inputSchema: transactionToolInput(tool.operation),
         annotations: {
           readOnlyHint: false,
@@ -184,14 +208,14 @@ export function createServer(
         },
       },
       (input) =>
-        withGrant(tool.scope, async (grant) => {
+        asCaller(tool.scope, async (grant) => {
           try {
             const outcome = await dependencies.api.createTransactionRequest(
               grant,
               name,
               input,
             )
-            if (!outcome.ok && outcome.error.code === 'unauthorized')
+            if (grant && !outcome.ok && outcome.error.code === 'unauthorized')
               dependencies.revokeClient(grant)
             return toCallToolResult(outcome)
           } catch {
@@ -203,9 +227,8 @@ export function createServer(
     'send_transaction',
     {
       title: 'Send a locally signed transaction',
-      description: lockable(
+      description:
         'Send a transaction prepared with delivery "local" after your wallet signed it. Pass its id and the signed transaction as base64. LanaTools checks it is the exact prepared transaction signed by that wallet, sends it, and returns the shared result. Resending the same signed bytes is safe.',
-      ),
       inputSchema: z.object({
         id: z.string().min(1).max(64),
         messageSignature: z
@@ -230,13 +253,13 @@ export function createServer(
       },
     },
     ({ id, transaction, messageSignature }) =>
-      withGrant(null, async (grant) => {
+      asCaller(null, async (grant) => {
         try {
           const outcome = await dependencies.api.sendTransaction(grant, id, {
             transaction,
             ...(messageSignature ? { messageSignature } : {}),
           })
-          if (!outcome.ok && outcome.error.code === 'unauthorized')
+          if (grant && !outcome.ok && outcome.error.code === 'unauthorized')
             dependencies.revokeClient(grant)
           return toCallToolResult(outcome)
         } catch {
@@ -248,9 +271,8 @@ export function createServer(
     'get_transaction_status',
     {
       title: 'Get a transaction status',
-      description: lockable(
+      description:
         'Read the current status of a transaction this client prepared, by the id a transaction tool returned. Returns the same result shape, with the signature and receipt once sent.',
-      ),
       inputSchema: z.object({ id: z.string().min(1).max(64) }),
       annotations: {
         readOnlyHint: true,
@@ -260,10 +282,10 @@ export function createServer(
       },
     },
     ({ id }) =>
-      withGrant(null, async (grant) => {
+      asCaller(null, async (grant) => {
         try {
           const outcome = await dependencies.api.transactionStatus(grant, id)
-          if (!outcome.ok && outcome.error.code === 'unauthorized')
+          if (grant && !outcome.ok && outcome.error.code === 'unauthorized')
             dependencies.revokeClient(grant)
           return toCallToolResult(outcome)
         } catch {
@@ -292,7 +314,7 @@ export function createServer(
                 loggedIn: false,
                 walletAddress: null,
                 message:
-                  'Not logged in. Solana data and catalog tools work now; a tool marked "Needs login" asks the user to log in the first time you call it.',
+                  'Not logged in. Solana data, catalog tools, and transactions with delivery "local" or "link" work now; a tool marked "Needs login", or delivery "embedded", asks the user to log in the first time you call it.',
               }),
             },
           ],

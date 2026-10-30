@@ -28,8 +28,8 @@ async function reply(response: Response) {
   return JSON.parse(data)
 }
 
-const callTool = (name: string, token?: string) =>
-  rpc('tools/call', { name, arguments: {} }, token)
+const callTool = (name: string, token?: string, args: unknown = {}) =>
+  rpc('tools/call', { name, arguments: args }, token)
 
 test('without a token, the tool list includes the tools that need login', async () => {
   const response = await rpc('tools/list', {})
@@ -53,8 +53,13 @@ test('without a token, a data tool runs in the API under the per-IP limit', asyn
 })
 
 test('without a token, a tool that needs login gets 401 so the client logs in', async () => {
-  for (const name of ['call', 'jupiter_swap', 'send_feedback', 'unknown']) {
-    const response = await callTool(name)
+  for (const [name, args] of [
+    ['call', {}],
+    ['send_feedback', {}],
+    ['unknown', {}],
+    ['jupiter_swap', { delivery: 'embedded' }],
+  ] as const) {
+    const response = await callTool(name, undefined, args)
     expect(response.status).toBe(401)
     expect(response.headers.get('WWW-Authenticate')).toContain(
       'resource_metadata=',
@@ -85,4 +90,21 @@ test('a request with a token still goes through login checks', async () => {
   expect(response.status).toBe(401)
   expect(api.callPublicTool).not.toHaveBeenCalled()
   expect(env.NO_LOGIN_LIMITER.limit).not.toHaveBeenCalled()
+})
+
+test("without a token, a transaction for the agent's own wallet runs under the limit", async () => {
+  const response = await callTool('solana_transfer', undefined, {
+    recipient: '11111111111111111111111111111111',
+    amountLamports: '1',
+    delivery: 'local',
+    wallet: '11111111111111111111111111111111',
+    idempotencyKey: 'transfer-1',
+  })
+  expect(response.status).toBe(200)
+  expect(api.createTransactionRequest).toHaveBeenCalledWith(
+    null,
+    'solana_transfer',
+    expect.objectContaining({ delivery: 'local' }),
+  )
+  expect(env.NO_LOGIN_LIMITER.limit).toHaveBeenCalledTimes(1)
 })

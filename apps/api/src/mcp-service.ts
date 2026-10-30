@@ -172,19 +172,25 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
     return saveFeedback(this.env.DB, identity, feedback)
   }
 
+  // A null identity is an agent that is not logged in; it may use link and
+  // local delivery only.
   async createTransactionRequest(
-    identity: GrantIdentity,
+    identity: GrantIdentity | null,
     name: string,
     input: unknown,
   ) {
     return createTransactionRequest(this.env, identity, name, input)
   }
 
-  async transactionStatus(identity: GrantIdentity, id: string) {
+  async transactionStatus(identity: GrantIdentity | null, id: string) {
     return transactionStatus(this.env, identity, id)
   }
 
-  async sendTransaction(identity: GrantIdentity, id: string, input: unknown) {
+  async sendTransaction(
+    identity: GrantIdentity | null,
+    id: string,
+    input: unknown,
+  ) {
     return sendTransaction(this.env, identity, id, input)
   }
 
