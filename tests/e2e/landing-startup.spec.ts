@@ -30,7 +30,7 @@ for (const width of [1280, 390]) {
       const original = await heading.elementHandle()
       await expect(
         page.getByRole('link', { name: 'Get started', exact: true }),
-      ).toHaveAttribute('href', '/sign-in')
+      ).toHaveAttribute('href', '#connect')
       const form = page.getByRole('form', { name: 'Get updates by email' })
       const input = form.getByRole('textbox', { name: 'Email address' })
       const submit = form.getByRole('button', { name: 'Get updates' })

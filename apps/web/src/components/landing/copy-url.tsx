@@ -6,6 +6,8 @@ export const MCP_URL = 'https://mcp.lanatools.sh/mcp'
 export const MCP_HOST = new URL(MCP_URL).host
 /** How an agent connects itself, for clients without MCP settings. */
 export const SKILL_URL = 'https://lanatools.sh/SKILL.md'
+/** What to paste into an agent chat so it connects itself. */
+export const SKILL_PROMPT = `Read ${SKILL_URL} and connect to LanaTools.`
 
 type ClientConfig = { tab: string; file: string; lines: Array<string> }
 
@@ -192,6 +194,18 @@ export function UrlBox() {
         {MCP_URL}
       </code>
       <CopyButton text={MCP_URL} label="Copy the MCP URL" />
+    </div>
+  )
+}
+
+/** The other way in: an agent that reads the skill connects itself. */
+export function SkillBox() {
+  return (
+    <div className="box box-lg flex flex-wrap items-center gap-4 px-4 py-4 sm:px-5">
+      <p className="min-w-0 flex-1 text-[15px] break-words text-ink">
+        {SKILL_PROMPT}
+      </p>
+      <CopyButton text={SKILL_PROMPT} label="Copy the prompt for your agent" />
     </div>
   )
 }

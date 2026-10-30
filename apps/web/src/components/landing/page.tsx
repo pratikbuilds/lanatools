@@ -11,7 +11,7 @@ import { Wordmark } from '#/components/landing/brand'
 import { Flow } from '#/components/landing/flow'
 import { EarlyAccess } from '#/components/landing/early-access'
 import { Footer } from '#/components/landing/footer'
-import { UrlBox } from '#/components/landing/copy-url'
+import { Install, SkillBox } from '#/components/landing/copy-url'
 import { Logo } from '#/components/landing/logo'
 import { EASE, Reveal } from '#/components/landing/reveal'
 import { WhenVisible } from '#/components/landing/when-visible'
@@ -104,9 +104,9 @@ function Header() {
 }
 
 const CONNECT_STEPS = [
-  'Create an account and fund the wallet.',
   'Paste the URL into Cursor, Claude, Codex, or any MCP client.',
-  'Approve that client’s permissions and limit at sign-in.',
+  'Ask for Solana data or a transfer. No account needed.',
+  'Log in when you want the LanaTools wallet, paid APIs, and limits.',
 ]
 
 // The Solana logomark set as a word in the headline: flat lime like the text
@@ -154,7 +154,7 @@ function Hero() {
           </div>
           {/* .btn is unlayered CSS, so size overrides need !important. */}
           <a
-            href="/sign-in"
+            href="#connect"
             className="btn btn-primary group mt-8 h-14! gap-3! px-7! text-[16px]! max-sm:w-full"
           >
             Get started
@@ -276,7 +276,15 @@ export function Home() {
               ))}
             </ol>
             <Reveal className="mt-8" delay={0.2}>
-              <UrlBox />
+              <Install />
+            </Reveal>
+            <Reveal className="mt-6" delay={0.22}>
+              <p className="text-[14px] text-mute">
+                Or paste this into a chat with any agent:
+              </p>
+              <div className="mt-2">
+                <SkillBox />
+              </div>
             </Reveal>
             <Reveal className="mt-14" delay={0.25}>
               <div id="updates" className="scroll-mt-24">

@@ -1,7 +1,7 @@
 # No-login access: tech spec
 
 Status: Phase 0 checked in Claude Code (headless); Cursor and Codex untested.
-Phases 1 to 3 built. Phase 4 waiting for approval.
+Phases 1 to 4 built.
 
 ## 1. Goal
 
@@ -145,9 +145,10 @@ Swaps were not tested.
   with the client tabs that already exist (`copy-url.tsx`), and a one-line
   prompt to paste into any agent: "Read https://lanatools.sh/SKILL.md and
   connect to LanaTools."
-- Steps become: 1. paste the URL or the prompt into your agent, 2. ask it
-  for Solana data or a swap, 3. log in when you want the LanaTools wallet,
-  paid APIs and limits.
+- Steps become: 1. paste the URL into your agent, 2. ask it for Solana data
+  or a transfer, 3. log in when you want the LanaTools wallet, paid APIs and
+  limits. The client tabs are the existing `Install` component; the prompt is
+  `SkillBox`, both in `copy-url.tsx`.
 - Header "Sign in" stays and goes to the dashboard, as today.
 - The dashboard's connect page (`connect-client.tsx`) is unchanged.
 
