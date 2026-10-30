@@ -53,6 +53,7 @@ function serveMcp(
   ctx: ExecutionContext,
   access: ServerAccess,
 ) {
+  const country = request.cf?.country
   return createMcpHandler(
     () =>
       createServer(
@@ -64,6 +65,7 @@ function serveMcp(
               revokeClientTokens(env.OAUTH_PROVIDER, userId, clientId, grantId),
             )
           },
+          ...(typeof country === 'string' ? { country } : {}),
         },
         access,
       ),

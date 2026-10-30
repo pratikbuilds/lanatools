@@ -199,9 +199,14 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
     return callTool({ db: this.env.DB, env: this.env }, identity, name, input)
   }
 
-  /** Runs a read tool for an agent that is not logged in; nothing is recorded. */
-  async callPublicTool(name: string, input: unknown) {
-    return callPublicTool({ env: this.env }, name, input)
+  /** Runs a read tool for an agent that is not logged in, recording its use. */
+  async callPublicTool(name: string, input: unknown, country?: string) {
+    return callPublicTool(
+      { db: this.env.DB, env: this.env },
+      name,
+      input,
+      country,
+    )
   }
 
   /**

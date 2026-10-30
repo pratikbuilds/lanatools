@@ -149,6 +149,8 @@ test('authorized generic calls pass only the server RPC and record one metadata-
       errorCode: null,
       durationMs: 25,
       createdAt: 1_000_000,
+      input: null,
+      country: null,
     },
   ])
   expect(JSON.stringify(await rows())).not.toMatch(
@@ -567,15 +569,30 @@ test('all ten Jupiter tools run through the API grant boundary and revocation bl
   expect(calls).toBe(successfulCalls)
 })
 
-test('a call without login runs the tool and records nothing', async () => {
-  const before = await drizzle(db).select().from(toolActivity)
+test('a call without login runs the tool and records its use', async () => {
   const run = mock(defaultRun)
-  const outcome = await callPublicTool(dependencies({ run }), 'stub_tool', {})
-  expect(outcome).toEqual({ ok: true, result: { content: 'private-result' } })
-  expect(run).toHaveBeenCalledWith('stub_tool', {})
-  expect(await drizzle(db).select().from(toolActivity)).toHaveLength(
-    before.length,
+  const outcome = await callPublicTool(
+    dependencies({ run }),
+    'stub_tool',
+    { mint: 'input-value' },
+    'NP',
   )
+  expect(outcome).toEqual({ ok: true, result: { content: 'private-result' } })
+  expect(run).toHaveBeenCalledWith('stub_tool', { mint: 'input-value' })
+  const recorded = await drizzle(db)
+    .select()
+    .from(toolActivity)
+    .where(eq(toolActivity.country, 'NP'))
+  expect(recorded).toHaveLength(1)
+  expect(recorded[0]).toMatchObject({
+    privyUserId: 'no-login',
+    clientId: 'no-login',
+    grantId: 'no-login',
+    tool: 'stub_tool',
+    status: 'ok',
+    input: '{"mint":"input-value"}',
+  })
+  expect(JSON.stringify(recorded[0])).not.toContain('private-result')
 
   const failure = await callPublicTool(
     dependencies({ config: async () => Promise.reject(new Error(RPC_URL)) }),
