@@ -28,7 +28,7 @@ also do it himself?"
 | 7 | Get started | Landing "Get started" shows the MCP URL and the SKILL.md prompt, not `/sign-in` (Phase 4) | Day-one use without the dashboard |
 | 8 | Abuse control | Per-IP rate limit on no-login calls, same Workers rate limiter the API already uses | No identity to limit by; protects the shared Helius credits |
 | 9 | No-login activity | Not shown anywhere; it belongs to no account | There is no dashboard without login |
-| 10 | Rate limit number | 30 tool calls per minute per IP; listing tools is free | Chosen 2026-10-30 |
+| 10 | Rate limit number | 30 tool calls per minute per IP; listing tools is free; a batch of several calls needs login, since the limit counts requests | Chosen 2026-10-30 |
 
 ## 3. Today (facts this spec relies on)
 

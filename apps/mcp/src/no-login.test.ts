@@ -108,3 +108,29 @@ test("without a token, a transaction for the agent's own wallet runs under the l
   )
   expect(env.NO_LOGIN_LIMITER.limit).toHaveBeenCalledTimes(1)
 })
+
+test('without a token, a batch of several calls needs login', async () => {
+  const call = (id: number, name: string) => ({
+    jsonrpc: '2.0',
+    id,
+    method: 'tools/call',
+    params: { name, arguments: {} },
+  })
+  for (const batch of [
+    [call(1, 'phoenix_list_markets'), call(2, 'phoenix_list_markets')],
+    [call(1, 'phoenix_list_markets'), call(2, 'call')],
+  ]) {
+    const response = await send('/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        Host: new URL(env.MCP_ORIGIN).host,
+      },
+      body: JSON.stringify(batch),
+    })
+    expect(response.status).toBe(401)
+  }
+  expect(api.callPublicTool).not.toHaveBeenCalled()
+  expect(env.NO_LOGIN_LIMITER.limit).not.toHaveBeenCalled()
+})

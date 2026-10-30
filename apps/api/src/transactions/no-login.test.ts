@@ -19,6 +19,7 @@ import { createTransactionLinks } from '../routes/transaction-links'
 import type { TransactionLinksEnv } from '../routes/transaction-links'
 import { PAYMENT_NETWORKS } from '../solana/network'
 import { testDatabase } from '../test-database'
+import { listTransactions, readTransaction } from './list'
 import {
   NO_LOGIN,
   createTransactionRequest,
@@ -257,4 +258,67 @@ test('requests without login and logged-in requests cannot read each other', asy
     ).toMatchObject({ ok: false, error: { code: 'not_found' } })
   }
   expect(fake.sent).toHaveLength(0)
+})
+
+test('without login, a local key is scoped to its wallet and never collides with a logged-in key', async () => {
+  const fake = mockRpc()
+  const input = localInput()
+  const first = await createTransactionRequest(
+    env(),
+    null,
+    'solana_transfer',
+    input,
+    { rpc: fake.rpc },
+  )
+  if (!first.ok) throw new Error(first.error.message)
+  expect(
+    await createTransactionRequest(
+      env(),
+      null,
+      'solana_transfer',
+      { ...input, amountLamports: '10000002' },
+      { rpc: fake.rpc },
+    ),
+  ).toMatchObject({ ok: false, error: { code: 'conflict' } })
+
+  const identity = await connect()
+  const mine = await createTransactionRequest(
+    env(),
+    identity,
+    'solana_transfer',
+    input,
+    { rpc: fake.rpc },
+  )
+  if (!mine.ok) throw new Error(mine.error.message)
+  expect(mine.result.id).not.toBe(first.result.id)
+})
+
+test('requests without login never appear in a user dashboard', async () => {
+  const fake = mockRpc()
+  const identity = await connect()
+  const mine = await createTransactionRequest(
+    env(),
+    identity,
+    'solana_transfer',
+    localInput(),
+    { rpc: fake.rpc },
+  )
+  const anonymous = await createTransactionRequest(
+    env(),
+    null,
+    'solana_transfer',
+    localInput(),
+    { rpc: fake.rpc },
+  )
+  if (!mine.ok || !anonymous.ok) throw new Error('Request was not created')
+  const ids = (
+    await listTransactions(env(), identity.userId, { limit: 50 })
+  ).items.map((item) => item.id)
+  expect(ids).toContain(mine.result.id)
+  expect(ids).not.toContain(anonymous.result.id)
+  expect(
+    await readTransaction(env(), identity.userId, anonymous.result.id, {
+      rpc: fake.rpc,
+    }),
+  ).toBeNull()
 })
