@@ -56,13 +56,25 @@ export const api = {
   whoami: mock(async () =>
     grant.active ? { userId: USER_ID, clientId: 'client' } : null,
   ),
+  callPublicTool: mock(async (_name: string, _input: unknown) => ({
+    ok: true,
+    result: { markets: [] },
+  })),
 }
+
+/** Whether the no-login rate limit lets the next call through. */
+export const noLogin = { allowed: true }
 
 export const env = {
   MCP_ORIGIN: 'http://localhost:8788',
   FIRST_PARTY_CLIENT_IDS: '',
   OAUTH_KV: memoryKV(),
   API: api,
+  NO_LOGIN_LIMITER: {
+    limit: mock(async (_options: { key: string }) => ({
+      success: noLogin.allowed,
+    })),
+  },
 }
 mock.module('cloudflare:workers', () => ({
   WorkerEntrypoint: class {},
@@ -136,5 +148,7 @@ export async function exchange(
 
 export function resetWorker() {
   grant.active = true
+  noLogin.allowed = true
+  env.NO_LOGIN_LIMITER.limit.mockClear()
   for (const method of Object.values(api)) method.mockClear()
 }

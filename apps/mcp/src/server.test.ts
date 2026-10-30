@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'bun:test'
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client'
 import { heliusTools } from '@lanatools/helius'
-import { createServer } from './server'
+import { NO_LOGIN_TOOLS, createServer } from './server'
 import { chainFixtures } from '../scripts/verify-chain'
 import type { ServerDependencies } from './server'
 
@@ -50,6 +50,7 @@ async function connect(
   scopes = ['helius:read'],
   active = true,
   props: unknown = identity,
+  loggedIn = true,
 ) {
   const api = {
     whoami: mock<ServerDependencies['api']['whoami']>(async () =>
@@ -66,6 +67,9 @@ async function connect(
       ok: true,
       result: { accounts: [] },
     })),
+    callPublicTool: mock<ServerDependencies['api']['callPublicTool']>(
+      async () => ({ ok: true, result: { markets: [] } }),
+    ),
     sendFeedback: mock<ServerDependencies['api']['sendFeedback']>(
       async () => true,
     ),
@@ -82,8 +86,7 @@ async function connect(
   const revokeClient = mock<ServerDependencies['revokeClient']>(() => {})
   const server = createServer(
     { api, revokeClient, typesafeApiKey: undefined },
-    props,
-    scopes,
+    loggedIn ? { props, scopes } : null,
   )
   const client = new Client({ name: 'LanaTools test', version: '1.0.0' })
   const [clientTransport, serverTransport] =
@@ -730,6 +733,78 @@ test('send_feedback refuses a revoked client and hides API failures', async () =
     expect(failed.isError).toBe(true)
     expect(JSON.stringify(failed)).toContain('service_unavailable')
     expect(JSON.stringify(failed)).not.toContain('d1-detail-never-leak')
+  } finally {
+    await session.close()
+  }
+})
+
+test('without login every tool is listed, and the ones that need login say so', async () => {
+  const session = await connect([], true, undefined, false)
+  try {
+    const listed = (await session.client.listTools()).tools
+    for (const name of ['call', 'jupiter_swap', 'send_feedback'])
+      expect(listed.find((tool) => tool.name === name)?.description).toContain(
+        'Needs login',
+      )
+    for (const tool of listed.filter((each) => NO_LOGIN_TOOLS.has(each.name)))
+      expect(tool.description).not.toContain('Needs login')
+    expect(listed.map((tool) => tool.name)).toEqual(
+      expect.arrayContaining([...NO_LOGIN_TOOLS]),
+    )
+  } finally {
+    await session.close()
+  }
+})
+
+test('without login, data and catalog tools run with no grant and are not recorded', async () => {
+  const session = await connect([], true, undefined, false)
+  try {
+    const markets = await session.client.callTool({
+      name: 'phoenix_list_markets',
+      arguments: {},
+    })
+    expect(markets.isError).not.toBe(true)
+    expect(session.api.callPublicTool).toHaveBeenCalledWith(
+      'phoenix_list_markets',
+      {},
+    )
+    const catalog = await session.client.callTool({
+      name: 'list_catalog',
+      arguments: {},
+    })
+    expect(catalog.isError).not.toBe(true)
+    const whoami = await session.client.callTool({
+      name: 'whoami',
+      arguments: {},
+    })
+    const [account] = whoami.content as Array<{ text: string }>
+    expect(JSON.parse(account?.text ?? '')).toMatchObject({
+      loggedIn: false,
+      walletAddress: null,
+    })
+    expect(session.api.callTool).not.toHaveBeenCalled()
+    expect(session.api.whoami).not.toHaveBeenCalled()
+    expect(session.api.walletAddress).not.toHaveBeenCalled()
+  } finally {
+    await session.close()
+  }
+})
+
+test('without login, tools that need login refuse before any API call', async () => {
+  const session = await connect([], true, undefined, false)
+  try {
+    for (const [name, args] of [
+      ['send_feedback', { feedback: 'hi' }],
+      ['solana_transfer', transferInput],
+      ['get_transaction_status', { id: requestId }],
+    ] as const) {
+      const result = await session.client.callTool({ name, arguments: args })
+      expect(result.isError).toBe(true)
+      expect(JSON.stringify(result.content)).toContain('login_required')
+    }
+    expect(session.api.sendFeedback).not.toHaveBeenCalled()
+    expect(session.api.createTransactionRequest).not.toHaveBeenCalled()
+    expect(session.api.transactionStatus).not.toHaveBeenCalled()
   } finally {
     await session.close()
   }

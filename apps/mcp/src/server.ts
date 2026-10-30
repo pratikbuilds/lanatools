@@ -8,7 +8,7 @@ import {
   searchCatalog,
   localCatalog,
 } from '@lanatools/catalog'
-import { parseUsd } from '@lanatools/contracts'
+import { MCP_SCOPES, parseUsd } from '@lanatools/contracts'
 import type { ToolError } from '@lanatools/toolkit'
 import {
   registerTools,
@@ -32,6 +32,7 @@ export type ServerDependencies = {
     | 'walletAddress'
     | 'payHttp'
     | 'callTool'
+    | 'callPublicTool'
     | 'sendFeedback'
     | 'createTransactionRequest'
     | 'transactionStatus'
@@ -46,6 +47,13 @@ const UNAUTHORIZED: ToolError = {
   message: 'Connection revoked',
   retryable: false,
 }
+const LOGIN_REQUIRED: ToolError = {
+  code: 'login_required',
+  message: 'Log in to LanaTools to use this tool',
+  retryable: false,
+}
+const NEEDS_LOGIN =
+  'Needs login: the first call asks the user to log in to LanaTools.'
 const SERVICE_UNAVAILABLE: ToolError = {
   code: 'service_unavailable',
   message: 'Access service is unavailable right now',
@@ -56,12 +64,33 @@ const JEV_TIMEOUT_MS = 3000
 const cachedFetch = (url: string, init?: RequestInit) =>
   fetch(url, { ...init, cf: { cacheEverything: true } })
 
+/**
+ * Tools an agent may call without logging in: public Solana data and the
+ * pay.sh catalog. The Worker answers a call to any other tool from a client
+ * without a token with 401, which makes the client ask the user to log in.
+ */
+export const NO_LOGIN_TOOLS: ReadonlySet<string> = new Set([
+  ...PROVIDERS.flatMap((provider) => provider.tools.map((tool) => tool.name)),
+  'list_catalog',
+  'search_catalog',
+  'get_catalog_entry',
+  'whoami',
+])
+
+/** A logged-in client's OAuth grant props and scopes; null when not logged in. */
+export type ServerAccess = { props: unknown; scopes: string[] } | null
+
 export function createServer(
   dependencies: ServerDependencies,
-  props: unknown,
-  scopes: string[],
+  access: ServerAccess,
 ) {
-  const identity = Identity.safeParse(props)
+  const loggedIn = access !== null
+  const identity = Identity.safeParse(access?.props)
+  // Without login every tool is listed, so the agent can find the ones that
+  // need login; calling one makes the client start the login.
+  const scopes: string[] = access?.scopes ?? [...MCP_SCOPES]
+  const lockable = (description: string) =>
+    loggedIn ? description : `${description} ${NEEDS_LOGIN}`
   // A client is only shown the tool families the user allowed it; every call
   // is still checked against its scope here and again in the API.
   const allows = (scope: string | null) => !scope || scopes.includes(scope)
@@ -73,6 +102,7 @@ export function createServer(
     scope: string | null,
     run: (identity: GrantIdentity) => CallToolResult | Promise<CallToolResult>,
   ) {
+    if (!loggedIn) return toolError(LOGIN_REQUIRED)
     if (scope && !scopes.includes(scope))
       return toolError({
         code: 'insufficient_scope',
@@ -95,8 +125,8 @@ export function createServer(
 
   // Catalog tools read public listings, so any active grant may use them.
   // Failures come back as tool errors instead of failing the MCP request.
-  const fromCatalog = (read: () => Promise<unknown>) =>
-    withGrant(null, async () => {
+  const fromCatalog = (read: () => Promise<unknown>) => {
+    const run = async (): Promise<CallToolResult> => {
       try {
         return {
           content: [{ type: 'text', text: JSON.stringify(await read()) }],
@@ -120,7 +150,10 @@ export function createServer(
           retryable: true,
         })
       }
-    })
+    }
+    // The catalog is public: without login it runs with no grant to check.
+    return loggedIn ? withGrant(null, run) : run()
+  }
   const readOnlyAnnotations = {
     readOnlyHint: true,
     destructiveHint: false,
@@ -141,7 +174,7 @@ export function createServer(
       name,
       {
         title: tool.title,
-        description: `${tool.description} ${signing}`,
+        description: lockable(`${tool.description} ${signing}`),
         inputSchema: transactionToolInput(tool.operation),
         annotations: {
           readOnlyHint: false,
@@ -170,8 +203,9 @@ export function createServer(
     'send_transaction',
     {
       title: 'Send a locally signed transaction',
-      description:
+      description: lockable(
         'Send a transaction prepared with delivery "local" after your wallet signed it. Pass its id and the signed transaction as base64. LanaTools checks it is the exact prepared transaction signed by that wallet, sends it, and returns the shared result. Resending the same signed bytes is safe.',
+      ),
       inputSchema: z.object({
         id: z.string().min(1).max(64),
         messageSignature: z
@@ -214,8 +248,9 @@ export function createServer(
     'get_transaction_status',
     {
       title: 'Get a transaction status',
-      description:
+      description: lockable(
         'Read the current status of a transaction this client prepared, by the id a transaction tool returned. Returns the same result shape, with the signature and receipt once sent.',
+      ),
       inputSchema: z.object({ id: z.string().min(1).max(64) }),
       annotations: {
         readOnlyHint: true,
@@ -240,15 +275,29 @@ export function createServer(
     'whoami',
     {
       description:
-        "Show the user's LanaTools payment wallet address (null until the user sets one up)",
+        "Show the user's LanaTools payment wallet address (null until the user sets one up, or when not logged in)",
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
         openWorldHint: false,
       },
     },
-    () =>
-      withGrant('account:read', async ({ userId }) => {
+    () => {
+      if (!loggedIn)
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                loggedIn: false,
+                walletAddress: null,
+                message:
+                  'Not logged in. Solana data and catalog tools work now; a tool marked "Needs login" asks the user to log in the first time you call it.',
+              }),
+            },
+          ],
+        }
+      return withGrant('account:read', async ({ userId }) => {
         let walletAddress: string | null
         try {
           walletAddress = await dependencies.api.walletAddress(userId)
@@ -263,7 +312,8 @@ export function createServer(
             },
           ],
         }
-      }),
+      })
+    },
   )
   server.registerTool(
     'list_catalog',
@@ -364,6 +414,7 @@ export function createServer(
         'Say which tool you used, what you tried and what went wrong.',
         "Do not include keys, secrets or the user's personal data.",
         'Sending feedback does not retry or fix the call.',
+        ...(loggedIn ? [] : [NEEDS_LOGIN]),
       ].join(' '),
       inputSchema: z.object({
         feedback: z
@@ -380,6 +431,7 @@ export function createServer(
       },
     },
     async (input) => {
+      if (!loggedIn) return toolError(LOGIN_REQUIRED)
       if (!identity.success) return toolError(UNAUTHORIZED)
       let saved: boolean
       try {
@@ -409,6 +461,7 @@ export function createServer(
           "The charge must not exceed max_usd or this client's remaining spending limit.",
           'A response that is not UTF-8 text, such as an image, comes back base64-encoded with bodyEncoding "base64".',
           'If the endpoint does not serve a call after the payment was signed, the error says whether the wallet was charged; do not repeat a call that was charged or whose payment is not known yet.',
+          ...(loggedIn ? [] : [NEEDS_LOGIN]),
         ].join(' '),
         inputSchema: z.object({
           url: z.url().describe('The https endpoint to call'),
@@ -474,7 +527,8 @@ export function createServer(
   // Provider tools run in the API, which authorizes, runs and records each
   // call; adding a provider there registers its tools here. The MCP SDK
   // validates input against each tool's schema first, and the token's scopes
-  // are checked here before any API call.
+  // are checked here before any API call. Without login they run in the API
+  // with no grant, and nothing is recorded.
   for (const provider of PROVIDERS.filter((each) => allows(each.scope)))
     registerTools(server, provider.tools, async (name, input) => {
       if (provider.scope && !scopes.includes(provider.scope))
@@ -485,6 +539,12 @@ export function createServer(
             message: `Missing ${provider.scope} scope`,
             retryable: false,
           },
+        }
+      if (!loggedIn)
+        try {
+          return await dependencies.api.callPublicTool(name, input)
+        } catch {
+          return { ok: false, error: SERVICE_UNAVAILABLE }
         }
       if (!identity.success) return { ok: false, error: UNAUTHORIZED }
       try {
