@@ -47,8 +47,8 @@ Connectors, Create.
 - `get_transaction_status` and `whoami`. Without login, `whoami` returns
   `loggedIn: false`.
 
-Without login you may make 30 tool calls a minute. Past that, a call returns
-an error saying to wait or log in.
+Without login you may make 30 tool calls a minute, one call per request.
+Past that, a call returns an error saying to wait or log in.
 
 ## What needs login
 

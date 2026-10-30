@@ -237,7 +237,9 @@ export default {
     const calls = (await rpcMessages(request)).filter(
       (message) => message.method === 'tools/call',
     )
+    // The limit counts requests, so a batch of several calls needs login.
     if (
+      calls.length > 1 ||
       calls.some((call) =>
         needsLogin(call.params?.name ?? '', call.params?.arguments),
       )

@@ -37,7 +37,8 @@ Those agents get the read tools, the catalog, and the transaction tools with
 `src/server.ts` list them. Every other tool is still listed, marked "Needs
 login". A call that needs login, including `delivery: "embedded"`, goes to
 OAuthProvider, whose 401 makes the client start its login. No-login calls are
-limited to 30 a minute per IP (`NO_LOGIN_LIMITER`), are not recorded as
+limited to 30 a minute per IP (`NO_LOGIN_LIMITER`; a batch of several calls
+needs login), are not recorded as
 activity, and their transactions are stored with the creator `no-login`, so
 no dashboard shows them.
 
