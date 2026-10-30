@@ -1,7 +1,7 @@
 # No-login access: tech spec
 
 Status: Phase 0 checked in Claude Code (headless); Cursor and Codex untested.
-Phases 1 and 2 built. Phases 3 and 4 waiting for approval.
+Phases 1 to 3 built. Phase 4 waiting for approval.
 
 ## 1. Goal
 
