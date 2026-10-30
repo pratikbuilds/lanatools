@@ -29,6 +29,18 @@ again.
 `whoami` returns only the user's payment wallet address, which is null until
 the user sets one up.
 
+## Without login
+
+`/mcp` also answers requests without a token (`specs/no-login-access.md`).
+Those agents get the read tools, the catalog, and the transaction tools with
+`delivery: "local"` or `"link"`; `NO_LOGIN_TOOLS` and `needsLogin` in
+`src/server.ts` list them. Every other tool is still listed, marked "Needs
+login". A call that needs login, including `delivery: "embedded"`, goes to
+OAuthProvider, whose 401 makes the client start its login. No-login calls are
+limited to 30 a minute per IP (`NO_LOGIN_LIMITER`), are not recorded as
+activity, and their transactions are stored with the creator `no-login`, so
+no dashboard shows them.
+
 ## Transactions
 
 Each transaction tool takes its own arguments plus `delivery` and an
