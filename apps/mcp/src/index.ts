@@ -235,7 +235,11 @@ export default {
     const calls = (await rpcMessages(request)).filter(
       (message) => message.method === 'tools/call',
     )
-    if (calls.some((call) => !NO_LOGIN_TOOLS.has(call.params?.name ?? '')))
+    // The limit counts requests, so a batch of several calls needs login.
+    if (
+      calls.length > 1 ||
+      calls.some((call) => !NO_LOGIN_TOOLS.has(call.params?.name ?? ''))
+    )
       return oauthProvider.fetch(request, env, ctx)
     if (calls.length > 0) {
       const { success } = await env.NO_LOGIN_LIMITER.limit({
