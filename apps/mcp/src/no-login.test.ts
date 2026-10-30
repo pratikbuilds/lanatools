@@ -4,19 +4,23 @@ import { api, env, noLogin, resetWorker, send } from './test-worker'
 beforeEach(resetWorker)
 
 /** Posts one MCP JSON-RPC message, with a token when one is given. */
-function rpc(method: string, params: unknown, token?: string) {
-  return send('/mcp', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json, text/event-stream',
-      // Request does not set Host itself; the MCP handler requires it.
-      Host: new URL(env.MCP_ORIGIN).host,
-      'CF-Connecting-IP': '203.0.113.7',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+function rpc(method: string, params: unknown, token?: string, cf?: object) {
+  return send(
+    '/mcp',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        // Request does not set Host itself; the MCP handler requires it.
+        Host: new URL(env.MCP_ORIGIN).host,
+        'CF-Connecting-IP': '203.0.113.7',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
     },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-  })
+    cf,
+  )
 }
 
 /** The JSON-RPC reply, whether it came as JSON or as one SSE event. */
@@ -30,6 +34,20 @@ async function reply(response: Response) {
 
 const callTool = (name: string, token?: string, args: unknown = {}) =>
   rpc('tools/call', { name, arguments: args }, token)
+
+test('a no-login call passes the Cloudflare country to the API', async () => {
+  await rpc(
+    'tools/call',
+    { name: 'phoenix_list_markets', arguments: {} },
+    undefined,
+    { country: 'NP' },
+  )
+  expect(api.callPublicTool).toHaveBeenCalledWith(
+    'phoenix_list_markets',
+    {},
+    'NP',
+  )
+})
 
 test('without a token, the tool list includes the tools that need login', async () => {
   const response = await rpc('tools/list', {})
@@ -46,7 +64,11 @@ test('without a token, a data tool runs in the API under the per-IP limit', asyn
   const response = await callTool('phoenix_list_markets')
   expect(response.status).toBe(200)
   expect((await reply(response)).result.isError).not.toBe(true)
-  expect(api.callPublicTool).toHaveBeenCalledWith('phoenix_list_markets', {})
+  expect(api.callPublicTool).toHaveBeenCalledWith(
+    'phoenix_list_markets',
+    {},
+    undefined,
+  )
   expect(env.NO_LOGIN_LIMITER.limit).toHaveBeenCalledWith({
     key: '203.0.113.7',
   })

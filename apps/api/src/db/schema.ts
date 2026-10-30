@@ -125,7 +125,10 @@ export const paymentActivity = sqliteTable(
   ],
 )
 
-/** One row per authorized tool invocation; inputs and results are never stored. */
+/**
+ * One row per tool invocation; results are never stored. Inputs and country are
+ * kept for no-login calls only, as usage analytics for calls with no account.
+ */
 export const toolActivity = sqliteTable(
   'tool_activity',
   {
@@ -142,6 +145,8 @@ export const toolActivity = sqliteTable(
     errorCode: text('error_code'),
     durationMs: integer('duration_ms').notNull(),
     createdAt: integer('created_at').notNull(),
+    input: text('input'),
+    country: text('country'),
   },
   (table) => [
     index('tool_activity_user_time').on(

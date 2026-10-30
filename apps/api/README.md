@@ -98,7 +98,9 @@ replaced with fixed, agent-safe errors.
 Each authorized invocation of any provider attempts one `tool_activity` insert, including
 input, provider and network failures. Only identity, tool/provider, verified
 network (or null), status, estimated credits, error code, elapsed milliseconds
-and start time are recorded. Inputs and results are never stored. Refused
+and start time are recorded. Results are never stored. No-login read calls are
+recorded too, under the `no-login` identity, with their raw input and
+Cloudflare country for usage analytics; logged-in calls store neither. Refused
 identity/scope checks produce no activity row, so an unauthorized caller cannot
 create records under a supplied user ID. A failed ledger write emits a fixed
 log message and does not fail or repeat the provider request.

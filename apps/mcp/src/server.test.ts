@@ -770,6 +770,7 @@ test('without login, data and catalog tools run with no grant and are not record
     expect(session.api.callPublicTool).toHaveBeenCalledWith(
       'phoenix_list_markets',
       {},
+      undefined,
     )
     const catalog = await session.client.callTool({
       name: 'list_catalog',

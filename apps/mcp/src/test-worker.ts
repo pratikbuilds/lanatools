@@ -94,12 +94,11 @@ const ctx = {
   props: {},
 } as unknown as ExecutionContext
 
-export function send(path: string, init?: RequestInit) {
-  return provider.fetch(
-    new Request(new URL(path, env.MCP_ORIGIN), init),
-    env as never,
-    ctx,
-  )
+export function send(path: string, init?: RequestInit, cf?: object) {
+  const request = new Request(new URL(path, env.MCP_ORIGIN), init)
+  // Cloudflare sets this on real requests; a plain Request has none.
+  if (cf) Object.defineProperty(request, 'cf', { value: cf })
+  return provider.fetch(request, env as never, ctx)
 }
 
 export async function register(name: string, redirect: string) {

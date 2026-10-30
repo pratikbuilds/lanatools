@@ -99,8 +99,9 @@ two-URL fallback.
   logged in". `send_feedback` needs login, because feedback is saved per
   connection.
 - `call` is listed as "needs login" and answers 401.
-- The API gets a no-login path for read tools that skips the grant check and
-  does not record activity.
+- The API gets a no-login path for read tools that skips the grant check.
+  Activity is recorded under `no-login`, with input and country, for usage
+  analytics (2026-10-30). It is never shown in a dashboard.
 - Per-IP rate limit (decision 10).
 - Tests: tools with no identity, the 401 on `call`, the rate limit, and that
   token requests behave exactly as before.

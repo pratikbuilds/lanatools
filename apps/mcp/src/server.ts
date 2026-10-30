@@ -40,6 +40,8 @@ export type ServerDependencies = {
   >
   typesafeApiKey: string | undefined
   revokeClient: (identity: GrantIdentity) => void
+  /** Cloudflare's country for the request, recorded for no-login calls. */
+  country?: string
 }
 
 const UNAUTHORIZED: ToolError = {
@@ -564,7 +566,11 @@ export function createServer(
         }
       if (!loggedIn)
         try {
-          return await dependencies.api.callPublicTool(name, input)
+          return await dependencies.api.callPublicTool(
+            name,
+            input,
+            dependencies.country,
+          )
         } catch {
           return { ok: false, error: SERVICE_UNAVAILABLE }
         }
