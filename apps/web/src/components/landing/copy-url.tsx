@@ -186,18 +186,6 @@ export function Install() {
   )
 }
 
-export function UrlBox() {
-  return (
-    <div className="box box-lg flex flex-wrap items-center gap-4 px-4 py-4 sm:px-5">
-      <code className="min-w-0 flex-1 text-[15px] break-all text-ink sm:text-[17px]">
-        <span className="text-mute">$ </span>
-        {MCP_URL}
-      </code>
-      <CopyButton text={MCP_URL} label="Copy the MCP URL" />
-    </div>
-  )
-}
-
 /** The other way in: an agent that reads the skill connects itself. */
 export function SkillBox() {
   return (
