@@ -354,6 +354,10 @@ for (const [tool, args] of cases)
           if (!outcome.ok) throw new Error(JSON.stringify(outcome.error))
           expect(outcome.result.status).toBe('confirmed')
           expect(outcome.result.receipt?.commitment).toBe('confirmed')
+          if ('accountUrl' in outcome.result || delivery === 'local')
+            expect(outcome.result).toMatchObject({
+              accountUrl: expect.stringContaining(`/perps/${wallet.address}`),
+            })
           expect(
             (
               await sendTransactionLink(

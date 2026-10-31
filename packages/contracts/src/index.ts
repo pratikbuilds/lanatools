@@ -443,6 +443,8 @@ export const TransactionResult = type({
   status: TransactionStatus,
   review: TransactionReview,
   'reviewUrl?': 'string',
+  /** A public page of the wallet's Phoenix account, once a Phoenix transaction confirms. */
+  'accountUrl?': 'string',
   'transaction?': PreparedTransaction,
   signature: 'string | null',
   receipt: TransactionReceipt.or('null'),

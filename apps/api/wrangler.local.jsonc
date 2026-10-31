@@ -29,6 +29,11 @@
       "simple": { "limit": 120, "period": 60 },
     },
     {
+      "name": "PHOENIX_PUBLIC_LIMITER",
+      "namespace_id": "2001005",
+      "simple": { "limit": 120, "period": 60 },
+    },
+    {
       "name": "SIGNUP_LIMITER",
       "namespace_id": "2001001",
       "simple": { "limit": 20, "period": 60 },

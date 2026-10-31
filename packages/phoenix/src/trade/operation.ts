@@ -118,7 +118,7 @@ export function phoenixTransactionTool<TSchema extends z.ZodObject>(
     title: tool.title,
     description: tool.description.replace(
       'Returns an unsigned transaction and its simulation; nothing is signed or sent.',
-      'Uses the selected transaction delivery mode. Mainnet only.',
+      'Uses the selected transaction delivery mode. Mainnet only. Once it confirms, give the user result.accountUrl: a public page of their Phoenix account that needs no login.',
     ),
     programs: [
       'ComputeBudget111111111111111111111111111111',

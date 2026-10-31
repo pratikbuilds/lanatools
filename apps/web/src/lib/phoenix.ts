@@ -8,51 +8,58 @@ import { authorized } from './mcp-clients'
 import type { GetAccessToken } from './mcp-clients'
 
 /** Reads for the Phoenix account page; Phoenix is mainnet only. */
-
-async function read(getAccessToken: GetAccessToken, path: string) {
-  const response = await fetch(path, {
-    headers: await authorized(getAccessToken),
-  })
-  if (!response.ok) throw new Error('Phoenix could not be read right now.')
-  const body: unknown = await response.json()
-  return body
+export type PhoenixReader = {
+  /** The signed-in user, or null on the public page. */
+  viewer: string | null
+  account: (wallet: string) => Promise<PhoenixAccount>
+  candles: (
+    symbol: string,
+    interval: PhoenixCandleInterval,
+  ) => Promise<PhoenixCandles>
+  fills: (wallet: string, cursor: string | undefined) => Promise<PhoenixFills>
 }
 
-export async function getPhoenixAccount(
+function phoenixReader(
+  viewer: string | null,
+  base: string,
+  headers: () => Promise<HeadersInit>,
+): PhoenixReader {
+  async function read(path: string) {
+    const response = await fetch(`${base}${path}`, {
+      headers: await headers(),
+    })
+    if (!response.ok) throw new Error('Phoenix could not be read right now.')
+    const body: unknown = await response.json()
+    return body
+  }
+  return {
+    viewer,
+    account: async (wallet) =>
+      PhoenixAccount.assert(
+        await read(`/account/${encodeURIComponent(wallet)}`),
+      ),
+    candles: async (symbol, interval) =>
+      PhoenixCandles.assert(
+        await read(
+          `/candles/${encodeURIComponent(symbol)}?interval=${interval}`,
+        ),
+      ),
+    fills: async (wallet, cursor) => {
+      const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''
+      return PhoenixFills.assert(
+        await read(`/fills/${encodeURIComponent(wallet)}${query}`),
+      )
+    },
+  }
+}
+
+export const signedInPhoenixReader = (
+  userId: string,
   getAccessToken: GetAccessToken,
-  wallet: string,
-) {
-  return PhoenixAccount.assert(
-    await read(
-      getAccessToken,
-      `/api/phoenix/account/${encodeURIComponent(wallet)}`,
-    ),
-  )
-}
+) => phoenixReader(userId, '/api/phoenix', () => authorized(getAccessToken))
 
-export async function getPhoenixCandles(
-  getAccessToken: GetAccessToken,
-  symbol: string,
-  interval: PhoenixCandleInterval,
-) {
-  return PhoenixCandles.assert(
-    await read(
-      getAccessToken,
-      `/api/phoenix/candles/${encodeURIComponent(symbol)}?interval=${interval}`,
-    ),
-  )
-}
-
-export async function getPhoenixFills(
-  getAccessToken: GetAccessToken,
-  wallet: string,
-  cursor: string | undefined,
-) {
-  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''
-  return PhoenixFills.assert(
-    await read(
-      getAccessToken,
-      `/api/phoenix/fills/${encodeURIComponent(wallet)}${query}`,
-    ),
-  )
-}
+export const publicPhoenixReader = phoenixReader(
+  null,
+  '/api/public/phoenix',
+  async () => ({}),
+)

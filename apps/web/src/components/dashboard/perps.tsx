@@ -1,5 +1,4 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { isAddress } from '@solana/kit'
@@ -11,49 +10,46 @@ import type {
   PhoenixPosition,
 } from '@lanatools/contracts'
 import { dayLabel, explorerURL, formatTime } from '#/lib/activity'
-import {
-  getPhoenixAccount,
-  getPhoenixCandles,
-  getPhoenixFills,
-} from '#/lib/phoenix'
-import { EMPTY_FILTER, shortAddress } from '#/lib/transactions'
+import type { PhoenixReader } from '#/lib/phoenix'
+import { shortAddress } from '#/lib/transactions'
 import { formatPrice, formatUSD, perpMarket } from '#/lib/trades'
 import { PageHead, SectionHead } from './page-head'
 import { PerpChart } from './perp-chart'
 import type { ChartLine } from './perp-chart'
-import { useDashboardSession } from './session'
 import { Skeleton } from './skeleton'
 
 /**
  * One wallet's Phoenix account: the account's value, a candlestick chart
  * with the position's entry, liquidation and order levels, then positions,
- * resting orders and fills. Read-only; agents trade.
+ * resting orders and fills. Read-only; agents trade. Served both in the
+ * dashboard and, with no login, as a public page; a failed refresh keeps the
+ * last data on screen and the next one recovers.
  */
 export function PerpsPage({
   address,
+  reader,
   onAddress,
+  own = false,
+  back,
 }: {
   address: string
+  reader: PhoenixReader
   onAddress: (address: string) => void
+  /** Whether this is the viewer's own LanaTools wallet. */
+  own?: boolean
+  /** A way back, shown above the title. */
+  back?: ReactNode
 }) {
-  const { userId, walletAddress, getAccessToken } = useDashboardSession()
   const account = useQuery({
-    queryKey: ['phoenix-account', userId, address],
-    queryFn: () => getPhoenixAccount(getAccessToken, address),
+    queryKey: ['phoenix-account', reader.viewer, address],
+    queryFn: () => reader.account(address),
     // Marks move; pauses while the tab is hidden (spec D14).
     refetchInterval: 15_000,
   })
-  const own = address === walletAddress
 
   return (
     <>
-      <Link
-        to="/dashboard/transactions"
-        search={EMPTY_FILTER}
-        className="mb-3 inline-flex font-mono text-[12px] text-fg-3 hover:text-fg"
-      >
-        ← Transactions
-      </Link>
+      {back}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PageHead title="Phoenix account">
           <span className="d-chip text-fg" title={address}>
@@ -62,7 +58,9 @@ export function PerpsPage({
         </PageHead>
         <AddressField onAddress={onAddress} />
       </div>
-      {account.isPending ? (
+      {account.data?.exists ? (
+        <Account account={account.data} reader={reader} />
+      ) : account.isPending ? (
         <AccountSkeleton />
       ) : account.isError ? (
         <div className="d-empty mt-6">
@@ -77,7 +75,7 @@ export function PerpsPage({
             Try again
           </button>
         </div>
-      ) : !account.data.exists ? (
+      ) : (
         <div className="d-empty mt-6">
           <h2 className="d-h2 text-fg">No Phoenix account for this address</h2>
           <p className="mx-auto mt-2 max-w-[34rem] text-[13px]">
@@ -87,8 +85,6 @@ export function PerpsPage({
             once it does.
           </p>
         </div>
-      ) : (
-        <Account account={account.data} />
       )}
     </>
   )
@@ -156,7 +152,13 @@ type Charted = {
 const chartKey = (subaccount: number, symbol: string) =>
   `${subaccount}:${symbol}`
 
-function Account({ account }: { account: PhoenixAccount }) {
+function Account({
+  account,
+  reader,
+}: {
+  account: PhoenixAccount
+  reader: PhoenixReader
+}) {
   const charted = useMemo(() => {
     const items = new Map<string, Charted>()
     for (const position of account.positions)
@@ -211,6 +213,7 @@ function Account({ account }: { account: PhoenixAccount }) {
           charted={charted}
           focus={focus}
           onFocus={setPicked}
+          reader={reader}
         />
       ) : (
         <p className="d-empty mt-5 font-mono text-[13px]">
@@ -240,7 +243,7 @@ function Account({ account }: { account: PhoenixAccount }) {
       </section>
       <section className="mt-9" aria-label="Fills">
         <SectionHead title="Fills" />
-        <Fills wallet={account.wallet} />
+        <Fills wallet={account.wallet} reader={reader} />
       </section>
     </>
   )
@@ -272,21 +275,22 @@ function TradeCard({
   charted,
   focus,
   onFocus,
+  reader,
 }: {
   account: PhoenixAccount
   charted: Charted[]
   focus: Charted
   onFocus: (key: string) => void
+  reader: PhoenixReader
 }) {
-  const { userId, getAccessToken } = useDashboardSession()
   // Daily first, as trading screens open.
   const [interval, setCandleInterval] = useState<PhoenixCandleInterval>('1d')
   // Candles first; levels far from price would flatten them.
   const [fitLiquidation, setFitLiquidation] = useState(false)
   const [resetKey, setResetKey] = useState(0)
   const candles = useQuery({
-    queryKey: ['phoenix-candles', userId, focus.symbol, interval],
-    queryFn: () => getPhoenixCandles(getAccessToken, focus.symbol, interval),
+    queryKey: ['phoenix-candles', reader.viewer, focus.symbol, interval],
+    queryFn: () => reader.candles(focus.symbol, interval),
     refetchInterval: 60_000,
   })
   const position = focus.position
@@ -715,18 +719,16 @@ function Orders({ orders }: { orders: PhoenixOrder[] }) {
   )
 }
 
-function Fills({ wallet }: { wallet: string }) {
-  const { userId, getAccessToken } = useDashboardSession()
+function Fills({ wallet, reader }: { wallet: string; reader: PhoenixReader }) {
   const fills = useInfiniteQuery({
-    queryKey: ['phoenix-fills', userId, wallet],
-    queryFn: ({ pageParam }) =>
-      getPhoenixFills(getAccessToken, wallet, pageParam),
+    queryKey: ['phoenix-fills', reader.viewer, wallet],
+    queryFn: ({ pageParam }) => reader.fills(wallet, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   })
   const rows = fills.data?.pages.flatMap((page) => page.fills) ?? []
   if (fills.isPending) return <Skeleton className="d-card h-[160px]" />
-  if (fills.isError)
+  if (fills.isError && rows.length === 0)
     return (
       <p className="d-empty font-mono text-[13px]">
         Fills could not be read right now.
@@ -735,6 +737,8 @@ function Fills({ wallet }: { wallet: string }) {
   if (rows.length === 0)
     return <p className="d-empty font-mono text-[13px]">No fills yet.</p>
   const now = Date.now()
+  // Which client placed a fill is known only for the viewer's own requests.
+  const signedIn = reader.viewer !== null
   return (
     <>
       <Table
@@ -746,7 +750,7 @@ function Fills({ wallet }: { wallet: string }) {
             <th className={`${TH} text-right`}>Size</th>
             <th className={`${TH} text-right`}>Price</th>
             <th className={`${TH} text-right max-lg:hidden`}>Realized</th>
-            <th className={`${TH} max-lg:hidden`}>Placed by</th>
+            {signedIn && <th className={`${TH} max-lg:hidden`}>Placed by</th>}
             <th className={`${TH} max-lg:hidden`}>Signature</th>
           </>
         }
@@ -778,13 +782,15 @@ function Fills({ wallet }: { wallet: string }) {
               >
                 {realized ? formatUSD(realized, { signed: true }) : '—'}
               </td>
-              <td className="font-sans text-[12.5px] max-lg:hidden">
-                {fill.placedBy ? (
-                  <b className="font-semibold text-fg">{fill.placedBy}</b>
-                ) : (
-                  <span className="text-fg-3">Outside LanaTools</span>
-                )}
-              </td>
+              {signedIn && (
+                <td className="font-sans text-[12.5px] max-lg:hidden">
+                  {fill.placedBy ? (
+                    <b className="font-semibold text-fg">{fill.placedBy}</b>
+                  ) : (
+                    <span className="text-fg-3">Outside LanaTools</span>
+                  )}
+                </td>
+              )}
               <td className="max-lg:hidden">
                 {fill.signature && url ? (
                   <a

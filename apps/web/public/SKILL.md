@@ -47,6 +47,9 @@ Connectors, Create.
 - `get_transaction_status` and `whoami`. Without login, `whoami` returns
   `loggedIn: false`.
 
+After a Phoenix trade confirms, give the user `accountUrl` from the result: a
+public page of their Phoenix account that needs no login.
+
 Without login you may make 30 tool calls a minute, one call per request.
 Past that, a call returns an error saying to wait or log in.
 
