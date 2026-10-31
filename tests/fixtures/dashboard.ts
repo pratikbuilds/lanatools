@@ -415,9 +415,10 @@ export async function mockDashboard(page: Page, empty = false) {
       await route.fulfill({ json: { inserted: 0, settled: 0, more: false } })
       return
     }
-    const phoenix = /^\/api\/phoenix\/(account|candles|fills)\/([^/]+)$/.exec(
-      path,
-    )
+    const phoenix =
+      /^\/api\/(?:public\/)?phoenix\/(account|candles|fills)\/([^/]+)$/.exec(
+        path,
+      )
     if (phoenix) {
       const [, kind, key] = phoenix
       const own = key === walletAddress

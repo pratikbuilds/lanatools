@@ -103,6 +103,12 @@ Revision checks prevent a stale signed candidate from being accepted after renew
 These constraints govern LanaTools submissions; the link is not an onchain guard
 against transactions a wallet independently constructs or broadcasts.
 
+## Phoenix account page
+
+Once a Phoenix transaction confirms, its result carries `accountUrl`, a public
+page at `/perps/<wallet>` on the web origin. It needs no login and reads through
+`/api/public/phoenix`, limited per IP by `PHOENIX_PUBLIC_LIMITER`.
+
 ## Agent feedback
 
 `send_feedback` lets an agent tell us when a tool blocked or confused it. It

@@ -153,6 +153,7 @@ test('local delivery returns unsigned bytes for the wallet and sends what that w
   })
   expect(sent.result.signature).toBe(sent.result.receipt?.signature ?? '')
   expect(sent.result).not.toHaveProperty('transaction')
+  expect(sent.result).not.toHaveProperty('accountUrl')
 
   // Once sent, a retry reports status instead of new bytes.
   expect(

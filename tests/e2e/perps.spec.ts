@@ -116,3 +116,44 @@ test('a perp transaction opens its signer’s Phoenix account', async ({
   await expect(page).toHaveURL(new RegExp(`/dashboard/perps/${walletAddress}$`))
   await expect(page.getByText('$1,270.85')).toBeVisible()
 })
+
+test('the Phoenix account page opens with no login', async ({ page }) => {
+  await mockDashboard(page)
+  await page.goto(`${dashboardURL}/perps/${walletAddress}`)
+  await expect(page).toHaveURL(new RegExp(`/perps/${walletAddress}$`))
+  await expect(
+    page.getByRole('heading', { name: 'Phoenix account' }),
+  ).toBeVisible()
+  await expect(page.getByText('$1,270.85')).toBeVisible()
+  await expect(page.getByText('Your LanaTools wallet ·')).toHaveCount(0)
+  await expect(
+    page.getByRole('columnheader', { name: 'Placed by' }),
+  ).toHaveCount(0)
+  await expect(page.getByRole('link', { name: '← Transactions' })).toHaveCount(
+    0,
+  )
+})
+
+test('the public page keeps its data when a refresh fails', async ({
+  page,
+}) => {
+  await page.clock.install()
+  await mockDashboard(page)
+  await page.goto(`${dashboardURL}/perps/${walletAddress}`)
+  await expect(page.getByText('$1,270.85')).toBeVisible()
+  let refused = 0
+  await page.route('**/api/public/phoenix/account/**', (route) => {
+    refused += 1
+    return route.fulfill({ status: 429, json: { error: 'Request failed' } })
+  })
+  // A refresh and its three retries all fail.
+  await expect
+    .poll(async () => {
+      await page.clock.runFor(10_000)
+      return refused
+    })
+    .toBeGreaterThanOrEqual(4)
+  await page.clock.runFor(10_000)
+  await expect(page.getByText('$1,270.85')).toBeVisible()
+  await expect(page.getByText('Phoenix could not be read')).toHaveCount(0)
+})

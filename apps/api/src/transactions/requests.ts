@@ -133,6 +133,11 @@ function toResult(
     status: link.status,
     review: link.review,
     ...(delivery === 'link' ? { reviewUrl: `${webOrigin}/tx/${link.id}` } : {}),
+    ...(link.status === 'confirmed' &&
+    link.account &&
+    link.tool.startsWith('phoenix_')
+      ? { accountUrl: `${webOrigin}/perps/${link.account}` }
+      : {}),
     ...(transaction ? { transaction } : {}),
     signature: link.signature,
     receipt: link.receipt,
