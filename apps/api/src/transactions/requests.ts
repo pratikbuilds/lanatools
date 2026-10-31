@@ -1151,7 +1151,23 @@ export async function sendTransaction(
         'invalid_input',
         'Only local transactions are sent here. A link is signed on its review page.',
       )
+    const startedAt = Date.now()
     const sent = await sendTransactionLink(env, id, input, options)
+    console.info(
+      JSON.stringify({
+        event: 'send_transaction',
+        requestId: id,
+        startedAt,
+        durationMs: Date.now() - startedAt,
+        ...(sent.ok
+          ? {
+              tool: sent.result.tool,
+              status: sent.result.status,
+              signature: sent.result.signature,
+            }
+          : { error: sent.error.code }),
+      }),
+    )
     if (!sent.ok) return sent
     return {
       ok: true,

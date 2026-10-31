@@ -88,3 +88,30 @@ test.each([null, { InstructionError: [0, 'InvalidArgument'] }])(
     ).toMatchObject({ status: err === null ? 'confirmed' : 'failed' })
   },
 )
+
+test('a failed status read is logged by error name only', async () => {
+  const warn = mock(() => {})
+  const realWarn = console.warn
+  console.warn = warn
+  try {
+    await observeSubmission(
+      rpc({
+        status: async () => {
+          throw new TypeError('https://rpc.example/?api-key=secret')
+        },
+      }),
+      'signature',
+      { attempts: 1, intervalMs: 0 },
+    )
+  } finally {
+    console.warn = realWarn
+  }
+  expect(warn).toHaveBeenCalledWith(
+    JSON.stringify({
+      event: 'transaction_status_read_error',
+      signature: 'signature',
+      attempt: 0,
+      error: 'TypeError',
+    }),
+  )
+})

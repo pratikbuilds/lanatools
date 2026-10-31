@@ -179,8 +179,17 @@ export async function observeSubmission(
           },
         }
       }
-    } catch {
+    } catch (error) {
       // A transient read failure must not end the remaining observation window.
+      // Only the error's name: RPC messages can carry the provider URL.
+      console.warn(
+        JSON.stringify({
+          event: 'transaction_status_read_error',
+          signature: transactionSignature,
+          attempt,
+          error: error instanceof Error ? error.name : 'unknown',
+        }),
+      )
     }
     if (attempt + 1 < attempts)
       await new Promise((resolve) => setTimeout(resolve, intervalMs))
