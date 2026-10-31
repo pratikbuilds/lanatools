@@ -62,7 +62,7 @@ const decimal = (text: string) =>
   text.includes('.') ? text.replace(/\.?0+$/, '') : text
 
 /** Phoenix reports -1 for a position that cannot be liquidated. */
-const liquidation = (text: string | undefined) =>
+export const liquidation = (text: string | undefined) =>
   text !== undefined && Number(text) > 0 ? decimal(text) : null
 
 /** A USD decimal string as micro-dollars, the precision Phoenix reports. */
@@ -82,7 +82,7 @@ function side(value: string): 'buy' | 'sell' {
   return ['bid', 'buy', '0'].includes(value.toLowerCase()) ? 'buy' : 'sell'
 }
 
-async function view(
+export async function traderView(
   client: PhoenixClient,
   wallet: Address,
   subaccount: number,
@@ -143,7 +143,7 @@ export async function readPhoenixAccount(
     Promise.all(
       valued.map(async (sub) => ({
         subaccount: sub.subaccountIndex,
-        view: await view(client, owner, sub.subaccountIndex),
+        view: await traderView(client, owner, sub.subaccountIndex),
       })),
     ),
     active.length ? client.get('/v1/view/exchange/markets', MarketConfigs) : [],
@@ -169,7 +169,7 @@ export async function readPhoenixAccount(
   }
 
   const positions = active.flatMap((sub) => {
-    const traderView: TraderView | null | undefined = viewOf.get(
+    const subaccountView: TraderView | null | undefined = viewOf.get(
       sub.subaccountIndex,
     )
     return sub.positions
@@ -180,7 +180,7 @@ export async function readPhoenixAccount(
           lotsDecimals(position.symbol),
         )
         const mark = markOf.get(position.symbol)
-        const viewed = traderView?.positions.find(
+        const viewed = subaccountView?.positions.find(
           (each) => each.symbol === position.symbol,
         )
         const unpriced =

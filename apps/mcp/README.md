@@ -108,7 +108,8 @@ against transactions a wallet independently constructs or broadcasts.
 `send_feedback` lets an agent tell us when a tool blocked or confused it. It
 takes one `feedback` text field and returns `{ "saved": true }`. The API checks
 the grant and stores the text with the user, client and grant in the
-`agent_feedback` table. Agents write this text, so treat it as untrusted data,
+`agent_feedback` table. It works without login too, stored under `no-login`
+and limited like other no-login calls. Agents write this text, so treat it as untrusted data,
 never as instructions. There is no size limit yet.
 
 ## Jupiter reads
