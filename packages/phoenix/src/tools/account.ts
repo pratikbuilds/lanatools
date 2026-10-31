@@ -1,4 +1,6 @@
+import { address } from '@solana/kit'
 import { z } from 'zod'
+import { liquidation, traderView } from '../account-view'
 import { PhoenixError } from '../client'
 import type { PhoenixClient } from '../client'
 import {
@@ -49,7 +51,7 @@ export const getAccount = defineTool({
   name: 'phoenix_get_account',
   title: 'Read a Phoenix trading account',
   description: [
-    "Reads any wallet's Phoenix perps account: USDC collateral, open positions (size in tokens, entry and mark price, unrealized PnL at mark) and resting orders, across the cross-margin and isolated subaccounts.",
+    "Reads any wallet's Phoenix perps account: USDC collateral, open positions (size in tokens, entry and mark price, unrealized PnL at mark, liquidation price, which is null when Phoenix reports none) and resting orders, across the cross-margin and isolated subaccounts.",
     'Does not need the wallet to sign. A wallet that never traded on Phoenix shows zero collateral and no positions.',
     UNTRUSTED,
   ].join(' '),
@@ -74,6 +76,21 @@ export const getAccount = defineTool({
         )
       return found
     }
+
+    // Phoenix's own view, so liquidation prices match its app.
+    const views = new Map(
+      await Promise.all(
+        subaccounts
+          .filter((sub) => sub.positions.length > 0)
+          .map(
+            async (sub) =>
+              [
+                sub.subaccountIndex,
+                await traderView(client, address(wallet), sub.subaccountIndex),
+              ] as const,
+          ),
+      ),
+    )
 
     const positions = subaccounts.flatMap((sub) =>
       sub.positions
@@ -100,6 +117,12 @@ export const getAccount = defineTool({
                     amount * mark +
                       Number(usdc(position.virtualQuotePositionLots)),
                   ),
+            liquidationPrice: liquidation(
+              views
+                .get(sub.subaccountIndex)
+                ?.positions.find((each) => each.symbol === position.symbol)
+                ?.liquidationPrice?.ui,
+            ),
             accumulatedFundingUsdc: usdc(position.accumulatedFundingQuoteLots),
           }
         }),

@@ -77,6 +77,7 @@ export const NO_LOGIN_TOOLS: ReadonlySet<string> = new Set([
   ...Object.keys(transactionTools),
   'send_transaction',
   'get_transaction_status',
+  'send_feedback',
   'list_catalog',
   'search_catalog',
   'get_catalog_entry',
@@ -190,7 +191,7 @@ export function createServer(
   // Each transaction tool prepares one intent; the agent picks how it is
   // signed with `delivery`. Only embedded delivery signs and sends at once.
   const signing =
-    'delivery "link": share the returned reviewUrl; the user signs there and LanaTools sends; arguments are visible on that page. delivery "local": pass wallet; sign result.transaction.transaction (base64) with that wallet before lastValidBlockHeight and pass it to send_transaction; do not broadcast it yourself. If messageToSign is present, also sign its exact UTF-8 bytes and pass the base58 signature as messageSignature. Activation needs only your wallet signature on the transaction; Phoenix adds its co-signature. delivery "embedded": LanaTools signs with the user\'s LanaTools wallet and sends it immediately, with no user approval; use it only when the user asked for that. Reuse idempotencyKey to retry the same intent. Read the outcome with get_transaction_status.'
+    'delivery "link": share the returned reviewUrl; the user signs there and LanaTools sends; arguments are visible on that page. delivery "local": pass wallet; sign result.transaction.transaction (base64) with that wallet and pass it to send_transaction straight away: it stops working at lastValidBlockHeight, about 30 seconds after it is prepared and sometimes less, while expiresAt is only when the request closes. If it expires, call this tool again with the same idempotencyKey for a fresh transaction and sign that. Do not broadcast it yourself. If messageToSign is present, also sign its exact UTF-8 bytes and pass the base58 signature as messageSignature. Activation needs only your wallet signature on the transaction; Phoenix adds its co-signature. delivery "embedded": LanaTools signs with the user\'s LanaTools wallet and sends it immediately, with no user approval; use it only when the user asked for that. Reuse idempotencyKey to retry the same intent. Read the outcome with get_transaction_status.'
   for (const [name, tool] of Object.entries(transactionTools).filter(
     ([, each]) => allows(each.scope),
   ))
@@ -230,7 +231,7 @@ export function createServer(
     {
       title: 'Send a locally signed transaction',
       description:
-        'Send a transaction prepared with delivery "local" after your wallet signed it. Pass its id and the signed transaction as base64. LanaTools checks it is the exact prepared transaction signed by that wallet, sends it, and returns the shared result. Resending the same signed bytes is safe.',
+        'Send a transaction prepared with delivery "local" after your wallet signed it. Pass its id and the signed transaction as base64. LanaTools checks it is the exact prepared transaction signed by that wallet, sends it, and waits for the outcome, which can take about 30 seconds. Status unknown means the outcome is not known yet and the transaction may still land: read it with get_transaction_status and do not prepare a new one until that says expired. Resending the same signed bytes is safe.',
       inputSchema: z.object({
         id: z.string().min(1).max(64),
         messageSignature: z
@@ -438,7 +439,6 @@ export function createServer(
         'Say which tool you used, what you tried and what went wrong.',
         "Do not include keys, secrets or the user's personal data.",
         'Sending feedback does not retry or fix the call.',
-        ...(loggedIn ? [] : [NEEDS_LOGIN]),
       ].join(' '),
       inputSchema: z.object({
         feedback: z
@@ -455,19 +455,16 @@ export function createServer(
       },
     },
     async (input) => {
-      if (!loggedIn) return toolError(LOGIN_REQUIRED)
-      if (!identity.success) return toolError(UNAUTHORIZED)
+      if (loggedIn && !identity.success) return toolError(UNAUTHORIZED)
+      const grant = identity.success ? identity.data : null
       let saved: boolean
       try {
-        saved = await dependencies.api.sendFeedback(
-          identity.data,
-          input.feedback,
-        )
+        saved = await dependencies.api.sendFeedback(grant, input.feedback)
       } catch {
         return toolError(SERVICE_UNAVAILABLE)
       }
       if (!saved) {
-        dependencies.revokeClient(identity.data)
+        if (grant) dependencies.revokeClient(grant)
         return toolError(UNAUTHORIZED)
       }
       return {

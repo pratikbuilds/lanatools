@@ -44,8 +44,13 @@ Connectors, Create.
     `transaction` yourself, then call `send_transaction`; or
   - `delivery: "link"`: share the returned `reviewUrl`; the user signs in
     their browser wallet.
+- `send_feedback`: tell the LanaTools team what blocked or confused you.
 - `get_transaction_status` and `whoami`. Without login, `whoami` returns
   `loggedIn: false`.
+
+A prepared transaction lasts about 30 seconds, so sign and send it right away.
+If `send_transaction` returns `unknown`, it may still land: check
+`get_transaction_status` before preparing another.
 
 Without login you may make 30 tool calls a minute, one call per request.
 Past that, a call returns an error saying to wait or log in.
@@ -55,7 +60,6 @@ Past that, a call returns an error saying to wait or log in.
 - `delivery: "embedded"`: LanaTools signs with the user's LanaTools wallet.
 - `call`: pays for an API from the user's LanaTools wallet, within the
   spending limit they set for you.
-- `send_feedback`.
 
 These tools say "Needs login" in their description. The first call to one
 makes your client ask the user to log in. In Claude Code the user runs

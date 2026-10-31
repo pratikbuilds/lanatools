@@ -27,6 +27,23 @@ test('a temporary status error does not end confirmation observation', async () 
   expect(status).toHaveBeenCalledTimes(2)
 })
 
+test('by default a send keeps watching a transaction that takes seconds to land', async () => {
+  // Lands 20 polls in, about 15 seconds at the default interval.
+  const status = mock<TransactionRpc['status']>().mockResolvedValue(null)
+  for (let poll = 0; poll < 19; poll++) status.mockResolvedValueOnce(null)
+  status.mockResolvedValueOnce(confirmed)
+  const realSetTimeout = globalThis.setTimeout
+  globalThis.setTimeout = ((run: () => void) =>
+    realSetTimeout(run, 0)) as typeof setTimeout
+  try {
+    expect(await observeSubmission(rpc({ status }), 'signature')).toMatchObject(
+      { status: 'confirmed' },
+    )
+  } finally {
+    globalThis.setTimeout = realSetTimeout
+  }
+})
+
 test('only finalized expiry followed by an absent history status expires a signature', async () => {
   const calls: string[] = []
   const reader = rpc({
