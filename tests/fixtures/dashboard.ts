@@ -288,6 +288,8 @@ export const phoenixAccount: PhoenixAccount = {
       unrealizedPnlUsd: '4.35',
       liquidationPrice: '80.4',
       fundingUsdc: '-0.08',
+      takeProfit: [],
+      stopLoss: [],
     },
     {
       symbol: 'ETH',
@@ -301,6 +303,8 @@ export const phoenixAccount: PhoenixAccount = {
       unrealizedPnlUsd: '13.95',
       liquidationPrice: '3270',
       fundingUsdc: '-0.21',
+      takeProfit: [],
+      stopLoss: [],
     },
   ],
   orders: [

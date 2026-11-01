@@ -14,6 +14,7 @@ import {
   TraderState,
 } from '../schemas'
 import { MarketSymbol, UNTRUSTED, Wallet, defineTool } from '../tool'
+import { takeProfitAndStopLoss } from '../triggers'
 import { fromLots, isoTime, tidy, usdc } from '../units'
 
 const usd = (value: number) => Number(value.toFixed(6))
@@ -40,7 +41,8 @@ async function marketsBySymbol(client: PhoenixClient) {
     configs.map((config) => [
       config.symbol,
       {
-        decimals: config.baseLotsDecimals,
+        tickSize: config.tickSize,
+        baseLotsDecimals: config.baseLotsDecimals,
         mark: marks.get(config.symbol)?.mark_price ?? null,
       },
     ]),
@@ -51,7 +53,8 @@ export const getAccount = defineTool({
   name: 'phoenix_get_account',
   title: 'Read a Phoenix trading account',
   description: [
-    "Reads any wallet's Phoenix perps account: USDC collateral, open positions (size in tokens, entry and mark price, unrealized PnL at mark, liquidation price, which is null when Phoenix reports none) and resting orders, across the cross-margin and isolated subaccounts.",
+    "Reads any wallet's Phoenix perps account: USDC collateral, open positions (size in tokens, entry and mark price, unrealized PnL at mark, liquidation price, which is null when Phoenix reports none, and take profit and stop loss triggers) and resting orders, across the cross-margin and isolated subaccounts.",
+    'Each position lists its takeProfit and stopLoss triggers with USD trigger and worst prices. size is in tokens and null when the trigger uses percent of the position or is legacy (set through the old stop-loss API).',
     'Does not need the wallet to sign. A wallet that never traded on Phoenix shows zero collateral and no positions.',
     UNTRUSTED,
   ].join(' '),
@@ -96,8 +99,12 @@ export const getAccount = defineTool({
       sub.positions
         .filter((position) => BigInt(position.basePositionLots) !== 0n)
         .map((position) => {
-          const { decimals, mark } = market(position.symbol)
-          const size = fromLots(position.basePositionLots, decimals)
+          const found = market(position.symbol)
+          const { mark } = found
+          const size = fromLots(
+            position.basePositionLots,
+            found.baseLotsDecimals,
+          )
           const amount = Number(size)
           return {
             symbol: position.symbol,
@@ -124,6 +131,7 @@ export const getAccount = defineTool({
                 ?.liquidationPrice?.ui,
             ),
             accumulatedFundingUsdc: usdc(position.accumulatedFundingQuoteLots),
+            ...takeProfitAndStopLoss(position, found),
           }
         }),
     )
@@ -139,7 +147,7 @@ export const getAccount = defineTool({
           price: order.priceUsd,
           remainingSize: fromLots(
             order.sizeRemainingLots,
-            market(book.symbol).decimals,
+            market(book.symbol).baseLotsDecimals,
           ),
           reduceOnly: order.reduceOnly,
           status: order.status,

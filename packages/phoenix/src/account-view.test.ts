@@ -11,6 +11,7 @@ const CROSS = 'CQeSAr4akpVF5p2xx65DFdtzcfzLjJTifw7dDddtFCHV'
 const config = (symbol: string, baseLotsDecimals: number) => ({
   symbol,
   marketStatus: 'active',
+  tickSize: 100,
   baseLotsDecimals,
   takerFee: 0.00035,
   makerFee: 0.00005,
@@ -143,6 +144,8 @@ test('an account carries Phoenix’s liquidation prices, value and leverage', as
     unrealizedPnlUsd: '30134.605142',
     liquidationPrice: '120.93',
     fundingUsdc: '1741.748119',
+    takeProfit: [],
+    stopLoss: [],
   })
   expect(account.positions[1]).toMatchObject({
     side: 'long',
@@ -163,6 +166,130 @@ test('an account carries Phoenix’s liquidation prices, value and leverage', as
       reduceOnly: true,
     },
   ])
+})
+
+test('a position carries every kind of take profit and stop loss', async () => {
+  // Rise's types, 0.5.38: no live wallet has shown a filled-in trigger yet.
+  const trigger = (triggerTicks: string, worstTicks: string) => ({
+    triggerPriceTicks: triggerTicks,
+    executionPriceTicks: worstTicks,
+    side: 'bid',
+    kind: 'limit',
+  })
+  const conditional = {
+    attachedOrderSequenceNumber: null,
+    fillableSizeLots: '150',
+    filledSizeLots: '0',
+  }
+  const account = await readPhoenixAccount(WALLET, {
+    fetch: fakeFetch({
+      [`/v1/trader/state/${WALLET}`]: {
+        authority: WALLET,
+        snapshot: {
+          subaccounts: [
+            {
+              subaccountIndex: 0,
+              collateral: '69530852186',
+              positions: [
+                {
+                  ...STATE.snapshot.subaccounts[0]?.positions[0],
+                  takeProfitTriggers: [
+                    {
+                      takeProfitId: '1',
+                      trigger: trigger('9000', '9100'),
+                      status: 'active',
+                    },
+                  ],
+                  stopLossTriggers: [
+                    {
+                      stopLossId: '2',
+                      trigger: trigger('13000', '13100'),
+                      status: 'active',
+                    },
+                  ],
+                  conditionalTakeProfitTriggers: [
+                    {
+                      conditionalTakeProfitId: '3',
+                      trigger: {
+                        ...trigger('10000', '10100'),
+                        ...conditional,
+                        maxSizeLots: '150',
+                        usePercent: false,
+                        percent: 0,
+                      },
+                      status: 'active',
+                    },
+                  ],
+                  conditionalStopLossTriggers: [
+                    {
+                      conditionalStopLossId: '3',
+                      trigger: {
+                        ...trigger('12500', '12600'),
+                        ...conditional,
+                        maxSizeLots: '0',
+                        usePercent: true,
+                        percent: 25,
+                      },
+                      status: 'active',
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+      [`/v1/view/trader/${CROSS}`]: VIEW,
+      '/v1/view/exchange/markets': [config('SOL', 2)],
+      '/v1/markets/stats/latest': { markets: [stats('SOL', 109.53)] },
+    }),
+  })
+  expect(account.positions[0]).toMatchObject({
+    takeProfit: [
+      {
+        triggerId: '3',
+        triggerPrice: '100',
+        worstPrice: '101',
+        orderKind: 'limit',
+        size: '1.5',
+        percent: null,
+        status: 'active',
+        legacy: false,
+      },
+      {
+        triggerId: '1',
+        triggerPrice: '90',
+        worstPrice: '91',
+        orderKind: 'limit',
+        size: null,
+        percent: null,
+        status: 'active',
+        legacy: true,
+      },
+    ],
+    stopLoss: [
+      {
+        triggerId: '3',
+        triggerPrice: '125',
+        worstPrice: '126',
+        orderKind: 'limit',
+        size: null,
+        percent: 25,
+        status: 'active',
+        legacy: false,
+      },
+      {
+        triggerId: '2',
+        triggerPrice: '130',
+        worstPrice: '131',
+        orderKind: 'limit',
+        size: null,
+        percent: null,
+        status: 'active',
+        legacy: true,
+      },
+    ],
+  })
 })
 
 test('a wallet without a Phoenix account is empty, not an error', async () => {
