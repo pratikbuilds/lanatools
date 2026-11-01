@@ -18,11 +18,14 @@ import { formatPrice } from '#/lib/trades'
 
 type Candle = PhoenixCandles['candles'][number]
 
-/** A horizontal level on the chart: entry, liquidation or a resting order. */
+/**
+ * A horizontal level on the chart: entry, liquidation, a take profit or stop
+ * loss trigger, or a resting order.
+ */
 export type ChartLine = {
   price: number
   title: string
-  tone: 'entry' | 'liquidation' | 'order'
+  tone: 'entry' | 'liquidation' | 'takeProfit' | 'stopLoss' | 'order'
 }
 
 /** Decimals the market quotes in: the most any recent candle carries, cents at least. */
@@ -256,6 +259,20 @@ export function PerpChart({
     const api = chart.current
     if (!candlesticks || !api) return
     const colors = palette(api.chartElement())
+    const color: Record<ChartLine['tone'], string> = {
+      entry: colors.entry,
+      liquidation: colors.down,
+      takeProfit: colors.up,
+      stopLoss: colors.down,
+      order: colors.muted,
+    }
+    const style: Record<ChartLine['tone'], LineStyle> = {
+      entry: LineStyle.Dashed,
+      liquidation: LineStyle.Solid,
+      takeProfit: LineStyle.LargeDashed,
+      stopLoss: LineStyle.LargeDashed,
+      order: LineStyle.SparseDotted,
+    }
     for (const line of drawn.current) candlesticks.removePriceLine(line)
     const levels = latestLines.current
     drawn.current = levels.map((line) =>
@@ -263,19 +280,9 @@ export function PerpChart({
         price: line.price,
         title: line.title,
         axisLabelVisible: true,
-        color:
-          line.tone === 'liquidation'
-            ? colors.down
-            : line.tone === 'entry'
-              ? colors.entry
-              : colors.muted,
+        color: color[line.tone],
         lineWidth: line.tone === 'liquidation' ? 2 : 1,
-        lineStyle:
-          line.tone === 'entry'
-            ? LineStyle.Dashed
-            : line.tone === 'order'
-              ? LineStyle.SparseDotted
-              : LineStyle.Solid,
+        lineStyle: style[line.tone],
       }),
     )
     reach.current = fitLiquidation ? levels.map((line) => line.price) : []
@@ -312,7 +319,7 @@ export function PerpChart({
         ref={setHost}
         className="h-[360px] w-full"
         role="img"
-        aria-label="Price chart with entry, liquidation and order levels"
+        aria-label="Price chart with entry, liquidation, take profit, stop loss and order levels"
       />
     </div>
   )

@@ -1,5 +1,7 @@
 import type {
   PerpTrade,
+  PhoenixPosition,
+  PhoenixTrigger,
   SwapTrade,
   TransactionActivityItem,
   TransactionReceipt,
@@ -79,6 +81,83 @@ export function formatPrice(value: string | number) {
     maximumFractionDigits: Math.max(2, decimalsOf(value)),
   })
   return `${amount < 0 ? '−' : ''}$${text}`
+}
+
+/** What a partial trigger closes; null when it closes the whole position. */
+function triggerAmount(trigger: PhoenixTrigger, position: PhoenixPosition) {
+  if (trigger.percent !== null)
+    return trigger.percent < 100 ? `${trigger.percent}%` : null
+  if (trigger.size !== null && Number(trigger.size) < Number(position.size))
+    return `${trigger.size} ${position.symbol}`
+  return null
+}
+
+/** The trigger the price reaches first leads; without a price, Phoenix's order. */
+function nearestFirst(triggers: PhoenixTrigger[], position: PhoenixPosition) {
+  const reference = position.markPrice ?? position.entryPrice
+  if (reference === null) return triggers
+  const distance = (trigger: PhoenixTrigger) =>
+    Math.abs(Number(trigger.triggerPrice) - Number(reference))
+  return [...triggers].sort((a, b) => distance(a) - distance(b))
+}
+
+function triggerText(
+  label: string,
+  triggers: PhoenixTrigger[],
+  position: PhoenixPosition,
+) {
+  const [nearest] = triggers
+  if (!nearest) return []
+  const amount = triggerAmount(nearest, position)
+  const price = Number(nearest.triggerPrice).toLocaleString('en-US', {
+    maximumFractionDigits: decimalsOf(nearest.triggerPrice),
+  })
+  const more = triggers.length - 1
+  return [
+    [
+      `${label} ${price}`,
+      ...(amount ? [`(${amount})`] : []),
+      ...(more > 0 ? [`+${more}`] : []),
+    ].join(' '),
+  ]
+}
+
+function triggerLine(
+  label: string,
+  trigger: PhoenixTrigger,
+  position: PhoenixPosition,
+) {
+  const amount = triggerAmount(trigger, position)
+  return [
+    `${label} ${formatPrice(trigger.triggerPrice)}`,
+    ...(amount ? [amount] : []),
+    `worst ${formatPrice(trigger.worstPrice)}`,
+    trigger.status,
+  ].join(' · ')
+}
+
+/**
+ * A position's take profit and stop loss for a table: `parts` shows the
+ * nearest of each kind, `detail` lists all of them, one per line, with
+ * Phoenix's status as it reads it. Null when there are none.
+ *
+ * Nothing is left out by status: which strings Phoenix uses for a closed
+ * trigger is not known yet.
+ */
+export function triggerSummary(position: PhoenixPosition) {
+  const takeProfit = nearestFirst(position.takeProfit, position)
+  const stopLoss = nearestFirst(position.stopLoss, position)
+  if (takeProfit.length + stopLoss.length === 0) return null
+  return {
+    parts: [
+      ...triggerText('TP', takeProfit, position),
+      ...triggerText('SL', stopLoss, position),
+    ],
+    detail: [
+      ...takeProfit.map((each) => triggerLine('TP', each, position)),
+      ...stopLoss.map((each) => triggerLine('SL', each, position)),
+    ].join('\n'),
+  }
 }
 
 const side = (trade: PerpTrade) => (trade.side === 'sell' ? 'Sell' : 'Buy')

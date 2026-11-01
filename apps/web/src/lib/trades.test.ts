@@ -1,5 +1,10 @@
 import { expect, test } from 'bun:test'
-import type { PerpTrade, SwapTrade } from '@lanatools/contracts'
+import type {
+  PerpTrade,
+  PhoenixPosition,
+  PhoenixTrigger,
+  SwapTrade,
+} from '@lanatools/contracts'
 import {
   fillsInItsOwnTransaction,
   formatPrice,
@@ -10,6 +15,7 @@ import {
   tradeAmounts,
   tradeDetail,
   tradeTitle,
+  triggerSummary,
 } from './trades'
 
 const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
@@ -228,4 +234,103 @@ test('only orders that fill in their own transaction wait for a fill', () => {
       perp({ action: 'order', orderType: 'limit', limitPrice: '100' }),
     ),
   ).toBe(false)
+})
+
+const trigger = (
+  triggerPrice: string,
+  terms: Partial<PhoenixTrigger> = {},
+): PhoenixTrigger => ({
+  triggerId: triggerPrice,
+  triggerPrice,
+  worstPrice: triggerPrice,
+  orderKind: 'limit',
+  size: null,
+  percent: null,
+  status: 'active',
+  legacy: false,
+  ...terms,
+})
+const position = (terms: Partial<PhoenixPosition>): PhoenixPosition => ({
+  symbol: 'SOL',
+  subaccount: 0,
+  marginMode: 'cross',
+  side: 'long',
+  size: '2',
+  entryPrice: '100',
+  markPrice: '105',
+  valueUsd: '210',
+  unrealizedPnlUsd: '10',
+  liquidationPrice: '80',
+  fundingUsdc: '0',
+  takeProfit: [],
+  stopLoss: [],
+  ...terms,
+})
+
+test('a position without triggers has no summary', () => {
+  expect(triggerSummary(position({}))).toBeNull()
+})
+
+test('a trigger summary keeps prices short and shows only what exists', () => {
+  expect(
+    triggerSummary(
+      position({
+        takeProfit: [trigger('110.50')],
+        stopLoss: [trigger('92')],
+      }),
+    )?.parts,
+  ).toEqual(['TP 110.5', 'SL 92'])
+  expect(
+    triggerSummary(position({ stopLoss: [trigger('2504.25')] }))?.parts,
+  ).toEqual(['SL 2,504.25'])
+})
+
+test('a partial trigger shows its percent or size; a whole one does not', () => {
+  const text = (each: PhoenixTrigger) =>
+    triggerSummary(position({ takeProfit: [each] }))?.parts[0]
+  expect(text(trigger('110', { percent: 25 }))).toBe('TP 110 (25%)')
+  expect(text(trigger('110', { size: '0.5' }))).toBe('TP 110 (0.5 SOL)')
+  expect(text(trigger('110', { percent: 100 }))).toBe('TP 110')
+  expect(text(trigger('110', { size: '2' }))).toBe('TP 110')
+  // A size above the position's still closes the whole of it.
+  expect(text(trigger('110', { size: '9' }))).toBe('TP 110')
+})
+
+test('several triggers show the nearest and a count, with all in the detail', () => {
+  const summary = triggerSummary(
+    position({
+      takeProfit: [
+        trigger('130'),
+        trigger('110', { percent: 50, worstPrice: '109.5' }),
+        trigger('120'),
+      ],
+      stopLoss: [trigger('90')],
+    }),
+  )
+  expect(summary?.parts).toEqual(['TP 110 (50%) +2', 'SL 90'])
+  expect(summary?.detail.split('\n')).toEqual([
+    'TP $110.00 · 50% · worst $109.50 · active',
+    'TP $120.00 · worst $120.00 · active',
+    'TP $130.00 · worst $130.00 · active',
+    'SL $90.00 · worst $90.00 · active',
+  ])
+})
+
+test('nearest falls back to entry, then to the order Phoenix lists', () => {
+  const takeProfit = [trigger('130'), trigger('110')]
+  expect(
+    triggerSummary(position({ markPrice: null, takeProfit }))?.parts,
+  ).toEqual(['TP 110 +1'])
+  expect(
+    triggerSummary(position({ markPrice: null, entryPrice: null, takeProfit }))
+      ?.parts,
+  ).toEqual(['TP 130 +1'])
+})
+
+test('triggers are not filtered by status, which reads as Phoenix sends it', () => {
+  const summary = triggerSummary(
+    position({ takeProfit: [trigger('110', { status: 'cancelled' })] }),
+  )
+  expect(summary?.parts).toEqual(['TP 110'])
+  expect(summary?.detail).toBe('TP $110.00 · worst $110.00 · cancelled')
 })

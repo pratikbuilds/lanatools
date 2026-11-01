@@ -265,7 +265,10 @@ export const transactions: TransactionActivityItem[] = [
   },
 ]
 
-/** The embedded wallet's Phoenix account: a SOL long, an ETH short, one order. */
+/**
+ * The embedded wallet's Phoenix account: a SOL long, an ETH short, a BTC long
+ * with take profit and stop loss triggers, and one order.
+ */
 export const phoenixAccount: PhoenixAccount = {
   wallet: walletAddress,
   exists: true,
@@ -306,6 +309,53 @@ export const phoenixAccount: PhoenixAccount = {
       takeProfit: [],
       stopLoss: [],
     },
+    {
+      symbol: 'BTC',
+      subaccount: 0,
+      marginMode: 'cross',
+      side: 'long',
+      size: '0.01',
+      entryPrice: '63745',
+      markPrice: '64000',
+      valueUsd: '640',
+      unrealizedPnlUsd: '2.55',
+      liquidationPrice: '51200',
+      fundingUsdc: '-0.03',
+      takeProfit: [
+        {
+          triggerId: '1',
+          triggerPrice: '66000',
+          worstPrice: '65900',
+          orderKind: 'limit',
+          size: null,
+          percent: null,
+          status: 'active',
+          legacy: false,
+        },
+        {
+          triggerId: '2',
+          triggerPrice: '64800',
+          worstPrice: '64700',
+          orderKind: 'limit',
+          size: '0.004',
+          percent: null,
+          status: 'active',
+          legacy: false,
+        },
+      ],
+      stopLoss: [
+        {
+          triggerId: '3',
+          triggerPrice: '63200',
+          worstPrice: '63100',
+          orderKind: 'ioc',
+          size: null,
+          percent: 50,
+          status: 'active',
+          legacy: false,
+        },
+      ],
+    },
   ],
   orders: [
     {
@@ -323,6 +373,13 @@ export const phoenixAccount: PhoenixAccount = {
 
 /** A wallet that never traded on Phoenix. */
 export const emptyPhoenixWallet = 'DRpbCBMxVnDK7maPM5tGv6MvB3v1sRMC86PZ8okm21hy'
+
+/** The fixture position's mark, so a market's candles sit around it. */
+const markOf = (symbol: string | undefined) =>
+  Number(
+    phoenixAccount.positions.find((each) => each.symbol === symbol)
+      ?.markPrice ?? 109.52,
+  )
 
 /** A day of 15-minute candles drifting around `mark`. */
 function phoenixCandles(symbol: string, mark: number): PhoenixCandles {
@@ -438,7 +495,7 @@ export async function mockDashboard(page: Page, empty = false) {
                   orders: [],
                 }
             : kind === 'candles'
-              ? phoenixCandles(key ?? 'SOL', key === 'ETH' ? 2504.2 : 109.52)
+              ? phoenixCandles(key ?? 'SOL', markOf(key))
               : own
                 ? phoenixFills
                 : { fills: [], nextCursor: null },
