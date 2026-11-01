@@ -104,8 +104,8 @@ export async function isolatedFunding(
     account.positions.some(
       (position) => BigInt(position.basePositionLots) !== 0n,
     ) ||
-    account.orders.some((market) =>
-      market.orders.some((order) => order.change !== 'closed'),
+    account.orders.some((book) =>
+      book.orders.some((order) => order.change !== 'closed'),
     )
   const cross = snapshot.subaccounts.find(
     (account) => account.subaccountIndex === 0,
