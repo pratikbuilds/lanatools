@@ -27,6 +27,23 @@ test('a temporary status error does not end confirmation observation', async () 
   expect(status).toHaveBeenCalledTimes(2)
 })
 
+test('by default a send keeps watching a transaction that takes seconds to land', async () => {
+  // Lands 20 polls in, about 15 seconds at the default interval.
+  const status = mock<TransactionRpc['status']>().mockResolvedValue(null)
+  for (let poll = 0; poll < 19; poll++) status.mockResolvedValueOnce(null)
+  status.mockResolvedValueOnce(confirmed)
+  const realSetTimeout = globalThis.setTimeout
+  globalThis.setTimeout = ((run: () => void) =>
+    realSetTimeout(run, 0)) as typeof setTimeout
+  try {
+    expect(await observeSubmission(rpc({ status }), 'signature')).toMatchObject(
+      { status: 'confirmed' },
+    )
+  } finally {
+    globalThis.setTimeout = realSetTimeout
+  }
+})
+
 test('only finalized expiry followed by an absent history status expires a signature', async () => {
   const calls: string[] = []
   const reader = rpc({
@@ -88,3 +105,30 @@ test.each([null, { InstructionError: [0, 'InvalidArgument'] }])(
     ).toMatchObject({ status: err === null ? 'confirmed' : 'failed' })
   },
 )
+
+test('a failed status read is logged by error name only', async () => {
+  const warn = mock(() => {})
+  const realWarn = console.warn
+  console.warn = warn
+  try {
+    await observeSubmission(
+      rpc({
+        status: async () => {
+          throw new TypeError('https://rpc.example/?api-key=secret')
+        },
+      }),
+      'signature',
+      { attempts: 1, intervalMs: 0 },
+    )
+  } finally {
+    console.warn = realWarn
+  }
+  expect(warn).toHaveBeenCalledWith(
+    JSON.stringify({
+      event: 'transaction_status_read_error',
+      signature: 'signature',
+      attempt: 0,
+      error: 'TypeError',
+    }),
+  )
+})

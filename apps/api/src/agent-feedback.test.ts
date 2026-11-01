@@ -55,3 +55,17 @@ test('a revoked grant saves nothing', async () => {
   expect(await saveFeedback(db, identity, 'Unclear error')).toBe(false)
   expect(await rowsFor(identity.userId)).toEqual([])
 })
+
+test('an agent that is not logged in saves feedback as no-login', async () => {
+  expect(await saveFeedback(db, null, 'Needed TP/SL', 2_000)).toBe(true)
+  expect(await rowsFor('no-login')).toEqual([
+    {
+      id: expect.any(String),
+      privyUserId: 'no-login',
+      clientId: 'no-login',
+      grantId: 'no-login',
+      feedback: 'Needed TP/SL',
+      createdAt: 2_000,
+    },
+  ])
+})
