@@ -21,6 +21,7 @@ import {
 } from './shared'
 import {
   LEG_NAMES,
+  TPSL_NOTICES,
   Trigger,
   checkAgainstMark,
   closingSide,
@@ -214,9 +215,7 @@ export const setTpsl = defineTradeTool({
           : {}),
       }),
       warnings: [
-        'Triggers use mark price.',
-        'A stop may not fill past its worst price.',
-        'Phoenix cancels TP/SL if the position flips.',
+        ...TPSL_NOTICES,
         ...(active > 0
           ? [
               `This position already has ${active} active TP/SL; this one adds to them and replaces none.`,
@@ -224,7 +223,12 @@ export const setTpsl = defineTradeTool({
           : []),
         ...(slots === null
           ? [
-              'This is the first TP/SL on this account, so your wallet pays a small one-time rent in SOL.',
+              'This is the first TP/SL on this account, so your wallet pays a small one-time rent in SOL. Treat it as spent.',
+            ]
+          : []),
+        ...(lots < held
+          ? [
+              "Phoenix's docs only describe a TP/SL closing the whole position, so check the position after this one fires.",
             ]
           : []),
       ],

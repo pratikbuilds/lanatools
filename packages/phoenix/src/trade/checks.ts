@@ -385,6 +385,9 @@ export type ConditionalCancel = { slot: number; leg: 'greater' | 'less' }
 
 const cancelKey = ({ slot, leg }: ConditionalCancel) => `${slot}:${leg}`
 
+/** The TP/SL account Phoenix's server creates; its size sets the rent. */
+const CONDITIONAL_CAPACITY = 8
+
 /** What a tool asked Phoenix's server for; `checkPhoenixBundle` holds it to it. */
 export type BundleIntent = {
   wallet: Address
@@ -491,7 +494,10 @@ export async function checkPhoenixBundle(
       case 'sync':
       case 'sweep_usdc':
       case 'sweep_sol':
+        break
       case 'create_conditional':
+        if (step.capacity !== CONDITIONAL_CAPACITY)
+          fail('the TP/SL account is not the expected size')
         break
       case 'register':
         if (step.traderPdaIndex !== 0 || step.subaccount !== subaccount)

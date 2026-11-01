@@ -1,6 +1,6 @@
 # Phoenix isolated margin, TP/SL and SOL collateral: tech spec
 
-Status: approved 2026-11-01. In progress.
+Status: phases 1–6 built 2026-11-01, tested and simulated. Nothing has been signed; Phase 7 is the live run.
 Builds on: [phoenix-trade-tools.md](phoenix-trade-tools.md). Its tool contract and error codes still apply.
 
 ## 1. Goal and scope
@@ -59,8 +59,7 @@ All on 2026-11-01. Simulations were unsigned and used public wallets, as in the 
 **Not known yet**
 
 - **How long a trigger takes to fire** (**Q1**), and **whether a missed stop is retried** (**Q2**).
-- Whether cross market order plus TP/SL works in one transaction. Only the isolated path is simulated. Rise's README says that path is full-position only, so partial TP/SL goes through `phoenix_set_tpsl`.
-- Isolated limit orders have not been simulated.
+- Whether a partial TP/SL closes only its share. Phoenix's docs describe only full closes, so reviews warn, and Phase 7 fires one. On order entry, TP/SL is full-position only.
 - **Explained in Phase 4: the AMZN failure.** `InvalidInstructionData` is how Phoenix reports "Conditional order must be in opposite direction of trader position". That wallet's AMZN position had flipped, so the triggers fired on the position's own side. Size, entry and distance from mark do not cause it. No position gives `InvalidAccountData`.
 - **Answered in Phase 4: a cancel's index.** It is a slot in the on-chain TP/SL account, not `conditionalStopLossId`. `disableFirst` is the greater leg and `disableSecond` the less, shown by simulating Phoenix's route on a live position.
 
@@ -216,10 +215,11 @@ Only when you say go, with your typed `yes` at each step. The budget is 10 USD i
 3. Add margin. Cancel the TP, then set a new one.
 4. Close, and confirm the collateral is back in cross.
 5. Isolated limit order far from mark. Cancel it, and confirm the collateral is back.
-6. Cross market order on SOL. Set a partial TP, cancel it, close.
+6. Cross market order on SOL with TP and SL. Cancel them, set a partial TP, cancel it, close.
 7. Deposit SOL. Open an isolated GOLD position with it, close, withdraw the SOL.
 8. **One real trigger.** Isolated GOLD position with a stop very close to mark. Wait for it to fire, or close by hand if it does not, and record the delay.
-9. Withdraw what is left.
+9. **One real partial trigger.** A position of a few lots with a 50% stop very close to mark, to learn whether it closes half or all of it.
+10. Withdraw what is left.
 
 - **Record:** signatures, costs and the trigger's delay go here. No screenshots.
 - **Exit:** the PRs for phases 2–6 merge in order, and the spec is marked built.
@@ -259,7 +259,7 @@ Researched 2026-11-01 from Phoenix's docs, its OpenAPI file, Rise and the `rise-
 - **We depend on Phoenix's server.** If it is down, isolated and TP/SL tools fail; nothing partial happens. Checks in 3.2 stop a wrong answer from being signed.
 - **A check can be too strict.** If Phoenix adds a new instruction, the tools refuse until we add it to the list. That is the safe way to fail.
 - **A stop is not a guarantee.** It depends on Phoenix firing it and on the book at that moment. The product must never call a position "protected" without that caveat.
-- **Partial TP/SL.** We have only seen it place, not fire. Phoenix's docs do not describe partial behaviour.
+- **Partial TP/SL.** We have only seen it place, not fire. Phoenix's docs describe only full closes, so a 50% TP might close everything. Reviews warn about this until Phase 7 settles it.
 - **Stale TP/SL.** Phoenix cancels triggers when a position flips, so agents should read the account before relying on them.
 - **SOL price.** A falling SOL price lowers margin on its own, and can trigger conversion to USDC or liquidation.
 - **Rise is 0.x.** The version stays pinned. Upgrading reruns the simulations.

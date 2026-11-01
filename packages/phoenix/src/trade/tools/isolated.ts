@@ -6,6 +6,7 @@ import { checkPhoenixBundle } from '../checks'
 import type { BundleIntent } from '../checks'
 import { exactNumber, toLamports, toUSDCUnits } from '../price'
 import { decodeBundleStep } from '../rise'
+import type { ConditionalPacket } from '../rise'
 import type { OrderMarket } from '../schemas'
 import type { TradeContext } from '../tool'
 import { traderBook } from './shared'
@@ -189,6 +190,7 @@ export async function placeIsolated({
   market,
   order,
   funding,
+  conditional,
   build,
 }: {
   wallet: Address
@@ -196,6 +198,8 @@ export async function placeIsolated({
   market: OrderMarket
   order: NonNullable<BundleIntent['order']>
   funding: IsolatedFunding
+  /** The TP/SL this order sets, if any. */
+  conditional?: ConditionalPacket | undefined
   /** The call to `context.orders`. */
   build: () => Promise<Instruction[]>
 }) {
@@ -206,6 +210,7 @@ export async function placeIsolated({
     market,
     order,
     ...funding.intent,
+    ...(conditional ? { conditional } : {}),
   })
   return {
     instructions,

@@ -38,6 +38,13 @@ export const closingSide = (direction: Direction): Side =>
 export const legDirection = (leg: TpslLeg, direction: Direction) =>
   (leg === 'takeProfit') === (direction === 'long') ? 'greater' : 'less'
 
+/** Always shown in a review that sets TP/SL. */
+export const TPSL_NOTICES = [
+  'Triggers use mark price.',
+  'A stop may not fill past its worst price.',
+  'Phoenix cancels TP/SL if the position flips.',
+]
+
 export const LEG_NAMES: Record<TpslLeg, string> = {
   takeProfit: 'take profit',
   stopLoss: 'stop loss',

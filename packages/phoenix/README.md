@@ -56,14 +56,21 @@ point, so the read tools above never load the Rise SDK. Each tool returns an
 nothing in the package signs or holds a key. See
 [the spec](../../specs/phoenix-trade-tools.md).
 
-| Tool                                   | Does                                                                             |
-| -------------------------------------- | -------------------------------------------------------------------------------- |
-| `phoenix_activate_account`             | One-time referral activation (code `4L2RQ06K`); Phoenix co-signs and submits     |
-| `phoenix_deposit` / `phoenix_withdraw` | USDC in and out of the cross-margin account                                      |
-| `phoenix_market_order`                 | Fill now up to a required worst price; partial fills; expires in about 6 seconds |
-| `phoenix_limit_order`                  | Rest on the book (post-only never slides)                                        |
-| `phoenix_cancel_orders`                | Cancel resting orders by ID, or all in a market                                  |
-| `phoenix_close_position`               | Reduce-only close of all or part of a position                                   |
+| Tool                                       | Does                                                                                                          |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `phoenix_activate_account`                 | One-time referral activation (code `4L2RQ06K`); Phoenix co-signs and submits                                  |
+| `phoenix_deposit` / `phoenix_withdraw`     | USDC (default) or SOL in and out of the cross-margin account                                                  |
+| `phoenix_market_order`                     | Fill now up to a required worst price; partial fills; cross or isolated; optional TP/SL on the whole position |
+| `phoenix_limit_order`                      | Rest on the book (post-only never slides); cross or isolated                                                  |
+| `phoenix_cancel_orders`                    | Cancel resting orders by ID, or all in a market                                                               |
+| `phoenix_close_position`                   | Reduce-only close of all or part of a position; a full isolated close returns the collateral to cross         |
+| `phoenix_add_isolated_margin`              | USDC from cross into an open isolated position                                                                |
+| `phoenix_set_tpsl` / `phoenix_cancel_tpsl` | Full or partial TP/SL on an open position, and cancelling it                                                  |
+
+Instructions come from Rise, or from Phoenix's server through Rise's HTTP
+client. A server answer is untrusted: `checkPhoenixBundle` decodes every step
+and holds it to the request before it can be simulated or signed. See
+[the spec](../../specs/phoenix-isolated-tpsl.md).
 
 `runPhoenixTrade(name, input, { rpc, fees })` prepares one;
 `submitSignedTransaction(prepared, { transaction, loginSignature? }, { rpc })`

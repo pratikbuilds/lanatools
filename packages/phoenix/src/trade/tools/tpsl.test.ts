@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   BLOCKHASH,
   KEYS,
+  SOL_BOOK,
   SOL_MARKET,
   TRADER_ACCOUNT_DATA,
   WALLET,
@@ -23,6 +24,7 @@ import { runTradeTool } from '../tool'
 import type { TradeOutcome } from '../tool'
 import { messageOf } from '../transaction'
 import { cancelTpsl } from './cancel-tpsl'
+import { marketOrder } from './market-order'
 import { setTpsl } from './set-tpsl'
 import { checkAgainstMark, positionLegs, tpslTerms } from './tpsl'
 
@@ -112,6 +114,12 @@ async function context(world: World, orders = fakeOrders()) {
       [`/v1/trader/state/${WALLET}`]: state(world),
     }).fetch,
   }
+}
+
+function ready(outcome: TradeOutcome) {
+  if (!outcome.ok || outcome.result.status !== 'ready')
+    throw new Error(`unexpected ${JSON.stringify(outcome)}`)
+  return outcome.result
 }
 
 const TP = { triggerPrice: '120', worstPrice: '119.5' }
@@ -979,4 +987,124 @@ describe('phoenix_cancel_tpsl', () => {
       ),
     ).toMatchObject({ ok: false, error: { code: 'upstream_error' } })
   })
+})
+
+describe('TP/SL on a market order', () => {
+  const order = async (
+    input: Record<string, unknown>,
+    world: World = { cross: '0' },
+    orders = fakeOrders(),
+  ) => {
+    const base = await context(world, orders)
+    const { rpc } = fakeRpc({
+      getSlot: () => 1_000n,
+      getAccountInfo: (account) =>
+        String(account) === CROSS
+          ? accountInfo(PHOENIX_PROGRAM, TRADER_ACCOUNT_DATA)
+          : { value: null },
+      getLatestBlockhash: () => ({
+        value: { blockhash: BLOCKHASH, lastValidBlockHeight: 500n },
+      }),
+      simulateTransaction: () => ({
+        value: { err: null, unitsConsumed: 40_000n, logs: [] },
+      }),
+    })
+    return {
+      outcome: await runTradeTool(
+        marketOrder,
+        {
+          wallet: WALLET,
+          symbol: 'SOL',
+          side: 'buy',
+          size: '0.1',
+          maxSlippageBps: 100,
+          ...input,
+        },
+        {
+          ...base,
+          rpc,
+          fetch: fakePhoenix({
+            '/v1/view/exchange/market/SOL': SOL_MARKET,
+            '/v1/view/exchange/keys': KEYS,
+            '/v1/view/orderbook/SOL': SOL_BOOK,
+            '/v1/markets/stats/latest': STATS,
+            [`/v1/trader/state/${WALLET}`]: state(world),
+          }).fetch,
+        },
+      ),
+      request: orders.place[0],
+    }
+  }
+
+  test('a cross order and its TP/SL land in one transaction', async () => {
+    const { outcome, request } = await order({ takeProfit: TP, stopLoss: SL })
+    expect(request).toMatchObject({ authority: WALLET, sizePercent: 100 })
+    const result = ready(outcome)
+    expect(result.trade).toMatchObject({
+      action: 'order',
+      takeProfitPrice: '120',
+      stopLossPrice: '110',
+    })
+    expect(result.warnings).toContain(
+      'A stop may not fill past its worst price.',
+    )
+    expect(result.expiresAfterSlot).toBeDefined()
+    expect(
+      messageOf(result.transaction)
+        .instructions.filter((step) => step.programAddress === PHOENIX_PROGRAM)
+        .map(
+          (step) =>
+            decodeBundleStep(Uint8Array.from(step.data ?? []))?.kind ?? null,
+        ),
+    ).toEqual(['order', 'place_conditional'])
+  })
+
+  test('without TP/SL nothing else is asked for', async () => {
+    const { outcome, request } = await order({})
+    ready(outcome)
+    expect(request).toBeUndefined()
+  })
+
+  test('a wrong answer from Phoenix is refused', async () => {
+    const orders = fakeOrders({
+      tamperPlace: (request) => ({ ...request, sizePercent: 50 }),
+    })
+    const { outcome } = await order({ stopLoss: SL }, { cross: '0' }, orders)
+    expect(outcome).toMatchObject({
+      ok: false,
+      error: { code: 'check_failed' },
+    })
+  })
+
+  test('a trigger past mark, a reduce-only order and an opposite position are refused', async () => {
+    expect(
+      (await order({ stopLoss: { triggerPrice: '120', worstPrice: '119' } }))
+        .outcome,
+    ).toMatchObject({ ok: false, error: { code: 'invalid_input' } })
+    expect(
+      (await order({ reduceOnly: true, stopLoss: SL })).outcome,
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: 'invalid_input',
+        message: 'A reduce-only order cannot set TP/SL',
+      },
+    })
+    expect(
+      (await order({ stopLoss: SL }, { cross: '-25' })).outcome,
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: 'invalid_input',
+        message: expect.stringContaining('phoenix_set_tpsl'),
+      },
+    })
+  })
+})
+
+test('a partial TP/SL says Phoenix only documents full closes', async () => {
+  const { outcome } = await set({ takeProfit: TP, percent: 50 })
+  expect(ready(outcome).warnings).toContainEqual(
+    expect.stringContaining('closing the whole position'),
+  )
 })

@@ -1,9 +1,11 @@
 import { address } from '@solana/kit'
-import type { Address } from '@solana/kit'
+import type { Address, Instruction } from '@solana/kit'
 import { z } from 'zod'
 import { PhoenixError } from '../../client'
-import { checkOrder } from '../checks'
+import { AllMarketStats } from '../../schemas'
+import { checkOrder, checkPhoenixBundle } from '../checks'
 import {
+  bookTicks,
   exactNumber,
   limitRounding,
   priceToTicks,
@@ -11,8 +13,8 @@ import {
   ticksToPrice,
   toBaseLots,
 } from '../price'
-import type { Side } from '../price'
-import { MIN_FILL_LOTS, orderInstruction } from '../rise'
+import type { MarketUnits, Side } from '../price'
+import { MIN_FILL_LOTS, decodeBundleStep, orderInstruction } from '../rise'
 import type { OrderSpec } from '../rise'
 import { ExchangeKeys } from '../schemas'
 import type { OrderMarket } from '../schemas'
@@ -37,9 +39,17 @@ import {
   perpTrade,
   requireActivated,
   tradableMarket,
+  traderBook,
   unitsOf,
   usd,
 } from './shared'
+import {
+  TPSL_NOTICES,
+  Trigger,
+  checkAgainstMark,
+  describeLeg,
+  tpslTerms,
+} from './tpsl'
 
 /**
  * An immediate-or-cancel order expires this many slots after it is built
@@ -176,6 +186,103 @@ export async function immediateOrder(
   }
 }
 
+/**
+ * TP/SL set with an order. It covers the whole position: Phoenix's isolated
+ * entry route takes nothing less, and a partial TP/SL goes through
+ * phoenix_set_tpsl. Refused when the order would shrink an opposite position:
+ * Phoenix only holds a trigger against the position's own direction.
+ */
+async function entryTpsl(
+  context: TradeContext,
+  wallet: Address,
+  market: OrderMarket,
+  input: {
+    side: Side
+    takeProfit?: Trigger | undefined
+    stopLoss?: Trigger | undefined
+  },
+) {
+  if (!input.takeProfit && !input.stopLoss) return null
+  const [stats, { snapshot }] = await Promise.all([
+    context.phoenix.get('/v1/markets/stats/latest', AllMarketStats),
+    traderBook(context, wallet),
+  ])
+  const mark = stats.markets.find(
+    (each) => each.symbol === market.symbol,
+  )?.mark_price
+  if (mark === undefined)
+    throw new PhoenixError(
+      'market_unavailable',
+      `Phoenix sent no mark price for ${market.symbol}`,
+    )
+  const direction = input.side === 'buy' ? 'long' : 'short'
+  const opposite = snapshot.subaccounts
+    .flatMap((account) => account.positions)
+    .filter((position) => position.symbol === market.symbol)
+    .some((position) =>
+      direction === 'long'
+        ? BigInt(position.basePositionLots) < 0n
+        : BigInt(position.basePositionLots) > 0n,
+    )
+  if (opposite)
+    throw new PhoenixError(
+      'invalid_input',
+      `This order reduces an open ${market.symbol} position, so it cannot set TP/SL; use phoenix_set_tpsl on the position`,
+    )
+  const units = unitsOf(market)
+  const terms = tpslTerms({
+    direction,
+    assetId: market.assetId,
+    units,
+    takeProfit: input.takeProfit,
+    stopLoss: input.stopLoss,
+    size: { sizeBaseLots: null, sizePercent: 100 },
+  })
+  checkAgainstMark(terms, bookTicks(mark, units), direction)
+  return terms
+}
+
+/** What TP/SL adds to an order's result. */
+function tpslResult(
+  terms: NonNullable<Awaited<ReturnType<typeof entryTpsl>>>,
+  units: MarketUnits,
+  instructions: readonly Instruction[],
+) {
+  const creates = instructions.some(
+    ({ data }) =>
+      decodeBundleStep(Uint8Array.from(data ?? []))?.kind ===
+      'create_conditional',
+  )
+  const { takeProfit, stopLoss } = terms
+  return {
+    details: {
+      ...(takeProfit ? { takeProfit: describeLeg(takeProfit, units) } : {}),
+      ...(stopLoss ? { stopLoss: describeLeg(stopLoss, units) } : {}),
+    },
+    terms: {
+      ...(takeProfit
+        ? {
+            takeProfitPrice: ticksToPrice(
+              takeProfit.triggerPriceInTicks,
+              units,
+            ),
+          }
+        : {}),
+      ...(stopLoss
+        ? { stopLossPrice: ticksToPrice(stopLoss.triggerPriceInTicks, units) }
+        : {}),
+    },
+    warnings: [
+      ...TPSL_NOTICES,
+      ...(creates
+        ? [
+            'This is the first TP/SL on this account, so your wallet pays a small one-time rent in SOL. Treat it as spent.',
+          ]
+        : []),
+    ],
+  }
+}
+
 /** The order's worst price, from exactly one of the two inputs (D1). */
 export function worstPrice(input: {
   maxSlippageBps?: number | undefined
@@ -214,6 +321,12 @@ export const marketOrder = defineTradeTool({
         .default(false)
         .describe('Only reduce an open position, never open or flip one'),
       ...marginInputs,
+      takeProfit: Trigger.optional().describe(
+        'Take profit on the whole position, set with this order',
+      ),
+      stopLoss: Trigger.optional().describe(
+        'Stop loss on the whole position, set with this order',
+      ),
     })
     .strict()
     .refine(
@@ -222,7 +335,11 @@ export const marketOrder = defineTradeTool({
         (input.limitPrice === undefined),
       'Give exactly one of maxSlippageBps or limitPrice',
     )
-    .refine(...CrossTakesNoCollateral),
+    .refine(...CrossTakesNoCollateral)
+    .refine(
+      (input) => !input.reduceOnly || (!input.takeProfit && !input.stopLoss),
+      'A reduce-only order cannot set TP/SL',
+    ),
   async prepare(context, input) {
     const wallet = address(input.wallet)
     const [market] = await Promise.all([
@@ -233,6 +350,8 @@ export const marketOrder = defineTradeTool({
     const verb = orderVerb(input.side, input.reduceOnly)
     const bound = input.side === 'buy' ? 'paying at most' : 'receiving at least'
     const limit = worstPrice(input)
+    const tpsl = await entryTpsl(context, wallet, market, input)
+    const units = unitsOf(market)
 
     if (input.marginMode === 'isolated') {
       const funding = await isolatedFunding(context, wallet, market, input)
@@ -251,6 +370,7 @@ export const marketOrder = defineTradeTool({
         keys,
         market,
         funding,
+        conditional: tpsl?.conditional,
         order: {
           kind: 'market',
           side: input.side,
@@ -269,8 +389,20 @@ export const marketOrder = defineTradeTool({
             minBaseLotsToFill: Number(MIN_FILL_LOTS),
             ...(input.reduceOnly ? { isReduceOnly: true } : {}),
             ...funding.transfer,
+            ...(tpsl
+              ? {
+                  sizePercent: 100,
+                  ...(tpsl.greaterTrigger
+                    ? { greaterTrigger: tpsl.greaterTrigger }
+                    : {}),
+                  ...(tpsl.lessTrigger
+                    ? { lessTrigger: tpsl.lessTrigger }
+                    : {}),
+                }
+              : {}),
           }),
       })
+      const added = tpsl && tpslResult(tpsl, units, placed.instructions)
       return {
         kind: 'instructions',
         wallet,
@@ -280,9 +412,18 @@ export const marketOrder = defineTradeTool({
           ...terms.details,
           reduceOnly: String(input.reduceOnly),
           ...placed.details,
+          ...added?.details,
         },
-        trade: perpTrade('order', { ...terms.terms, ...placed.terms }),
-        warnings: [...placed.warnings, ...terms.warnings],
+        trade: perpTrade('order', {
+          ...terms.terms,
+          ...placed.terms,
+          ...added?.terms,
+        }),
+        warnings: [
+          ...placed.warnings,
+          ...terms.warnings,
+          ...(added?.warnings ?? []),
+        ],
       }
     }
 
@@ -295,16 +436,46 @@ export const marketOrder = defineTradeTool({
       limit,
       reduceOnly: input.reduceOnly,
     })
+    // One transaction: if the TP/SL fails, the order never lands without it.
+    const instructions = [
+      order.instruction,
+      ...(tpsl
+        ? await context.orders.placePositionConditionalOrder({
+            authority: wallet,
+            traderPdaIndex: 0,
+            symbol: market.symbol,
+            sizePercent: 100,
+            greaterTrigger: tpsl.greaterTrigger,
+            lessTrigger: tpsl.lessTrigger,
+          })
+        : []),
+    ]
+    if (tpsl)
+      await checkPhoenixBundle(instructions, {
+        wallet,
+        keys: order.keys,
+        market,
+        subaccount: 0,
+        conditional: tpsl.conditional,
+        order: {
+          kind: 'market',
+          side: input.side,
+          priceInTicks: order.priceInTicks,
+          numBaseLots,
+          reduceOnly: false,
+        },
+      })
+    const added = tpsl && tpslResult(tpsl, units, instructions)
     return {
       kind: 'instructions',
       wallet,
-      instructions: [order.instruction],
+      instructions,
       expiresAfterSlot: order.expiresAfterSlot,
       position: order.position,
       summary: `Market ${verb}: ${input.size} ${market.symbol} perp now, ${bound} $${order.limitPrice} each; any part that cannot fill at that price is cancelled`,
-      details: order.details,
-      trade: perpTrade('order', order.terms),
-      warnings: order.warnings,
+      details: { ...order.details, ...added?.details },
+      trade: perpTrade('order', { ...order.terms, ...added?.terms }),
+      warnings: [...order.warnings, ...(added?.warnings ?? [])],
     }
   },
 })
