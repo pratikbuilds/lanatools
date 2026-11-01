@@ -9,6 +9,7 @@ import type { PhoenixAccount } from '@lanatools/contracts'
 import { PhoenixError, createPhoenixClient } from './client'
 import type { PhoenixClient, PhoenixOpts } from './client'
 import { AllMarketStats, MarketConfigs, TraderState } from './schemas'
+import { takeProfitAndStopLoss } from './triggers'
 import { fromLots, tidy, usdc } from './units'
 
 /**
@@ -152,20 +153,23 @@ export async function readPhoenixAccount(
       : { markets: [] },
   ])
   const viewOf = new Map(views.map((each) => [each.subaccount, each.view]))
-  const decimalsOf = new Map(
-    configs.map((config) => [config.symbol, config.baseLotsDecimals]),
+  const unitsOf = new Map(
+    configs.map(({ symbol, tickSize, baseLotsDecimals }) => [
+      symbol,
+      { tickSize, baseLotsDecimals },
+    ]),
   )
   const markOf = new Map(
     stats.markets.map((market) => [market.symbol, market.mark_price]),
   )
-  const lotsDecimals = (symbol: string) => {
-    const decimals = decimalsOf.get(symbol)
-    if (decimals === undefined)
+  const marketUnits = (symbol: string) => {
+    const units = unitsOf.get(symbol)
+    if (units === undefined)
       throw new PhoenixError(
         'upstream_error',
         `Phoenix returned a position in unknown market ${symbol}`,
       )
-    return decimals
+    return units
   }
 
   const positions = active.flatMap((sub) => {
@@ -175,10 +179,8 @@ export async function readPhoenixAccount(
     return sub.positions
       .filter((position) => BigInt(position.basePositionLots) !== 0n)
       .map((position) => {
-        const size = fromLots(
-          position.basePositionLots,
-          lotsDecimals(position.symbol),
-        )
+        const units = marketUnits(position.symbol)
+        const size = fromLots(position.basePositionLots, units.baseLotsDecimals)
         const mark = markOf.get(position.symbol)
         const viewed = subaccountView?.positions.find(
           (each) => each.symbol === position.symbol,
@@ -213,6 +215,7 @@ export async function readPhoenixAccount(
             : unpriced,
           liquidationPrice: liquidation(viewed?.liquidationPrice?.ui),
           fundingUsdc: usdc(position.accumulatedFundingQuoteLots),
+          ...takeProfitAndStopLoss(position, units),
         }
       })
   })
@@ -228,7 +231,10 @@ export async function readPhoenixAccount(
           side: side(order.side),
           type: order.orderType,
           price: decimal(order.priceUsd),
-          size: fromLots(order.sizeRemainingLots, lotsDecimals(book.symbol)),
+          size: fromLots(
+            order.sizeRemainingLots,
+            marketUnits(book.symbol).baseLotsDecimals,
+          ),
           reduceOnly: order.reduceOnly,
         })),
     ),

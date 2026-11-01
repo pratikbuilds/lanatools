@@ -12,6 +12,9 @@ export const MarketConfig = z.object({
   symbol: z.string(),
   marketStatus: z.string(),
   metadata: z.object({ name: z.string().nullish() }).nullish(),
+  tickSize: z
+    .union([z.number().int().positive(), z.string().regex(/^[1-9]\d*$/)])
+    .transform(BigInt),
   baseLotsDecimals: z.number().int(),
   takerFee: z.number(),
   makerFee: z.number(),
@@ -62,6 +65,62 @@ export const Candles = z.array(
   }),
 )
 
+const Trigger = z.object({
+  triggerPriceTicks: Lots,
+  executionPriceTicks: Lots,
+  kind: z.string(),
+})
+export type Trigger = z.infer<typeof Trigger>
+
+const ConditionalTrigger = Trigger.extend({
+  maxSizeLots: Lots,
+  usePercent: z.boolean(),
+  percent: z.number(),
+})
+export type ConditionalTrigger = z.infer<typeof ConditionalTrigger>
+
+// The take profit and stop loss lists on a position row. Phoenix's old
+// stop-loss API fills the first two, its conditional orders the other two.
+export const PositionTriggers = z.object({
+  takeProfitTriggers: z
+    .array(
+      z.object({
+        takeProfitId: z.string(),
+        trigger: Trigger,
+        status: z.string(),
+      }),
+    )
+    .default([]),
+  stopLossTriggers: z
+    .array(
+      z.object({
+        stopLossId: z.string(),
+        trigger: Trigger,
+        status: z.string(),
+      }),
+    )
+    .default([]),
+  conditionalTakeProfitTriggers: z
+    .array(
+      z.object({
+        conditionalTakeProfitId: z.string(),
+        trigger: ConditionalTrigger,
+        status: z.string(),
+      }),
+    )
+    .default([]),
+  conditionalStopLossTriggers: z
+    .array(
+      z.object({
+        conditionalStopLossId: z.string(),
+        trigger: ConditionalTrigger,
+        status: z.string(),
+      }),
+    )
+    .default([]),
+})
+export type PositionTriggers = z.infer<typeof PositionTriggers>
+
 export const TraderState = z.object({
   authority: z.string(),
   snapshot: z.object({
@@ -86,6 +145,7 @@ export const TraderState = z.object({
               entryPriceUsd: z.string().nullish(),
               virtualQuotePositionLots: Lots,
               accumulatedFundingQuoteLots: Lots,
+              ...PositionTriggers.shape,
             }),
           )
           .default([]),

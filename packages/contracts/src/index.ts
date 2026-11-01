@@ -587,6 +587,24 @@ export type TransactionsSync = typeof TransactionsSync.infer
  * decimal USD strings, sizes decimal tokens. Liquidation prices are
  * Phoenix's own; null when Phoenix has none for the position.
  */
+/**
+ * A take profit or stop loss Phoenix holds on a position. Prices are decimal
+ * USD. `size` is decimal tokens, null when the trigger uses `percent` of the
+ * position or is `legacy` (set through Phoenix's old stop-loss API).
+ */
+export const PhoenixTrigger = type({
+  triggerId: 'string',
+  triggerPrice: 'string',
+  worstPrice: 'string',
+  /** Phoenix's order kind once triggered, "ioc" or "limit". */
+  orderKind: 'string',
+  size: 'string | null',
+  percent: 'number | null',
+  status: 'string',
+  legacy: 'boolean',
+})
+export type PhoenixTrigger = typeof PhoenixTrigger.infer
+
 export const PhoenixPosition = type({
   /** Market, e.g. "SOL". */
   symbol: 'string',
@@ -600,6 +618,8 @@ export const PhoenixPosition = type({
   unrealizedPnlUsd: 'string | null',
   liquidationPrice: 'string | null',
   fundingUsdc: 'string',
+  takeProfit: PhoenixTrigger.array(),
+  stopLoss: PhoenixTrigger.array(),
 })
 export type PhoenixPosition = typeof PhoenixPosition.infer
 

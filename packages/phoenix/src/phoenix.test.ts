@@ -13,6 +13,7 @@ function config(symbol: string, baseLotsDecimals: number) {
     symbol,
     marketStatus: 'active',
     metadata: { name: symbol },
+    tickSize: 100,
     baseLotsDecimals,
     takerFee: 0.00035,
     makerFee: 0.00005,
@@ -391,6 +392,8 @@ test('account converts lots, estimates PnL at mark and splits margin modes', asy
         unrealizedPnlUsd: 23.49618,
         liquidationPrice: '118.25',
         accumulatedFundingUsdc: '-0.891025',
+        takeProfit: [],
+        stopLoss: [],
       },
       {
         symbol: 'kBONK',
@@ -404,6 +407,8 @@ test('account converts lots, estimates PnL at mark and splits margin modes', asy
         unrealizedPnlUsd: -0.0549,
         liquidationPrice: null,
         accumulatedFundingUsdc: '-0.891025',
+        takeProfit: [],
+        stopLoss: [],
       },
     ],
     openOrders: [
@@ -418,6 +423,162 @@ test('account converts lots, estimates PnL at mark and splits margin modes', asy
         reduceOnly: true,
         status: 'open',
       },
+    ],
+  })
+})
+
+// Rise's types, 0.5.38: no live wallet has shown a filled-in trigger yet.
+const trigger = (triggerTicks: string, worstTicks: string) => ({
+  triggerPriceTicks: triggerTicks,
+  executionPriceTicks: worstTicks,
+  side: 'ask',
+  kind: 'ioc',
+})
+const conditional = (
+  triggerTicks: string,
+  worstTicks: string,
+  size: { lots: string } | { percent: number },
+) => ({
+  ...trigger(triggerTicks, worstTicks),
+  attachedOrderSequenceNumber: null,
+  maxSizeLots: 'lots' in size ? size.lots : '0',
+  fillableSizeLots: 'lots' in size ? size.lots : '0',
+  filledSizeLots: '0',
+  usePercent: 'percent' in size,
+  percent: 'percent' in size ? size.percent : 0,
+})
+
+test('account shows every kind of take profit and stop loss in USD', async () => {
+  const { outcome } = await run(
+    'phoenix_get_account',
+    { wallet: WALLET },
+    {
+      [`/v1/trader/state/${WALLET}`]: traderState([
+        {
+          subaccountIndex: 0,
+          collateral: '6039078',
+          positions: [
+            {
+              ...position('SOL', '2044', '-2449743820'),
+              conditionalTakeProfitTriggers: [
+                {
+                  conditionalTakeProfitId: '3',
+                  trigger: conditional('14000', '13900', { percent: 50 }),
+                  status: 'active',
+                },
+                {
+                  conditionalTakeProfitId: '4',
+                  trigger: conditional('15000', '14900', { lots: '300' }),
+                  status: 'active',
+                },
+              ],
+              conditionalStopLossTriggers: [
+                {
+                  conditionalStopLossId: '3',
+                  trigger: conditional('11000', '10900', { lots: '1022' }),
+                  status: 'active',
+                },
+              ],
+              takeProfitTriggers: [
+                {
+                  takeProfitId: '1',
+                  trigger: trigger('16000', '15900'),
+                  status: 'active',
+                },
+              ],
+              stopLossTriggers: [
+                {
+                  stopLossId: '2',
+                  trigger: trigger('10000', '9900'),
+                  status: 'active',
+                },
+              ],
+            },
+          ],
+        },
+        {
+          subaccountIndex: 4,
+          collateral: '1000000',
+          positions: [
+            {
+              ...position('kBONK', '-3', '1145100'),
+              conditionalStopLossTriggers: [
+                {
+                  conditionalStopLossId: '0',
+                  trigger: conditional('5', '6', { lots: '2' }),
+                  status: 'active',
+                },
+              ],
+            },
+          ],
+        },
+      ]),
+      '/v1/view/exchange/markets': MARKETS,
+      '/v1/markets/stats/latest': STATS,
+    },
+  )
+  const { positions } = result(outcome) as {
+    positions: Record<string, unknown>[]
+  }
+  expect(positions[0]).toMatchObject({
+    symbol: 'SOL',
+    takeProfit: [
+      {
+        triggerId: '3',
+        triggerPrice: '140',
+        worstPrice: '139',
+        orderKind: 'ioc',
+        size: null,
+        percent: 50,
+        status: 'active',
+        legacy: false,
+      },
+      {
+        triggerId: '4',
+        triggerPrice: '150',
+        worstPrice: '149',
+        orderKind: 'ioc',
+        size: '3',
+        percent: null,
+        status: 'active',
+        legacy: false,
+      },
+      {
+        triggerId: '1',
+        triggerPrice: '160',
+        worstPrice: '159',
+        orderKind: 'ioc',
+        size: null,
+        percent: null,
+        status: 'active',
+        legacy: true,
+      },
+    ],
+    stopLoss: [
+      {
+        triggerId: '3',
+        triggerPrice: '110',
+        worstPrice: '109',
+        size: '10.22',
+        percent: null,
+        legacy: false,
+      },
+      {
+        triggerId: '2',
+        triggerPrice: '100',
+        worstPrice: '99',
+        size: null,
+        percent: null,
+        legacy: true,
+      },
+    ],
+  })
+  // One kBONK lot is 100 tokens, so a tick is worth less than a SOL tick.
+  expect(positions[1]).toMatchObject({
+    symbol: 'kBONK',
+    takeProfit: [],
+    stopLoss: [
+      { triggerPrice: '0.000005', worstPrice: '0.000006', size: '200' },
     ],
   })
 })
