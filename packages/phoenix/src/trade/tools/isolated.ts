@@ -100,6 +100,13 @@ export async function isolatedFunding(
         position.symbol === market.symbol &&
         BigInt(position.basePositionLots) !== 0n,
     )
+  const inUse = (account: (typeof snapshot.subaccounts)[number]) =>
+    account.positions.some(
+      (position) => BigInt(position.basePositionLots) !== 0n,
+    ) ||
+    account.orders.some((market) =>
+      market.orders.some((order) => order.change !== 'closed'),
+    )
   const cross = snapshot.subaccounts.find(
     (account) => account.subaccountIndex === 0,
   )
@@ -163,7 +170,16 @@ export async function isolatedFunding(
     intent: {
       collateralUsdc,
       collateralLamports,
-      ...(subaccount === undefined ? {} : { subaccount }),
+      ...(subaccount === undefined
+        ? {
+            occupied: [
+              0,
+              ...snapshot.subaccounts
+                .filter(inUse)
+                .map((account) => account.subaccountIndex),
+            ],
+          }
+        : { subaccount }),
     },
     /** One sentence for the summary. */
     sentence: moves

@@ -397,7 +397,7 @@ export type BundleIntent = {
   order?: Pick<
     OrderPacket,
     'kind' | 'side' | 'priceInTicks' | 'numBaseLots' | 'reduceOnly'
-  >
+  > & { lastValidSlot?: bigint | null }
   /** USDC base units moved from cross into the subaccount; default none. */
   collateralUsdc?: bigint
   /** Lamports moved from cross into the subaccount; default none. */
@@ -408,6 +408,8 @@ export type BundleIntent = {
   cancels?: readonly ConditionalCancel[]
   /** The subaccount, when the tool knows it. New positions leave it out. */
   subaccount?: number
+  /** Subaccounts a new isolated position must not land in. */
+  occupied?: readonly number[]
 }
 
 const sameTrigger = (
@@ -473,12 +475,20 @@ export async function checkPhoenixBundle(
   const subaccount = children[0] ?? 0
   if (intent.subaccount !== undefined && intent.subaccount !== subaccount)
     fail('the bundle trades in the wrong subaccount')
+  if (intent.occupied?.includes(subaccount))
+    fail('the bundle opens the position in a subaccount already in use')
   const cross = await traderAccountAddress(wallet)
   const child = await traderAccountAddress(wallet, subaccount)
   const conditionals = await conditionalOrdersAddress(child)
   for (const account of unknown)
     if (account !== conditionals)
       fail(`the bundle writes to an unexpected account ${account}`)
+
+  // Collateral steps name their source at 4 and their destination at 5.
+  const moves = (instruction: Instruction, from: Address, to: Address) =>
+    subaccount !== 0 &&
+    instruction.accounts?.[4]?.address === from &&
+    instruction.accounts[5]?.address === to
 
   let orders = 0
   let usdc = 0n
@@ -492,8 +502,11 @@ export async function checkPhoenixBundle(
     switch (step.kind) {
       case 'realloc':
       case 'sync':
+        break
       case 'sweep_usdc':
       case 'sweep_sol':
+        if (!moves(instruction, child, cross))
+          fail('a sweep does not move from the subaccount to cross')
         break
       case 'create_conditional':
         if (step.capacity !== CONDITIONAL_CAPACITY)
@@ -502,17 +515,18 @@ export async function checkPhoenixBundle(
       case 'register':
         if (step.traderPdaIndex !== 0 || step.subaccount !== subaccount)
           fail('the bundle registers the wrong subaccount')
+        // An isolated account holds one position, with Phoenix's defaults.
+        if (step.maxPositions !== 1n || step.traderPreferenceBits !== 0)
+          fail('the bundle registers a subaccount with other settings')
         break
       case 'transfer_usdc':
-        // TransferCollateral names its source and destination at 4 and 5.
-        if (
-          instruction.accounts?.[4]?.address !== cross ||
-          instruction.accounts[5]?.address !== child
-        )
+        if (!moves(instruction, cross, child))
           fail('the collateral does not move from cross to the subaccount')
         usdc += step.amount
         break
       case 'transfer_sol':
+        if (!moves(instruction, cross, child))
+          fail('the collateral does not move from cross to the subaccount')
         sol += 1
         if (!sameBytes(data, transferSolData(intent.collateralLamports ?? 0n)))
           fail('the SOL collateral does not match the request')
@@ -539,6 +553,20 @@ export async function checkPhoenixBundle(
           fail("the order's minimum fill does not match the request")
         if (packet.cancelExisting || packet.slide)
           fail('the order cancels or moves orders nobody asked to')
+        if (
+          !sameBytes(
+            data,
+            orderData({
+              kind: order.kind,
+              side: order.side,
+              priceInTicks: packet.priceInTicks,
+              numBaseLots: order.numBaseLots,
+              reduceOnly: order.reduceOnly,
+              lastValidSlot: order.lastValidSlot ?? null,
+            }),
+          )
+        )
+          fail("the order's encoding differs from the request")
         break
       }
       case 'place_conditional': {

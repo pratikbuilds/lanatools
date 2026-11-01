@@ -463,6 +463,7 @@ export const marketOrder = defineTradeTool({
           priceInTicks: order.priceInTicks,
           numBaseLots,
           reduceOnly: false,
+          lastValidSlot: BigInt(order.expiresAfterSlot),
         },
       })
     const added = tpsl && tpslResult(tpsl, units, instructions)

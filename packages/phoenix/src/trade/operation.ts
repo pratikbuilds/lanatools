@@ -186,8 +186,8 @@ export function phoenixTransactionTool<TSchema extends z.ZodObject>(
           title: tool.title,
           description: activation
             ? 'Activate your Phoenix account. Your wallet pays rent and fees in SOL and signs a Phoenix login message. Phoenix co-signs and submits.'
-            : input.marginMode === 'isolated'
-              ? `Trade an isolated Phoenix position, funded from your cross-margin account. ${ISOLATED_RISK} Exact terms are checked and simulated when prepared. Network fees are paid in SOL.`
+            : input.marginMode === 'isolated' || Number(input.subaccount) > 0
+              ? `Use an isolated Phoenix position. ${ISOLATED_RISK} Exact terms are checked and simulated when prepared. Network fees are paid in SOL.`
               : 'Use your Phoenix cross-margin account. Exact terms are checked and simulated when prepared. Network fees are paid in SOL.',
           actionLabel: tool.title,
           fields: Object.entries(input)

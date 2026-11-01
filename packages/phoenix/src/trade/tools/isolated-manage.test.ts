@@ -398,14 +398,14 @@ describe('closing a cross position stays as it was', () => {
     expect(requests).toEqual([])
   })
 
-  test('an isolated-only market is still refused on cross', async () => {
+  test('a position can always be closed, even if its market went isolated-only', async () => {
     expect(
       await runTradeTool(
         closePosition,
         { wallet: WALLET, symbol: 'STONK', maxSlippageBps: 50 },
         opts(trader({ index: 0, positions: [position('STONK', '5')] })),
       ),
-    ).toMatchObject({ ok: false, error: { code: 'market_unavailable' } })
+    ).toMatchObject({ ok: true, result: { status: 'ready' } })
   })
 })
 

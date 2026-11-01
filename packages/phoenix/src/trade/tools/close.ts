@@ -15,7 +15,6 @@ import {
   openPosition,
   perpTrade,
   requireActivated,
-  requireTradable,
 } from './shared'
 
 const COLLATERAL_RETURNS =
@@ -65,7 +64,6 @@ export const closePosition = defineTradeTool({
       requireActivated(context, wallet),
     ])
     const isolated = subaccount > 0
-    requireTradable(market, isolated ? 'isolated' : 'cross')
 
     const long = held > 0n
     const side = long ? 'sell' : 'buy'
@@ -118,6 +116,7 @@ export const closePosition = defineTradeTool({
           priceInTicks: order.priceInTicks,
           numBaseLots,
           reduceOnly: true,
+          lastValidSlot: BigInt(order.expiresAfterSlot),
         },
       })
     return {

@@ -96,6 +96,9 @@ An embedded wallet signs without further approval, so the server's answer is tre
 - **Close means close:** a close's bundle moves no collateral out of cross.
 - **SOL deposits:** the System transfer goes to this wallet's trader account for exactly the amount.
 
+- **Collateral moves only between this wallet's accounts:** every transfer and sweep is checked by source and destination, because the writable list is built from Phoenix's own API answers. New positions may not land in cross or a subaccount already in use.
+- **Orders are byte-exact** against Rise's encoding, and a registered subaccount must have Phoenix's defaults.
+
 We do not check exact instruction order or count, because the server changes those by account state. The simulation still runs on every transaction.
 
 Tests use real responses saved from Phoenix as fixtures, plus tampered copies that must be refused.

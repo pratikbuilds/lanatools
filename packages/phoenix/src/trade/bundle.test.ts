@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { AccountRole, address } from '@solana/kit'
-import type { Instruction } from '@solana/kit'
+import type { AccountMeta, Instruction } from '@solana/kit'
 import { PhoenixError } from '../client'
 import { checkPhoenixBundle } from './checks'
 import type { BundleIntent } from './checks'
@@ -593,4 +593,113 @@ describe('checkPhoenixBundle holds a TP/SL cancel to the request', () => {
       'another account or market',
     )
   })
+})
+
+describe('checkPhoenixBundle keeps collateral between the wallet’s accounts', () => {
+  const swapAccounts = (
+    bundle: Instruction[],
+    kind: string,
+    change: (accounts: AccountMeta[]) => AccountMeta[],
+  ) =>
+    bundle.map((instruction) =>
+      decodeBundleStep(Uint8Array.from(instruction.data ?? []))?.kind === kind
+        ? {
+            ...instruction,
+            accounts: change([
+              ...(instruction.accounts ?? []),
+            ] as AccountMeta[]),
+          }
+        : instruction,
+    )
+  const reversed = (accounts: AccountMeta[]) => {
+    const [from, to] = [accounts[4], accounts[5]]
+    if (!from || !to) throw new Error('fixture has both accounts')
+    accounts[4] = to
+    accounts[5] = from
+    return accounts
+  }
+  const sol = instructions(bundles.openSol)
+  const solIntent: BundleIntent = {
+    ...noTpsl,
+    order: {
+      kind: 'market',
+      side: 'buy',
+      priceInTicks: 39280n,
+      numBaseLots: 1n,
+      reduceOnly: false,
+    },
+    collateralUsdc: 0n,
+    collateralLamports: 50_000_000n,
+  }
+
+  test('SOL collateral going the wrong way', () =>
+    refused(
+      swapAccounts(sol, 'transfer_sol', reversed),
+      solIntent,
+      'from cross to the subaccount',
+    ))
+
+  test('SOL collateral sent to a stranger, even if Phoenix lists the stranger', async () => {
+    const stranger = await traderAccountAddress(D, 1)
+    const hostile = swapAccounts(sol, 'transfer_sol', (accounts) => {
+      const to = accounts[5]
+      if (!to) throw new Error('fixture has a destination')
+      accounts[5] = { ...to, address: stranger }
+      return accounts
+    })
+    await refused(
+      hostile,
+      {
+        ...solIntent,
+        keys: {
+          ...keys,
+          globalTraderIndex: [...keys.globalTraderIndex, stranger],
+        },
+      },
+      'from cross to the subaccount',
+    )
+  })
+
+  for (const kind of ['sweep_usdc', 'sweep_sol'])
+    test(`a ${kind} going the wrong way`, () =>
+      refused(
+        swapAccounts(open, kind, reversed),
+        openIntent,
+        'from the subaccount to cross',
+      ))
+
+  test('a new isolated position in cross or a busy subaccount', async () => {
+    await refused(open, { ...openIntent, occupied: [0, 1] }, 'already in use')
+    expect(
+      await checkPhoenixBundle(open, { ...openIntent, occupied: [0, 2] }),
+    ).toEqual({ subaccount: 1 })
+  })
+
+  test('a subaccount registered with other settings', () => {
+    const data = Uint8Array.from(open[0]?.data ?? [])
+    // maxPositions follows the discriminator and two index bytes.
+    const tampered = Uint8Array.from(data)
+    tampered[data.length - 1] = 0xff
+    return refused(
+      open.map((each, index) =>
+        index === 0 ? { ...each, data: tampered } : each,
+      ),
+      openIntent,
+      'register',
+    )
+  })
+
+  test('anything extra in the order bytes', () =>
+    refused(
+      open.map((each) =>
+        decodeBundleStep(Uint8Array.from(each.data ?? []))?.kind === 'order'
+          ? {
+              ...each,
+              data: Uint8Array.from([...(each.data ?? []), 0, 0, 0, 0]),
+            }
+          : each,
+      ),
+      openIntent,
+      'encoding differs',
+    ))
 })

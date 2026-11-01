@@ -1031,7 +1031,13 @@ export type ConditionalPacket = {
 
 /** One instruction of a server-built Phoenix transaction, decoded. */
 export type BundleStep =
-  | { kind: 'register'; subaccount: number; traderPdaIndex: number }
+  | {
+      kind: 'register'
+      subaccount: number
+      traderPdaIndex: number
+      maxPositions: bigint
+      traderPreferenceBits: number
+    }
   | { kind: 'realloc' | 'sync' | 'sweep_usdc' | 'sweep_sol' }
   | { kind: 'transfer_usdc'; amount: bigint }
   | { kind: 'transfer_sol'; data: Uint8Array }
@@ -1149,6 +1155,8 @@ export function decodeBundleStep(data: Uint8Array): BundleStep | null {
         kind: 'register',
         subaccount: params.subaccountIndex,
         traderPdaIndex: params.traderPdaIndex,
+        maxPositions: params.maxPositions,
+        traderPreferenceBits: params.traderPreferenceBits ?? 0,
       }),
     )
   if (startsWith(data, DISCRIMINANTS.REALLOC_TRADER)) return { kind: 'realloc' }
