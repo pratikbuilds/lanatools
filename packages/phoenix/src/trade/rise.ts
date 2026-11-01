@@ -60,6 +60,7 @@ import {
   getWithdrawFundsDecoder,
   hasReferralActivationCapabilities,
   nativeSolCollateralHeadroomLamports,
+  nativeSolUnaccountedLamports,
   nativeSolSyncDeltaLamports,
   quoteLots,
   ticks,
@@ -435,6 +436,14 @@ export const solDepositCredit = (room: SolDepositRoom, lamports: bigint) =>
   attributedNativeSolDepositLamports({
     ...solRoomParams(room),
     depositLamports: lamports,
+  })
+
+/** SOL in the trader account that Phoenix has not counted yet. */
+export const solUncounted = (room: SolDepositRoom) =>
+  nativeSolUnaccountedLamports({
+    accountBalanceLamports: room.accountLamports,
+    accountedLamports: room.accountedLamports,
+    rentExemptMinimumLamports: room.rentExemptLamports,
   })
 
 /**

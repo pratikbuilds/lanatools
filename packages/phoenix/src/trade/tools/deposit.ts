@@ -9,6 +9,7 @@ import { toLamports, toUSDCUnits } from '../price'
 import {
   depositInstructions,
   solDepositCredit,
+  solUncounted,
   solDepositHeadroom,
   solDepositInstructions,
   traderAccountAddress,
@@ -147,6 +148,8 @@ async function depositSol(
   const instructions = await solDepositInstructions(wallet, keys, lamports)
   checkSolDeposit(instructions, { wallet, traderAccount, lamports })
   const credit = solDepositCredit(room, lamports)
+  // SyncNative counts whatever sits in the account, not only this deposit.
+  const uncounted = solUncounted(room)
   const amount = sol(lamports.toString())
   return {
     kind: 'instructions',
@@ -168,6 +171,11 @@ async function depositSol(
       ...(credit < lamports
         ? [
             `Phoenix will count ${sol(credit.toString())} SOL of this deposit; the rest refills the rent the trader account is short of.`,
+          ]
+        : []),
+      ...(uncounted > 0n
+        ? [
+            `Phoenix will also count ${sol(uncounted.toString())} SOL already sitting in the trader account, so your collateral may rise by more than this deposit.`,
           ]
         : []),
     ],

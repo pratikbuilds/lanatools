@@ -466,6 +466,24 @@ test('a SOL deposit says when Phoenix will not count all of it', async () => {
   )
 })
 
+test('a SOL deposit says when Phoenix will also count SOL already there', async () => {
+  const outcome = await solDeposit('0.01', {
+    accounts: {
+      ...solAccounts,
+      [TRADER]: accountInfo(
+        PHOENIX_PROGRAM,
+        TRADER_ACCOUNT_DATA,
+        RENT + 6_000_000n,
+      ),
+    },
+  })
+  if (!outcome.ok || outcome.result.status !== 'ready')
+    throw new Error(`unexpected ${JSON.stringify(outcome)}`)
+  expect(outcome.result.warnings).toContain(
+    'Phoenix will also count 0.006 SOL already sitting in the trader account, so your collateral may rise by more than this deposit.',
+  )
+})
+
 test('a SOL deposit is refused when Phoenix does not take SOL', async () => {
   expect(
     await solDeposit('0.01', { assets: solAsset({ isActive: false }) }),
