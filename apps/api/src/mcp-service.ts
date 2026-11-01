@@ -167,8 +167,11 @@ export class McpAccessService extends WorkerEntrypoint<McpEnv> {
     return (await signerStatus(this.env.DB, userId)).walletAddress
   }
 
-  /** Saves feedback from the grant's agent; false once it is revoked. */
-  async sendFeedback(identity: GrantIdentity, feedback: string) {
+  /**
+   * Saves feedback from the grant's agent, or from an agent that is not logged
+   * in when identity is null; false once the grant is revoked.
+   */
+  async sendFeedback(identity: GrantIdentity | null, feedback: string) {
     return saveFeedback(this.env.DB, identity, feedback)
   }
 

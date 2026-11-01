@@ -109,7 +109,7 @@ test('a market buy is limited above the best ask, expires, and may fill partly',
         reduceOnly: false,
       },
       warnings: [
-        'This order expires about a minute after it was prepared (slot 1150); after that it is not sent, and must be prepared again.',
+        'This order expires about 30 seconds after it was prepared (slot 1150); after that it is not sent, and must be prepared again.',
       ],
     },
   })
@@ -136,7 +136,7 @@ test('a market sell with a limit rounds up and warns when out of reach', async (
       summary:
         'Market sell to reduce a long position: 0.1 SOL perp now, receiving at least $116.01 each; any part that cannot fill at that price is cancelled',
       warnings: [
-        'This order expires about a minute after it was prepared (slot 1150); after that it is not sent, and must be prepared again.',
+        'This order expires about 30 seconds after it was prepared (slot 1150); after that it is not sent, and must be prepared again.',
         'The limit is above the best bid (115.15), so this order will not fill now.',
       ],
     },
@@ -165,7 +165,7 @@ test("a noisy float in Phoenix's book still prices at its own tick", async () =>
   ).toMatchObject({
     result: {
       warnings: [
-        'This order expires about a minute after it was prepared (slot 1150); after that it is not sent, and must be prepared again.',
+        'This order expires about 30 seconds after it was prepared (slot 1150); after that it is not sent, and must be prepared again.',
       ],
     },
   })

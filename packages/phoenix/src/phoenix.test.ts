@@ -1,4 +1,6 @@
 import { expect, test } from 'bun:test'
+import { address } from '@solana/kit'
+import { traderSubaccountAddress } from './account-view'
 import { phoenixTools, runPhoenixTool } from './index'
 import type { PhoenixFetch } from './index'
 import { fromLots } from './units'
@@ -346,6 +348,21 @@ test('account converts lots, estimates PnL at mark and splits margin modes', asy
       ]),
       '/v1/view/exchange/markets': MARKETS,
       '/v1/markets/stats/latest': STATS,
+      [`/v1/view/trader/${await traderSubaccountAddress(address(WALLET), 0)}`]:
+        {
+          riskState: 'healthy',
+          portfolioValue: { ui: '30' },
+          unrealizedPnl: { ui: '23.5' },
+          maintenanceMargin: { ui: '12' },
+          positions: [
+            {
+              symbol: 'SOL',
+              positionValue: { ui: '2473.24' },
+              unrealizedPnl: { ui: '23.5' },
+              liquidationPrice: { ui: '118.2500' },
+            },
+          ],
+        },
     },
   )
   expect(result(outcome)).toEqual({
@@ -372,6 +389,7 @@ test('account converts lots, estimates PnL at mark and splits margin modes', asy
         markPrice: 121,
         notionalUsd: 2473.24,
         unrealizedPnlUsd: 23.49618,
+        liquidationPrice: '118.25',
         accumulatedFundingUsdc: '-0.891025',
       },
       {
@@ -384,6 +402,7 @@ test('account converts lots, estimates PnL at mark and splits margin modes', asy
         markPrice: 0.004,
         notionalUsd: 1.2,
         unrealizedPnlUsd: -0.0549,
+        liquidationPrice: null,
         accumulatedFundingUsdc: '-0.891025',
       },
     ],
