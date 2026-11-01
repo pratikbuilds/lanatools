@@ -30,7 +30,7 @@ export const deposit = defineTradeTool({
     const [held, keys] = await Promise.all([
       usdcAccountAddress(wallet).then((account) => fetchAccount(rpc, account)),
       phoenix.get('/v1/view/exchange/keys', ExchangeKeys),
-      requireActivated({ phoenix, rpc }, wallet),
+      requireActivated({ rpc }, wallet),
     ])
     const balance = tokenBalance(held)
     if (amount > balance)

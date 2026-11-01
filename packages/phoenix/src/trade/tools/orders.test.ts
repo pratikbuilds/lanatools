@@ -201,7 +201,7 @@ test('markets these tools cannot trade are refused before building', async () =>
   const cases = [
     [
       { '/v1/view/exchange/market/SOL': { ...SOL_MARKET, isolatedOnly: true } },
-      'SOL trades only in isolated margin, which these tools do not support yet',
+      'SOL trades only in isolated margin; set marginMode to isolated and give collateral',
     ],
     [
       {

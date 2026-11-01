@@ -9,7 +9,7 @@ import {
   MarketSymbol,
   Price,
   SlippageBps,
-  crossAccount,
+  traderAccount,
   perpTrade,
   requireActivated,
   tradableMarket,
@@ -51,7 +51,7 @@ export const closePosition = defineTradeTool({
     const wallet = address(input.wallet)
     const [market, account] = await Promise.all([
       tradableMarket(context, input.symbol),
-      crossAccount(context, wallet),
+      traderAccount(context, wallet),
       requireActivated(context, wallet),
     ])
     const held = BigInt(

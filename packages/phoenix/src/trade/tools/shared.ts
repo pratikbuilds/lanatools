@@ -39,7 +39,10 @@ export const SlippageBps = z
   )
 
 /** Throws `not_activated` unless the wallet's trader account can trade. */
-export async function requireActivated({ rpc }: TradeContext, wallet: Address) {
+export async function requireActivated(
+  { rpc }: Pick<TradeContext, 'rpc'>,
+  wallet: Address,
+) {
   const trader = await fetchAccount(rpc, await traderAccountAddress(wallet))
   if (
     trader?.owner !== PHOENIX_PROGRAM ||
@@ -61,18 +64,22 @@ export function marketConfig({ phoenix }: TradeContext, symbol: string) {
   )
 }
 
-/** A market's order config; refuses markets these tools cannot trade. */
-export async function tradableMarket(context: TradeContext, symbol: string) {
+/** A market's order config; refuses markets this order cannot trade. */
+export async function tradableMarket(
+  context: TradeContext,
+  symbol: string,
+  marginMode: 'cross' | 'isolated' = 'cross',
+) {
   const market = await marketConfig(context, symbol)
   if (market.marketStatus !== 'active')
     throw new PhoenixError(
       'market_unavailable',
       `Phoenix's ${market.symbol} market is ${market.marketStatus}, not open for orders`,
     )
-  if (market.isolatedOnly)
+  if (market.isolatedOnly && marginMode === 'cross')
     throw new PhoenixError(
       'market_unavailable',
-      `${market.symbol} trades only in isolated margin, which these tools do not support yet`,
+      `${market.symbol} trades only in isolated margin; set marginMode to isolated and give collateral`,
     )
   return market
 }
@@ -141,11 +148,34 @@ export const usd = (value: number) => value.toFixed(2)
 export const fineUsd = (value: number) => Number(value.toFixed(6)).toString()
 
 /**
- * The wallet's cross-margin account (subaccount 0) as Phoenix's API sees
- * it: positions and resting orders. These tools trade nothing else.
+ * One of the wallet's accounts as Phoenix's API sees it: positions and resting
+ * orders. Subaccount 0 is cross margin.
  */
-export async function crossAccount({ phoenix }: TradeContext, wallet: Address) {
-  const book = await phoenix
+export async function traderAccount(
+  context: TradeContext,
+  wallet: Address,
+  subaccount = 0,
+) {
+  const { snapshot } = await traderBook(context, wallet)
+  const account = snapshot.subaccounts.find(
+    (each) => each.subaccountIndex === subaccount,
+  )
+  return {
+    positions: account?.positions ?? [],
+    /** Resting orders still on the book in one market. */
+    ordersIn: (symbol: string) =>
+      (account?.orders ?? [])
+        .filter((market) => market.symbol === symbol)
+        .flatMap((market) => market.orders)
+        .filter((order) => order.change !== 'closed'),
+  }
+}
+
+async function traderBook(
+  { phoenix }: Pick<TradeContext, 'phoenix'>,
+  wallet: Address,
+) {
+  return phoenix
     .get(`/v1/trader/state/${encodeURIComponent(wallet)}`, TraderBook)
     .catch((error: unknown) => {
       if (error instanceof PhoenixError && error.code === 'not_found')
@@ -155,18 +185,48 @@ export async function crossAccount({ phoenix }: TradeContext, wallet: Address) {
         )
       throw error
     })
-  const cross = book.snapshot.subaccounts.find(
-    (subaccount) => subaccount.subaccountIndex === 0,
+}
+
+/**
+ * The wallet's open position in one market, and the subaccount that holds it.
+ * A market can hold a cross and an isolated position at once, so without a
+ * `subaccount` an ambiguous request is refused rather than guessed.
+ */
+export async function openPosition(
+  context: TradeContext,
+  wallet: Address,
+  symbol: string,
+  subaccount?: number,
+) {
+  const { snapshot } = await traderBook(context, wallet)
+  const held = snapshot.subaccounts.flatMap((account) =>
+    account.positions
+      .filter(
+        (position) =>
+          position.symbol === symbol &&
+          BigInt(position.basePositionLots) !== 0n,
+      )
+      .map((position) => ({
+        subaccount: account.subaccountIndex,
+        lots: BigInt(position.basePositionLots),
+      })),
   )
-  return {
-    positions: cross?.positions ?? [],
-    /** Resting orders still on the book in one market. */
-    ordersIn: (symbol: string) =>
-      (cross?.orders ?? [])
-        .filter((market) => market.symbol === symbol)
-        .flatMap((market) => market.orders)
-        .filter((order) => order.change !== 'closed'),
-  }
+  const matches =
+    subaccount === undefined
+      ? held
+      : held.filter((position) => position.subaccount === subaccount)
+  const [position, second] = matches
+  if (!position)
+    throw new PhoenixError(
+      'not_found',
+      `This account has no open ${symbol} position`,
+    )
+  if (second)
+    throw new PhoenixError(
+      'invalid_input',
+      `${symbol} is open in subaccounts ${matches.map((each) => each.subaccount).join(' and ')}; pass subaccount from phoenix_get_account`,
+    )
+  return position
 }
 
 export { MarketSymbol }

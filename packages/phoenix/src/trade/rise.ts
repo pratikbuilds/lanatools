@@ -1,10 +1,13 @@
 import {
+  DISCRIMINANTS,
   EMBER_PROGRAM_ADDRESS,
   EMBER_STATE_ADDRESS,
   OrderFlags,
   PHOENIX_GLOBAL_CONFIGURATION_ADDRESS,
   PHOENIX_LOG_AUTHORITY_ADDRESS,
   PHOENIX_PROGRAM_ADDRESS,
+  PhoenixHttpClient,
+  PhoenixHttpError,
   SelfTradeBehavior,
   Side,
   USDC_MINT_ADDRESS,
@@ -18,13 +21,17 @@ import {
   buildReferralActivationTransaction,
   buildWithdrawIxsResolved,
   decodeTrader,
+  encodeTransferNativeSol,
   getEmberVaultAddress,
   getCancelAllEncoder,
+  getCancelConditionalOrderDecoder,
   getCancelOrdersByIdEncoder,
+  getCreateConditionalOrdersAccountDecoder,
   getDepositFundsDecoder,
   getEmberDepositDecoder,
   getEmberWithdrawDecoder,
   getOnboardTraderDelegatedEncoder,
+  getPhoenixConditionalOrdersAddress,
   getPhoenixSplineCollectionAddress,
   getPhoenixTraderSubaccountAddress,
   getPhoenixTraderTokenAccountAddress,
@@ -33,8 +40,10 @@ import {
   getPlaceMarketOrderDecoder,
   getPlaceMarketOrderEncoder,
   getPlacePostOnlyOrderDecoder,
+  getPlacePositionConditionalOrderDecoder,
   getPlacePostOnlyOrderEncoder,
   getRegisterTraderInstructionDecoder,
+  getTransferCollateralDecoder,
   getWithdrawFundsDecoder,
   hasReferralActivationCapabilities,
   quoteLots,
@@ -52,6 +61,10 @@ import type {
   MarketAddress,
   MintAddress,
   PerpAssetMapAddress,
+  PlaceIsolatedLimitOrderRequest,
+  PlaceIsolatedMarketOrderRequest,
+  PlacePositionConditionalOrderRequest,
+  TraderAddress,
   WithdrawQueueAddress,
 } from '@ellipsis-labs/rise'
 import { AccountRole, address } from '@solana/kit'
@@ -193,17 +206,36 @@ export function decodeOrder(data: Uint8Array): OrderPacket | null {
   return null
 }
 
-/** The wallet's default cross-margin trader account (PDA 0, subaccount 0). */
-export async function traderAccountAddress(wallet: Address) {
+/**
+ * One of the wallet's trader accounts: subaccount 0 is cross margin, the
+ * others each hold one isolated position.
+ */
+export async function traderAccountAddress(
+  wallet: Address,
+  subaccount = 0,
+): Promise<Address> {
   return address(
     await getPhoenixTraderSubaccountAddress({
       authority: brand<Authority>(wallet),
       traderPdaIndex: 0,
-      subaccountIndex: 0,
+      subaccountIndex: subaccount,
       phoenixProgramAddress: PHOENIX_PROGRAM_ADDRESS,
     }),
   )
 }
+
+/** The account holding a trader account's TP/SL orders. */
+export async function conditionalOrdersAddress(traderAccount: Address) {
+  return address(
+    await getPhoenixConditionalOrdersAddress({
+      traderAccount: brand<TraderAddress>(traderAccount),
+      phoenixProgramAddress: PHOENIX_PROGRAM_ADDRESS,
+    }),
+  )
+}
+
+/** A wallet can hold this many isolated subaccounts. */
+export const MAX_SUBACCOUNTS = 100
 
 /** The wallet's USDC token account, which deposits draw from. */
 export async function usdcAccountAddress(wallet: Address) {
@@ -421,6 +453,7 @@ async function orderContext(
   wallet: Address,
   keys: ExchangeKeys,
   market: OrderMarket,
+  subaccount: number,
 ) {
   const exchange = exchangeAccounts(keys)
   const marketAddress = brand<MarketAddress>(market.marketPubkey)
@@ -429,7 +462,7 @@ async function orderContext(
     getPhoenixTraderSubaccountAddress({
       authority: brand<Authority>(wallet),
       traderPdaIndex: 0,
-      subaccountIndex: 0,
+      subaccountIndex: subaccount,
       phoenixProgramAddress: PHOENIX_PROGRAM_ADDRESS,
     }),
   ])
@@ -559,8 +592,9 @@ export async function orderInstruction(
   keys: ExchangeKeys,
   market: OrderMarket,
   spec: OrderSpec,
+  subaccount = 0,
 ) {
-  const context = await orderContext(wallet, keys, market)
+  const context = await orderContext(wallet, keys, market, subaccount)
   switch (spec.kind) {
     case 'market':
       return toInstruction(
@@ -642,8 +676,9 @@ export async function cancelInstruction(
   keys: ExchangeKeys,
   market: OrderMarket,
   targets: readonly CancelTarget[] | null,
+  subaccount = 0,
 ) {
-  const context = await orderContext(wallet, keys, market)
+  const context = await orderContext(wallet, keys, market, subaccount)
   return toInstruction(
     targets === null
       ? buildCancelAllIxResolved(context)
@@ -653,3 +688,197 @@ export async function cancelInstruction(
         }),
   )
 }
+
+/**
+ * Phoenix's own server-built routes, through Rise's HTTP client. Phoenix's
+ * server picks the isolated subaccount and orders the steps. Its answer is
+ * untrusted: every tool passes it through `checkPhoenixBundle` before use.
+ */
+export type PhoenixOrders = {
+  placeIsolatedMarketOrder: (
+    request: PlaceIsolatedMarketOrderRequest,
+  ) => Promise<Instruction[]>
+  placeIsolatedLimitOrder: (
+    request: PlaceIsolatedLimitOrderRequest,
+  ) => Promise<Instruction[]>
+  placePositionConditionalOrder: (
+    request: PlacePositionConditionalOrderRequest,
+  ) => Promise<Instruction[]>
+  cancelConditionalOrder: (
+    request: Parameters<
+      ReturnType<PhoenixHttpClient['orders']>['cancelConditionalOrder']
+    >[0],
+  ) => Promise<Instruction[]>
+}
+
+function riseError(error: unknown) {
+  if (error instanceof PhoenixHttpError) {
+    if (error.status === 400)
+      return new PhoenixError('invalid_input', 'Phoenix rejected the request')
+    if (error.status === 404)
+      return new PhoenixError('not_found', 'Phoenix has no such record')
+    if (error.status === 429)
+      return new PhoenixError(
+        'rate_limited',
+        'Phoenix is rate limiting requests',
+      )
+    return new PhoenixError(
+      'upstream_error',
+      `Phoenix answered HTTP ${error.status}`,
+    )
+  }
+  if (error instanceof Error && error.name === 'AbortError')
+    return new PhoenixError('timeout', 'Phoenix did not answer in time')
+  return new PhoenixError('upstream_error', 'Could not reach Phoenix')
+}
+
+export function createPhoenixOrders({
+  baseURL,
+  timeoutMs,
+}: { baseURL?: string; timeoutMs?: number } = {}): PhoenixOrders {
+  const orders = new PhoenixHttpClient({
+    ...(baseURL ? { apiUrl: baseURL } : {}),
+    ...(timeoutMs ? { timeout: timeoutMs } : {}),
+  }).orders()
+  const call = async (request: Promise<readonly RiseInstruction[]>) => {
+    try {
+      return (await request).map(toInstruction)
+    } catch (error) {
+      throw riseError(error)
+    }
+  }
+  return {
+    placeIsolatedMarketOrder: (request) =>
+      call(orders.placeIsolatedMarketOrder(request)),
+    placeIsolatedLimitOrder: (request) =>
+      call(orders.placeIsolatedLimitOrder(request)),
+    placePositionConditionalOrder: (request) =>
+      call(orders.placePositionConditionalOrder(request)),
+    cancelConditionalOrder: (request) =>
+      call(orders.cancelConditionalOrder(request)),
+  }
+}
+
+/** One TP or SL leg, as a position conditional order states it. */
+export type TriggerPacket = {
+  triggerDirection: 'greater' | 'less'
+  /** The side of the order that fires. */
+  side: 'buy' | 'sell'
+  orderKind: 'ioc' | 'limit'
+  triggerPriceInTicks: bigint
+  executionPriceInTicks: bigint
+}
+
+export type ConditionalPacket = {
+  assetId: number
+  greater: TriggerPacket | null
+  less: TriggerPacket | null
+  sizeBaseLots: bigint | null
+  sizePercent: number | null
+}
+
+/** One instruction of a server-built Phoenix transaction, decoded. */
+export type BundleStep =
+  | { kind: 'register'; subaccount: number; traderPdaIndex: number }
+  | { kind: 'realloc' | 'sync' | 'sweep_usdc' | 'sweep_sol' }
+  | { kind: 'transfer_usdc'; amount: bigint }
+  | { kind: 'transfer_sol'; data: Uint8Array }
+  | { kind: 'order'; packet: OrderPacket }
+  | { kind: 'create_conditional'; capacity: number }
+  | { kind: 'place_conditional'; packet: ConditionalPacket }
+  | {
+      kind: 'cancel_conditional'
+      index: number
+      disableFirst: boolean
+      disableSecond: boolean
+    }
+
+const startsWith = (data: Uint8Array, prefix: Uint8Array | undefined) =>
+  prefix !== undefined &&
+  data.length >= prefix.length &&
+  prefix.every((byte, index) => data[index] === byte)
+
+function triggerPacket(
+  trigger: {
+    triggerDirection: number
+    tradeSide: Side
+    orderKind: number
+    triggerPrice: bigint
+    executionPrice: bigint
+  } | null,
+): TriggerPacket | null {
+  if (!trigger) return null
+  return {
+    triggerDirection: trigger.triggerDirection === 0 ? 'greater' : 'less',
+    side: sideOf(trigger.tradeSide),
+    orderKind: trigger.orderKind === 0 ? 'ioc' : 'limit',
+    triggerPriceInTicks: trigger.triggerPrice,
+    executionPriceInTicks: trigger.executionPrice,
+  }
+}
+
+/** Reads one Phoenix instruction, or returns null when it is no known step. */
+export function decodeBundleStep(data: Uint8Array): BundleStep | null {
+  const decode = <T>(read: () => T, step: (value: T) => BundleStep) => {
+    const value = tryDecode(read)
+    return value === null ? null : step(value)
+  }
+  if (startsWith(data, DISCRIMINANTS.REGISTER_TRADER))
+    return decode(
+      () => getRegisterTraderInstructionDecoder().decode(data),
+      (params) => ({
+        kind: 'register',
+        subaccount: params.subaccountIndex,
+        traderPdaIndex: params.traderPdaIndex,
+      }),
+    )
+  if (startsWith(data, DISCRIMINANTS.REALLOC_TRADER)) return { kind: 'realloc' }
+  if (startsWith(data, DISCRIMINANTS.SYNC_PARENT_TO_CHILD))
+    return { kind: 'sync' }
+  if (startsWith(data, DISCRIMINANTS.TRANSFER_COLLATERAL_CHILD_TO_PARENT))
+    return { kind: 'sweep_usdc' }
+  if (startsWith(data, DISCRIMINANTS.TRANSFER_NATIVE_SOL_FROM_CHILD_TO_PARENT))
+    return { kind: 'sweep_sol' }
+  if (startsWith(data, DISCRIMINANTS.TRANSFER_COLLATERAL))
+    return decode(
+      () => getTransferCollateralDecoder().decode(data),
+      (amount) => ({ kind: 'transfer_usdc', amount }),
+    )
+  if (startsWith(data, DISCRIMINANTS.TRANSFER_NATIVE_SOL))
+    return { kind: 'transfer_sol', data }
+  if (startsWith(data, DISCRIMINANTS.CREATE_CONDITIONAL_ORDERS_ACCOUNT))
+    return decode(
+      () => getCreateConditionalOrdersAccountDecoder().decode(data),
+      (capacity) => ({ kind: 'create_conditional', capacity }),
+    )
+  if (startsWith(data, DISCRIMINANTS.PLACE_POSITION_CONDITIONAL_ORDER))
+    return decode(
+      () => getPlacePositionConditionalOrderDecoder().decode(data),
+      (order) => ({
+        kind: 'place_conditional',
+        packet: {
+          assetId: order.assetId,
+          greater: triggerPacket(order.greaterTriggerOrder),
+          less: triggerPacket(order.lessTriggerOrder),
+          sizeBaseLots: order.sizeBaseLots,
+          sizePercent: order.sizePercent,
+        },
+      }),
+    )
+  if (startsWith(data, DISCRIMINANTS.CANCEL_CONDITIONAL_ORDER))
+    return decode(
+      () => getCancelConditionalOrderDecoder().decode(data),
+      (cancel) => ({
+        kind: 'cancel_conditional',
+        index: cancel.conditionalOrderIndex,
+        disableFirst: cancel.disableFirst,
+        disableSecond: cancel.disableSecond,
+      }),
+    )
+  const packet = decodeOrder(data)
+  return packet ? { kind: 'order', packet } : null
+}
+
+/** A `TransferNativeSol` instruction's exact data for `lamports`. */
+export const transferSolData = (lamports: bigint) =>
+  Uint8Array.from(encodeTransferNativeSol(lamports))

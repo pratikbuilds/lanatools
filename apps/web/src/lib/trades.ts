@@ -104,6 +104,12 @@ export function tradeTitle(trade: SwapTrade | PerpTrade) {
       return 'Withdraw from Phoenix'
     case 'activate':
       return 'Activate Phoenix account'
+    case 'set_tpsl':
+      return `Set ${market} TP/SL`
+    case 'cancel_tpsl':
+      return `Cancel ${market} TP/SL`
+    case 'add_margin':
+      return `Add margin to ${market}`
   }
 }
 
@@ -168,6 +174,12 @@ export function tradeDetail(
       return confirmed ? 'Phoenix · Resting orders removed' : 'Phoenix'
     case 'activate':
       return 'Phoenix · Trader account'
+    case 'set_tpsl':
+      return 'Phoenix · Triggers on mark price'
+    case 'cancel_tpsl':
+      return 'Phoenix · Trigger removed'
+    case 'add_margin':
+      return 'Phoenix · From your cross account'
   }
 }
 

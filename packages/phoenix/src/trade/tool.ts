@@ -9,6 +9,8 @@ import { Wallet } from '../tool'
 import { PhoenixError, createPhoenixClient } from '../client'
 import type { PhoenixClient, PhoenixErrorCode, PhoenixOpts } from '../client'
 import { checkInstructions } from './checks'
+import { createPhoenixOrders } from './rise'
+import type { PhoenixOrders } from './rise'
 import { buildTransaction, messageOf, simulateTransaction } from './transaction'
 import type {
   BuiltTransaction,
@@ -25,6 +27,8 @@ import type {
 
 export type TradeContext = {
   phoenix: PhoenixClient
+  /** Phoenix's server-built routes; their answers are checked, never trusted. */
+  orders: PhoenixOrders
   rpc: TradeRpc
 }
 
@@ -135,7 +139,11 @@ export type SimulationFailed = Described & {
   simulation: Simulation
 }
 
-export type TradeOpts = PhoenixOpts & { rpc: TradeRpc; fees: FeeSettings }
+export type TradeOpts = PhoenixOpts & {
+  rpc: TradeRpc
+  fees: FeeSettings
+  orders?: PhoenixOrders
+}
 
 export type TradeOutcome =
   | { ok: true; result: PreparedTransaction | SimulationFailed | NothingToDo }
@@ -214,7 +222,11 @@ export async function runTradeTool<TSchema extends z.ZodObject>(
         parsed.error.issues.map((issue) => issue.message).join('; '),
       )
     const prepared = await tool.prepare(
-      { phoenix: createPhoenixClient(opts), rpc: opts.rpc },
+      {
+        phoenix: createPhoenixClient(opts),
+        orders: opts.orders ?? createPhoenixOrders(opts),
+        rpc: opts.rpc,
+      },
       parsed.data,
     )
     if (prepared.kind === 'nothing_to_do')
