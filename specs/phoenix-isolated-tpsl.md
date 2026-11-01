@@ -50,7 +50,7 @@ All on 2026-11-01. Simulations were unsigned and used public wallets, as in the 
 | SOL's collateral terms                                   | Live `/v1/collateral/assets`: 20% margin discount, 1,000 SOL per trader, 50,000 SOL exchange-wide, about 9,550 used                                                                       |
 | SOL deposits can be credited short                       | Rise docs: `SyncNative` clamps to the caps instead of failing, so lamports over the cap land uncounted. Rise gives `nativeSolCollateralHeadroomLamports` to size the deposit.              |
 | Signing policy does not change                           | Isolated and TP/SL use only the Phoenix program. A SOL deposit also uses the System program, which `transactionPrograms()` already includes for `solana_transfer`                         |
-| Rent is small                                            | First isolated order with TP/SL: about 0.008 SOL. TP/SL account alone: about 0.0057 SOL. Whether it comes back is unknown.                                                                |
+| Rent is small                                            | First isolated order with TP/SL: about 0.008 SOL. TP/SL account alone: about 0.0057 SOL. No way to get it back was found (**Q3**).                                                                |
 | Phoenix refuses isolated on top of cross in one asset    | Its 400 names `allow_cross_and_isolated_for_asset`                                                                                                                                        |
 | The build routes answered without login                  | HTTP 200 with no token, although Phoenix's docs describe Bearer auth. Rise's client has an `auth` option if this changes (**Q4**).                                                        |
 | The old stop-loss API is deprecated                      | Rise changelog: use the conditional-order APIs. `placeStopLossOrder` and `tpSl` are not used.                                                                                             |
@@ -58,12 +58,10 @@ All on 2026-11-01. Simulations were unsigned and used public wallets, as in the 
 
 **Not known yet**
 
-- **Who fires the triggers** (**Q1**), and **what happens when a stop misses its worst price** (**Q2**).
+- **How long a trigger takes to fire** (**Q1**), and **whether a missed stop is retried** (**Q2**).
 - **One unexplained failure.** Four partial TP/SL simulations on AMZN failed with `InvalidInstructionData`. The same kinds of request passed minutes later, and that wallet's AMZN position had changed in between. Having no position gives a different error, so the cause is still open; Phase 4 must explain it.
 - Whether cross market order plus TP/SL works in one transaction. Only the isolated path is simulated. Rise's README says that path is full-position only, so partial TP/SL goes through `phoenix_set_tpsl`.
 - Isolated limit orders have not been simulated.
-- Whether `conditionalStopLossId` is the index a cancel needs.
-- Whether TP/SL rent can be reclaimed.
 
 ## 3. Design
 
@@ -133,7 +131,7 @@ All take `wallet`, as today. `subaccount` always comes from `phoenix_get_account
 | `phoenix_cancel_orders`             | Adds `subaccount?`, as above. Sweeps collateral back when the subaccount ends up empty                                                       |
 | `phoenix_deposit`, `phoenix_withdraw` | Add `asset` (`USDC` default, or `SOL`)                                                                                                     |
 | `phoenix_set_tpsl` (new)            | `symbol`, `subaccount?`, `takeProfit?`, `stopLoss?`, and one of `percent` (1–100) or `size` (tokens, at most the position)                   |
-| `phoenix_cancel_tpsl` (new)         | `symbol`, `subaccount?`, `triggerId` from `phoenix_get_account`, `leg` (`takeProfit`, `stopLoss` or `both`)                                  |
+| `phoenix_cancel_tpsl` (new)         | `symbol`, `subaccount?`, `leg` (`takeProfit`, `stopLoss` or `both`), `slot?`. Without `slot`, cancels every active one on that leg           |
 | `phoenix_add_isolated_margin` (new) | `symbol`, `subaccount?`, `amount` (USDC)                                                                                                     |
 | `phoenix_get_account`               | Each position gains `takeProfit` and `stopLoss`, each a list with trigger, worst price, size and `triggerId`                                 |
 
@@ -242,14 +240,18 @@ Only when you say go, with your typed `yes` at each step. The budget is 10 USD i
 | D10 | PRs                                 | One small PR per phase                                                                        |
 | D11 | Live runs                           | One run at the end, 10 USD in total, about 6 USDC and 4 USD of SOL                            |
 
-**Funding the run.** The wallet must hold about 0.042 SOL and 6 USDC. It needs SOL because it pays its own fees and rent. About 0.02 SOL goes to rent, which may not come back, and 0.01 SOL is the collateral test.
+**Funding the run.** The wallet must hold about 0.042 SOL and 6 USDC. It needs SOL because it pays its own fees and rent. About 0.02 SOL goes to rent, which should be treated as spent, and 0.01 SOL is the collateral test.
 
 ## 7. Open questions
 
-- **Q1.** Who fires TP/SL triggers, and what is the normal delay after mark price crosses?
-- **Q2.** If an IOC stop cannot fill within its worst price, does it retry or is it dropped?
-- **Q3.** Does TP/SL account rent come back, and when?
-- **Q4.** Will the `/v1/ix/*` routes stay open without login? We now depend on them, so if they need login, every isolated and TP/SL call needs a wallet login first.
+Researched 2026-11-01 from Phoenix's docs, its OpenAPI file, Rise and the `rise-public` repo. No source answers the parts marked unknown; the live run covers them.
+
+- **Q1. Who fires TP/SL?** A permissioned Phoenix keeper. The program has `PingConditionalOrders` and `ExecuteConditionalOrder`, whose signer needs a STOP_LOSS permission, and Rise's own tests run them as a keeper. **Unknown:** the delay after mark crosses. Phase 7 measures one.
+- **Q2. What if a stop misses its worst price?** An IOC stop is immediate-or-cancel and all-or-none, so it cancels instead of resting; a limit-kind trigger rests. **Unknown:** whether the keeper tries again.
+- **Q3. Does rent come back?** No path found. No instruction closes a conditional orders account or a trader account, and cancelling leaves the account in place. Treat the rent as spent.
+- **Q4. Will the `/v1/ix/*` routes stay open without login?** Not stated. OpenAPI marks them Bearer, but it also marks public reads that way, and Rise treats auth as optional. If they close, we add Rise's `auth` option; every call would then need a wallet login first.
+- **Q5. How does a cancel find its trigger?** `conditionalStopLossId` is not the index. The index is a slot in the on-chain conditional orders account, 1–191, which Rise's cancel example reads with `activeOrderIndices`. One slot holds a greater and a less leg, chosen by `executionDirection`.
+- **Q6. Partial TP/SL at fire time.** **Unknown:** how a percent behaves after a position shrinks, and what caused the AMZN `InvalidInstructionData`. Docs only cover the full-position case.
 
 ## 8. Risks
 
