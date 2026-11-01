@@ -1,4 +1,9 @@
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { isAddress } from '@solana/kit'
@@ -23,7 +28,7 @@ import { Skeleton } from './skeleton'
  * with the position's entry, liquidation and order levels, then positions,
  * resting orders and fills. Read-only; agents trade. Served both in the
  * dashboard and, with no login, as a public page; a failed refresh keeps the
- * last data on screen and the next one recovers.
+ * last data on screen, says how old it is, and the next one recovers.
  */
 export function PerpsPage({
   address,
@@ -46,6 +51,16 @@ export function PerpsPage({
     // Marks move; pauses while the tab is hidden (spec D14).
     refetchInterval: 15_000,
   })
+  const client = useQueryClient()
+  const refresh = useMutation({
+    // Only what is on screen reads again, and it stays up meanwhile.
+    mutationFn: () =>
+      Promise.all(
+        ['phoenix-account', 'phoenix-candles', 'phoenix-fills'].map((name) =>
+          client.invalidateQueries({ queryKey: [name, reader.viewer] }),
+        ),
+      ),
+  })
 
   return (
     <>
@@ -55,6 +70,25 @@ export function PerpsPage({
           <span className="d-chip text-fg" title={address}>
             {own ? 'Your LanaTools wallet' : 'Wallet'} · {shortAddress(address)}
           </span>
+          {account.data?.exists && (
+            <>
+              <span
+                role="status"
+                className={`font-mono text-[12px] ${account.isError ? 'text-bad' : 'text-fg-3'}`}
+              >
+                {account.isError ? 'Could not refresh · from ' : 'Updated '}
+                {formatTime(account.dataUpdatedAt)}
+              </span>
+              <button
+                type="button"
+                className="d-btn d-btn-sm"
+                disabled={refresh.isPending}
+                onClick={() => refresh.mutate()}
+              >
+                {refresh.isPending ? 'Refreshing…' : 'Refresh'}
+              </button>
+            </>
+          )}
         </PageHead>
         <AddressField onAddress={onAddress} />
       </div>
@@ -819,6 +853,11 @@ function Fills({ wallet, reader }: { wallet: string; reader: PhoenixReader }) {
           >
             {fills.isFetchingNextPage ? 'Loading…' : 'Load older fills'}
           </button>
+          {fills.isFetchNextPageError && !fills.isFetchingNextPage && (
+            <span role="status" className="mt-2 block text-[12px] text-bad">
+              Older fills could not be read right now.
+            </span>
+          )}
         </p>
       )}
     </>

@@ -30,6 +30,7 @@ way to see their position in LanaTools.
 | 3 | What it shows | Only what Phoenix makes public: account, positions, orders, candles and fills. No LanaTools data about any user | Public by address must expose nothing private |
 | 4 | Rate limit | A new per-IP limiter (`PHOENIX_PUBLIC_LIMITER`) on the public routes, 120 requests a minute like `TRANSACTION_LINK_LIMITER` | The routes call Phoenix for us with no login. One open page makes about 6 requests a minute |
 | 5 | Link in results | Confirmed Phoenix results carry `accountUrl`, built from the signing wallet | Agents should not build URLs |
+| 6 | Shared cache | Public account reads are cached for 10 seconds per wallet, per Cloudflare data center, after the limiter. Failed reads are cached too (chosen 2026-11-01) | Phoenix answered 429 after about 2 requests a second from one IP (measured 2026-11-01), and an account with positions costs 4 or more Phoenix calls a read, so the limiter alone lets one visitor pass Phoenix's limit. Without caching failures, a burst when the cache expires keeps Phoenix refusing every read (seen in a live test) |
 
 ## 4. Phases
 
@@ -46,7 +47,10 @@ a test proves the public fills response holds no per-user data.
 Make `PerpsPage` take what it needs as props instead of from the session, and
 add the public route. Remove the signed-in-only links from the public view.
 
-Done when: the page loads signed out, and the dashboard page is unchanged.
+Both pages say when the data was read and offer a refresh, since a failed
+refresh leaves the last data on screen.
+
+Done when: the page loads signed out, and the dashboard page works as before.
 
 ### Phase 3: link in results
 

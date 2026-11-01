@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { cache } from 'hono/cache'
 import { HTTPException } from 'hono/http-exception'
 import { type } from 'arktype'
 import { isAddress } from '@solana/kit'
@@ -71,6 +72,11 @@ export type PublicPhoenixEnv = McpEnv & { PHOENIX_PUBLIC_LIMITER: RateLimit }
 /**
  * The same reads for the public account page. Phoenix's data is public, so
  * there is no login; the limit protects our calls to Phoenix, per visitor.
+ * An account read costs several Phoenix calls and Phoenix limits us to a few
+ * a second, so viewers of one wallet share a read for 10 seconds, per data
+ * center. A failed read is shared too, or every viewer would retry a Phoenix
+ * that is already refusing us. Only `s-maxage` is set, so a browser's refresh
+ * still reaches us.
  */
 export function publicPhoenixRoutes(opts: PhoenixOpts = {}) {
   return new Hono<{ Bindings: PublicPhoenixEnv }>()
@@ -84,5 +90,16 @@ export function publicPhoenixRoutes(opts: PhoenixOpts = {}) {
       }
       await next()
     })
+    .use(
+      '/account/:address',
+      cache({
+        cacheName: 'phoenix-public-account',
+        cacheControl: 'public, s-maxage=10',
+        cacheableStatusCodes: [200, 502],
+        // A query string must not buy a fresh read.
+        keyGenerator: (c) => c.req.path,
+        onCacheNotAvailable: false,
+      }),
+    )
     .route('/', phoenixReads(opts))
 }

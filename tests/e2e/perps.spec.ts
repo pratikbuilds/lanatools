@@ -156,4 +156,10 @@ test('the public page keeps its data when a refresh fails', async ({
   await page.clock.runFor(10_000)
   await expect(page.getByText('$1,270.85')).toBeVisible()
   await expect(page.getByText('Phoenix could not be read')).toHaveCount(0)
+  await expect(page.getByText('Could not refresh')).toBeVisible()
+
+  await page.unroute('**/api/public/phoenix/account/**')
+  await page.getByRole('button', { name: 'Refresh' }).click()
+  await expect(page.getByText('Updated ')).toBeVisible()
+  await expect(page.getByText('Could not refresh')).toHaveCount(0)
 })

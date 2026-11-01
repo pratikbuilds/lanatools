@@ -107,7 +107,8 @@ against transactions a wallet independently constructs or broadcasts.
 
 Once a Phoenix transaction confirms, its result carries `accountUrl`, a public
 page at `/perps/<wallet>` on the web origin. It needs no login and reads through
-`/api/public/phoenix`, limited per IP by `PHOENIX_PUBLIC_LIMITER`.
+`/api/public/phoenix`, limited per IP by `PHOENIX_PUBLIC_LIMITER`. Viewers of one
+wallet share an account read for 10 seconds, since Phoenix limits our calls too.
 
 ## Agent feedback
 
