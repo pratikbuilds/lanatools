@@ -77,7 +77,6 @@ test('without a token, a data tool runs in the API under the per-IP limit', asyn
 test('without a token, a tool that needs login gets 401 so the client logs in', async () => {
   for (const [name, args] of [
     ['call', {}],
-    ['send_feedback', {}],
     ['unknown', {}],
     ['jupiter_swap', { delivery: 'embedded' }],
   ] as const) {

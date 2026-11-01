@@ -91,7 +91,9 @@ finalized expiry. Provider acknowledgments alone never establish confirmation.
 SOL/token transfers and Phoenix RPC transactions use the RPC's default forwarding
 retries. Ordinary Phoenix retries resend the same signed bytes; referral activation
 only observes its original submission. Phoenix uses a 100,000 micro-lamport/CU
-priority price with its simulated compute limit. A missing signature becomes
+priority price with its simulated compute limit. A send waits past the blockhash's
+life (150 blocks, about 32 seconds at mainnet's 0.21 s blocks), so `unknown` means
+the chain could not be read, not that the transaction was slow. A missing signature becomes
 `expired` only after finalized block-height expiry and a fresh history lookup;
 read failures remain `unknown`. Expiry never signs a replacement, and later chain
 evidence can still recover the receipt.

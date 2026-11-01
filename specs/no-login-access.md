@@ -96,8 +96,8 @@ two-URL fallback.
   with no identity, per §4. Token requests are unchanged.
 - No-login tools: Helius, Jupiter and Phoenix read tools and the catalog
   tools (`NO_LOGIN_TOOLS` in `apps/mcp/src/server.ts`). `whoami` says "not
-  logged in". `send_feedback` needs login, because feedback is saved per
-  connection.
+  logged in". `send_feedback` works too, saved under `no-login` (changed
+  2026-10-31: a no-login tester could not reach it).
 - `call` is listed as "needs login" and answers 401.
 - The API gets a no-login path for read tools that skips the grant check.
   Activity is recorded under `no-login`, with input and country, for usage

@@ -151,6 +151,13 @@ export type ChainObservation =
   | { status: 'confirmed'; receipt: TransactionReceipt }
   | { status: 'failed' | 'unknown' | 'expired'; receipt: null }
 
+/**
+ * How long a send waits by default: past a blockhash's 150 blocks, about 32
+ * seconds at mainnet's 0.21 s blocks, so `unknown` is rare rather than the
+ * answer to any transaction that takes a few seconds to land.
+ */
+const OBSERVATION_ATTEMPTS = 48
+
 /** Bounded observation; RPC acceptance (or a timeout) never means confirmation. */
 export async function observeSubmission(
   rpc: TransactionRpc,
@@ -161,7 +168,11 @@ export async function observeSubmission(
     lastValidBlockHeight?: string
   } = {},
 ): Promise<ChainObservation> {
-  const { attempts = 8, intervalMs = 750, lastValidBlockHeight } = options
+  const {
+    attempts = OBSERVATION_ATTEMPTS,
+    intervalMs = 750,
+    lastValidBlockHeight,
+  } = options
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
       const result = await rpc.status(transactionSignature)

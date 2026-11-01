@@ -36,8 +36,8 @@ import {
 
 /**
  * An immediate-or-cancel order expires this many slots after it is built
- * (D2): about a minute, the life of its transaction's blockhash, so a person
- * has time to approve it. Its price limit still bounds the fill.
+ * (D2): about 30 seconds at mainnet's 0.21 s slots, the life of its
+ * transaction's blockhash. Its price limit still bounds the fill.
  */
 export const ORDER_EXPIRY_SLOTS = 150n
 
@@ -127,8 +127,8 @@ export async function immediateOrder(
       reduceOnly,
     },
     warnings: [
-      // D2: 150 slots of about 400 ms.
-      `This order expires about a minute after it was prepared (slot ${spec.lastValidSlot}); after that it is not sent, and must be prepared again.`,
+      // D2: 150 slots of about 0.21 s.
+      `This order expires about 30 seconds after it was prepared (slot ${spec.lastValidSlot}); after that it is not sent, and must be prepared again.`,
       ...(outOfReach
         ? [
             `The ${side === 'buy' ? 'limit is below the best ask' : 'limit is above the best bid'} (${bestPrice}), so this order will not fill now.`,
