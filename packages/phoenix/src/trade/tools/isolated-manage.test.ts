@@ -16,7 +16,6 @@ import {
 } from '../fixtures'
 import {
   PHOENIX_PROGRAM,
-  addMarginInstructions,
   cancelData,
   decodeBundleStep,
   decodeOrder,
@@ -124,8 +123,8 @@ function fakeOrders(build: typeof serverClose = serverClose) {
 }
 
 function opts(state: unknown, orders = fakeOrders().orders) {
-  // getSlot is left out for isolated work: those orders have no slot expiry.
   const { rpc } = fakeRpc({
+    getSlot: () => 1_000n,
     getAccountInfo: (account) =>
       account === CROSS
         ? accountInfo(PHOENIX_PROGRAM, TRADER_ACCOUNT_DATA)
@@ -180,42 +179,25 @@ const isolatedShort = (lots = '-7') =>
   )
 
 describe('closing an isolated position', () => {
-  const close = (
-    input: Record<string, unknown>,
-    state: unknown,
-    orders = fakeOrders().orders,
-  ) =>
+  const close = (input: Record<string, unknown>, state: unknown) =>
     runTradeTool(
       closePosition,
       { wallet: WALLET, symbol: 'STONK', ...input },
-      opts(state, orders),
+      opts(state),
     )
 
-  test('all of it asks Phoenix for a reduce-only order at our price', async () => {
-    const { orders, requests } = fakeOrders()
-    const outcome = await close(
-      { limitPrice: '0.12972' },
-      isolatedShort(),
-      orders,
-    )
-    expect(requests).toEqual([
-      {
-        authority: WALLET,
-        symbol: 'STONK',
-        side: 'buy',
-        numBaseLots: 7,
-        isReduceOnly: true,
-        maxPriceInTicks: 12972,
-        minBaseLotsToFill: 1,
-      },
-    ])
-    expect(kinds(phoenixSteps(outcome))).toEqual([
-      'realloc',
-      'sync',
-      'order',
-      'sweep_usdc',
-      'sweep_sol',
-    ])
+  test('all of it is a reduce-only order on that subaccount, then sweeps', async () => {
+    const outcome = await close({ limitPrice: '0.12972' }, isolatedShort())
+    const steps = phoenixSteps(outcome)
+    expect(kinds(steps)).toEqual(['order', 'sweep_usdc', 'sweep_sol'])
+    expect(writes(steps[0], CHILD)).toBe(true)
+    expect(decodeOrder(Uint8Array.from(steps[0]?.data ?? []))).toMatchObject({
+      side: 'buy',
+      numBaseLots: 7n,
+      priceInTicks: 12972n,
+      reduceOnly: true,
+      cancelExisting: false,
+    })
     const result = ready(outcome)
     expect(result).toMatchObject({
       position: {
@@ -243,24 +225,47 @@ describe('closing an isolated position', () => {
         subaccount: CHILD_INDEX,
       },
     })
-    expect('expiresAfterSlot' in result).toBe(false)
+    expect(result.expiresAfterSlot).toBeDefined()
     expect(result.warnings[0]).toContain(
       'its collateral returns to your cross-margin account in the same transaction',
     )
   })
 
-  test('part of it asks for that share, at a limit from the book', async () => {
-    const { orders, requests } = fakeOrders()
+  test('the second position in one market is reachable', async () => {
+    const second = 9
+    const outcome = await close(
+      { limitPrice: '0.12972', subaccount: second },
+      trader(
+        { index: CHILD_INDEX, positions: [position('STONK', '-7')] },
+        { index: second, positions: [position('STONK', '-2')] },
+      ),
+    )
+    const [closing] = phoenixSteps(outcome)
+    expect(writes(closing, await traderAccountAddress(WALLET, second))).toBe(
+      true,
+    )
+    expect(writes(closing, CHILD)).toBe(false)
+  })
+
+  test('two isolated positions in one market need a subaccount', async () => {
+    expect(
+      await close(
+        { maxSlippageBps: 100 },
+        trader(
+          { index: CHILD_INDEX, positions: [position('STONK', '-7')] },
+          { index: 9, positions: [position('STONK', '-2')] },
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'invalid_input' } })
+  })
+
+  test('part of it closes that share, at a limit from the book', async () => {
     const outcome = await close(
       { fraction: 0.5, maxSlippageBps: 100 },
       isolatedShort(),
-      orders,
     )
     // Half of 7 lots rounds down to 3; the buy limit is above the best ask.
-    expect(requests).toMatchObject([
-      { numBaseLots: 3, side: 'buy', maxPriceInTicks: 12882 },
-    ])
-    const [, , step] = phoenixSteps(outcome)
+    const [step] = phoenixSteps(outcome)
     expect(decodeOrder(Uint8Array.from(step?.data ?? []))).toMatchObject({
       numBaseLots: 3n,
       priceInTicks: 12882n,
@@ -270,13 +275,7 @@ describe('closing an isolated position', () => {
   })
 
   test('a long is closed by a sell', async () => {
-    const { orders, requests } = fakeOrders()
-    const outcome = await close(
-      { limitPrice: '0.125' },
-      isolatedShort('7'),
-      orders,
-    )
-    expect(requests).toMatchObject([{ side: 'sell', maxPriceInTicks: 12500 }])
+    const outcome = await close({ limitPrice: '0.125' }, isolatedShort('7'))
     expect(ready(outcome).trade).toMatchObject({
       side: 'sell',
       closing: 'long',
@@ -303,15 +302,10 @@ describe('closing an isolated position', () => {
           'STONK is open in subaccounts 0 and 1; pass subaccount from phoenix_get_account',
       },
     })
-    const { orders, requests } = fakeOrders()
-    ready(
-      await close(
-        { subaccount: CHILD_INDEX, maxSlippageBps: 100 },
-        both,
-        orders,
-      ),
+    const [closing] = phoenixSteps(
+      await close({ subaccount: CHILD_INDEX, maxSlippageBps: 100 }, both),
     )
-    expect(requests).toMatchObject([{ side: 'buy', numBaseLots: 7 }])
+    expect(writes(closing, CHILD)).toBe(true)
   })
 
   test('without a position there is nothing to close', async () => {
@@ -330,94 +324,6 @@ describe('closing an isolated position', () => {
     expect(
       await close({ subaccount: 2, maxSlippageBps: 100 }, isolatedShort()),
     ).toMatchObject({ ok: false, error: { code: 'not_found' } })
-  })
-
-  describe('refuses what Phoenix should not have built', () => {
-    const tampered = async (
-      build: typeof serverClose,
-      reason: string,
-      state: unknown = isolatedShort(),
-    ) => {
-      const outcome = await close(
-        { limitPrice: '0.12972' },
-        state,
-        fakeOrders(build).orders,
-      )
-      expect(outcome).toMatchObject({
-        ok: false,
-        error: { code: 'check_failed' },
-      })
-      expect(JSON.stringify(outcome)).toContain(reason)
-    }
-
-    const changeOrder =
-      (fields: Parameters<typeof marketOrderData>[0]): typeof serverClose =>
-      (request) =>
-        serverClose(request).map((instruction) =>
-          decodeBundleStep(Uint8Array.from(instruction.data ?? []))?.kind ===
-          'order'
-            ? {
-                ...instruction,
-                data: marketOrderData({
-                  buy: true,
-                  priceInTicks: 12972n,
-                  lots: 7n,
-                  lastValidSlot: null,
-                  reduceOnly: true,
-                  ...fields,
-                }),
-              }
-            : instruction,
-        )
-
-    test('another price, or none', async () => {
-      await tampered(changeOrder({ priceInTicks: 20000n }), 'priceInTicks')
-      await tampered(changeOrder({ priceInTicks: null }), 'no price limit')
-    })
-
-    test('another size or side', async () => {
-      await tampered(changeOrder({ lots: 8n }), 'numBaseLots')
-      await tampered(changeOrder({ buy: false }), 'side')
-    })
-
-    test('an order that can open a position', () =>
-      tampered(changeOrder({ reduceOnly: false }), 'reduceOnly'))
-
-    test('no order at all', () =>
-      tampered(
-        (request) =>
-          serverClose(request).filter(
-            (instruction) =>
-              decodeBundleStep(Uint8Array.from(instruction.data ?? []))
-                ?.kind !== 'order',
-          ),
-        'order is missing',
-      ))
-
-    test('collateral taken out of cross', async () => {
-      const transfer = await addMarginInstructions(
-        WALLET,
-        KEYS,
-        CHILD_INDEX,
-        1_000_000n,
-      )
-      await tampered(
-        (request) => [...serverClose(request), ...transfer],
-        'USDC collateral',
-      )
-    })
-
-    test('another subaccount than the one holding the position', () =>
-      // Phoenix's route takes no subaccount, so with two isolated positions
-      // in a market it can answer for the other one.
-      tampered(
-        serverClose,
-        'wrong subaccount',
-        trader(
-          { index: 0 },
-          { index: 9, positions: [position('STONK', '-7')] },
-        ),
-      ))
   })
 })
 

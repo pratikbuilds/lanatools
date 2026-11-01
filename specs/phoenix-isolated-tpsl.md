@@ -71,13 +71,13 @@ All on 2026-11-01. Simulations were unsigned and used public wallets, as in the 
 | --------------------------------------- | --------------------------------------------------------------------------------------- |
 | Isolated market and limit orders        | Rise `client.api.orders().placeIsolatedMarketOrder` / `placeIsolatedLimitOrder`         |
 | TP/SL on a position, and cancelling it  | Rise `placePositionConditionalOrder` / `cancelConditionalOrder`                         |
-| Close an isolated position              | Rise `placeIsolatedMarketOrder`, reduce-only                                            |
+| Close an isolated position | Rise's order builder and sweeps. Phoenix's route picks the subaccount itself, so it cannot reach a second position in one market |
 | Cancel isolated orders, add margin      | Rise's resolved builders, with its collateral sweeps                                    |
 | SOL deposit                             | Rise `buildNativeSolDepositFlow`. If its RPC client cannot use ours, the same three Rise builders in the same order |
 | SOL withdrawal                          | Rise `buildWithdrawNativeSolIx`                                                         |
 | Everything cross that works today       | Unchanged                                                                               |
 
-Phoenix's server picks the subaccount, registers it and orders the steps. We do not repeat that logic, so `allocateIsolatedSubaccount` and Rise's flows stay out of our code.
+When opening, Phoenix's server picks the subaccount, registers it and orders the steps. We do not repeat that logic, so `allocateIsolatedSubaccount` and Rise's flows stay out of our code.
 
 We use only Rise's HTTP client (`PhoenixHttpClient`), which needs no RPC or streams and uses the Worker's `fetch`. `rise.ts` wraps it, so tests fake that wrapper.
 
@@ -106,7 +106,7 @@ An isolated order with TP/SL is one transaction. If any step fails, nothing happ
 
 ### 3.4 Expiry
 
-Phoenix's server sets no slot expiry on the order, so isolated orders have no `expiresAfterSlot`. The blockhash limits their life, and the required price limit still bounds the fill.
+Phoenix's server sets no slot expiry on the order, so isolated opens have no `expiresAfterSlot`. The blockhash limits their life, and the required price limit still bounds the fill.
 
 ### 3.5 Fills
 
@@ -262,4 +262,3 @@ Researched 2026-11-01 from Phoenix's docs, its OpenAPI file, Rise and the `rise-
 - **Stale TP/SL.** Phoenix cancels triggers when a position flips, so agents should read the account before relying on them.
 - **SOL price.** A falling SOL price lowers margin on its own, and can trigger conversion to USDC or liquidation.
 - **Rise is 0.x.** The version stays pinned. Upgrading reruns the simulations.
-- **Older wording.** The market order warning says "about a minute", but mainnet slots now run about 0.21 s, so 150 slots is closer to 30 seconds. We fix the text in Phase 2.

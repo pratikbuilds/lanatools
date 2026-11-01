@@ -1,149 +1,25 @@
 import { address } from '@solana/kit'
-import type { Address } from '@solana/kit'
 import { z } from 'zod'
-import { PhoenixError } from '../../client'
 import { fromLots } from '../../units'
 import { checkPhoenixBundle } from '../checks'
-import {
-  fractionOfLots,
-  limitRounding,
-  priceToTicks,
-  slippageLimit,
-  ticksToPrice,
-} from '../price'
-import type { Side } from '../price'
-import { MIN_FILL_LOTS } from '../rise'
-import { ExchangeKeys } from '../schemas'
-import type { OrderMarket } from '../schemas'
+import { fractionOfLots } from '../price'
+import { sweepInstructions } from '../rise'
 import { defineTradeTool } from '../tool'
-import type { TradeContext } from '../tool'
 import { immediateOrder, worstPrice } from './market-order'
 import {
   MarketSymbol,
   Price,
   SlippageBps,
   Subaccount,
-  bestTicks,
-  fineUsd,
   marketConfig,
   openPosition,
   perpTrade,
   requireActivated,
   requireTradable,
-  unitsOf,
-  usd,
 } from './shared'
 
-/**
- * A reduce-only close of an isolated position, built by Phoenix's server. We
- * always pass the price limit: left alone, the server sets one of its own.
- * Its orders carry no slot expiry, so the blockhash limits this one's life.
- */
-async function isolatedClose(
-  context: TradeContext,
-  {
-    wallet,
-    market,
-    subaccount,
-    side,
-    numBaseLots,
-    size,
-    limit,
-  }: {
-    wallet: Address
-    market: OrderMarket
-    subaccount: number
-    side: Side
-    numBaseLots: bigint
-    size: string
-    limit: { maxSlippageBps: number } | { limitPrice: string }
-  },
-) {
-  const units = unitsOf(market)
-  const [best, keys] = await Promise.all([
-    bestTicks(context, market, side),
-    context.phoenix.get('/v1/view/exchange/keys', ExchangeKeys),
-  ])
-  if (best === null)
-    throw new PhoenixError(
-      'market_unavailable',
-      `Phoenix's ${market.symbol} book has no ${side === 'buy' ? 'asks' : 'bids'} to fill against`,
-    )
-  const priceInTicks =
-    'limitPrice' in limit
-      ? priceToTicks(limit.limitPrice, units, limitRounding(side))
-      : slippageLimit(side, best, limit.maxSlippageBps)
-  const instructions = await context.orders.placeIsolatedMarketOrder({
-    authority: wallet,
-    symbol: market.symbol,
-    side,
-    numBaseLots: Number(numBaseLots),
-    isReduceOnly: true,
-    maxPriceInTicks: Number(priceInTicks),
-    minBaseLotsToFill: Number(MIN_FILL_LOTS),
-  })
-  await checkPhoenixBundle(instructions, {
-    wallet,
-    keys,
-    market,
-    subaccount,
-    order: {
-      kind: 'market',
-      side,
-      priceInTicks,
-      numBaseLots,
-      reduceOnly: true,
-    },
-  })
-
-  const limitPrice = ticksToPrice(priceInTicks, units)
-  const bestPrice = ticksToPrice(best, units)
-  const notional = Number(size) * Number(bestPrice)
-  const notionalUsd = usd(notional)
-  const feeUsd = fineUsd(notional * market.takerFee)
-  const outOfReach = side === 'buy' ? priceInTicks < best : priceInTicks > best
-  return {
-    instructions,
-    limitPrice,
-    position: {
-      symbol: market.symbol,
-      assetId: market.assetId,
-      baseLotsDecimals: market.baseLotsDecimals,
-      subaccount,
-    },
-    details: {
-      side,
-      size,
-      limitPrice,
-      bestPrice,
-      estimatedNotionalUsd: notionalUsd,
-      estimatedTakerFeeUsd: feeUsd,
-      reduceOnly: 'true',
-      subaccount: String(subaccount),
-    },
-    terms: {
-      symbol: market.symbol,
-      side,
-      orderType: 'market' as const,
-      size,
-      worstPrice: limitPrice,
-      bestPrice,
-      notionalUsd,
-      feeUsd,
-      reduceOnly: true,
-      marginMode: 'isolated' as const,
-      subaccount,
-    },
-    warnings: [
-      'Once the position is fully closed and the subaccount has no resting orders, its collateral returns to your cross-margin account in the same transaction. Until then it stays in the subaccount.',
-      ...(outOfReach
-        ? [
-            `The ${side === 'buy' ? 'limit is below the best ask' : 'limit is above the best bid'} (${bestPrice}), so this order will not fill now.`,
-          ]
-        : []),
-    ],
-  }
-}
+const COLLATERAL_RETURNS =
+  'Once the position is fully closed and the subaccount has no resting orders, its collateral returns to your cross-margin account in the same transaction. Until then it stays in the subaccount.'
 
 export const closePosition = defineTradeTool({
   name: 'phoenix_close_position',
@@ -214,28 +90,6 @@ export const closePosition = defineTradeTool({
       closing: size,
     }
 
-    if (isolated) {
-      const order = await isolatedClose(context, {
-        wallet,
-        market,
-        subaccount,
-        side,
-        numBaseLots,
-        size,
-        limit,
-      })
-      return {
-        kind: 'instructions',
-        wallet,
-        instructions: order.instructions,
-        position: order.position,
-        summary: describe(order.limitPrice),
-        details: { ...order.details, ...closing },
-        trade: perpTrade('close', { ...order.terms, closing: direction }),
-        warnings: order.warnings,
-      }
-    }
-
     const order = await immediateOrder(context, {
       wallet,
       market,
@@ -244,17 +98,46 @@ export const closePosition = defineTradeTool({
       size,
       limit,
       reduceOnly: true,
+      subaccount,
     })
+    // Rise's own order, not Phoenix's isolated route: that route picks the
+    // subaccount itself, so it cannot reach a second position in one market.
+    const sweeps = isolated
+      ? await sweepInstructions(wallet, order.keys, subaccount)
+      : []
+    const instructions = [order.instruction, ...sweeps]
+    if (isolated)
+      await checkPhoenixBundle(instructions, {
+        wallet,
+        keys: order.keys,
+        market,
+        subaccount,
+        order: {
+          kind: 'market',
+          side,
+          priceInTicks: order.priceInTicks,
+          numBaseLots,
+          reduceOnly: true,
+        },
+      })
     return {
       kind: 'instructions',
       wallet,
-      instructions: [order.instruction],
+      instructions,
       expiresAfterSlot: order.expiresAfterSlot,
-      position: order.position,
+      position: { ...order.position, subaccount },
       summary: describe(order.limitPrice),
-      details: { ...order.details, ...closing },
-      trade: perpTrade('close', { ...order.terms, closing: direction }),
-      warnings: order.warnings,
+      details: {
+        ...order.details,
+        ...closing,
+        ...(isolated ? { subaccount: String(subaccount) } : {}),
+      },
+      trade: perpTrade('close', {
+        ...order.terms,
+        closing: direction,
+        ...(isolated ? { marginMode: 'isolated' as const, subaccount } : {}),
+      }),
+      warnings: [...(isolated ? [COLLATERAL_RETURNS] : []), ...order.warnings],
     }
   },
 })

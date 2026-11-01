@@ -120,8 +120,13 @@ export async function immediateOrder(
   {
     wallet,
     numBaseLots,
+    subaccount = 0,
     ...order
-  }: ImmediateTerms & { wallet: Address; numBaseLots: bigint },
+  }: ImmediateTerms & {
+    wallet: Address
+    numBaseLots: bigint
+    subaccount?: number
+  },
 ) {
   const { market, side, reduceOnly } = order
   const [terms, keys, slot] = await Promise.all([
@@ -137,11 +142,19 @@ export async function immediateOrder(
     reduceOnly,
     lastValidSlot: slot + ORDER_EXPIRY_SLOTS,
   }
-  const instruction = await orderInstruction(wallet, keys, market, spec)
+  const instruction = await orderInstruction(
+    wallet,
+    keys,
+    market,
+    spec,
+    subaccount,
+  )
   checkOrder(instruction, spec)
 
   return {
     instruction,
+    keys,
+    priceInTicks: terms.priceInTicks,
     limitPrice: terms.limitPrice,
     expiresAfterSlot: String(spec.lastValidSlot),
     position: {
