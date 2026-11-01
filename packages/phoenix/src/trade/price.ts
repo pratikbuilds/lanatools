@@ -1,5 +1,5 @@
 import { PhoenixError } from '../client'
-import { QUOTE_LOTS_DECIMALS, fromLots } from '../units'
+import { QUOTE_LOTS_DECIMALS, SOL_DECIMALS, fromLots } from '../units'
 
 /**
  * Exact conversions between what an agent types (tokens, USD, USDC) and what
@@ -214,8 +214,6 @@ function toUnits(amount: string, decimals: number, field: string) {
 /** USDC base units (6 decimals) for an amount such as "12.5". */
 export const toUSDCUnits = (amount: string, field = 'amount') =>
   toUnits(amount, QUOTE_LOTS_DECIMALS, field)
-
-export const SOL_DECIMALS = 9
 
 /** Lamports for a SOL amount such as "0.05". */
 export const toLamports = (amount: string, field = 'amount') =>

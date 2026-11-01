@@ -1,7 +1,7 @@
 import { address } from '@solana/kit'
 import { z } from 'zod'
 import { PhoenixError } from '../../client'
-import { fromLots } from '../../units'
+import { SOL_DECIMALS, fromLots } from '../../units'
 import { fetchAccount } from '../chain'
 import { checkActivation } from '../checks'
 import {
@@ -17,8 +17,6 @@ import { perpTrade } from './shared'
 
 /** LanaTools' Phoenix referral code; every activation uses it by default. */
 export const LANATOOLS_REFERRAL_CODE = '4L2RQ06K'
-
-const SOL_DECIMALS = 9
 
 export const activateAccount = defineTradeTool({
   name: 'phoenix_activate_account',

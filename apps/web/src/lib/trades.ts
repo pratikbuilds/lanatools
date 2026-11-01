@@ -185,6 +185,12 @@ export function tradeDetail(
   }
 }
 
+/** The collateral a deposit or withdrawal moves. */
+function collateralMoved(trade: PerpTrade) {
+  if (trade.amountSol) return `${trade.amountSol} SOL`
+  return trade.amountUsdc ? `${trade.amountUsdc} USDC` : null
+}
+
 /**
  * Wallet money a trade moves, from the wallet's side. A perp order moves
  * none (its margin stays in Phoenix), so it has no amounts; see
@@ -204,10 +210,9 @@ export function tradeAmounts(
       in: received ? `${received} ${trade.receive.symbol}` : null,
     }
   }
-  if (trade.action === 'deposit' && trade.amountUsdc)
-    return { out: `${trade.amountUsdc} USDC`, in: null }
-  if (trade.action === 'withdraw' && trade.amountUsdc)
-    return { out: null, in: `${trade.amountUsdc} USDC` }
+  const moved = collateralMoved(trade)
+  if (trade.action === 'deposit' && moved) return { out: moved, in: null }
+  if (trade.action === 'withdraw' && moved) return { out: null, in: moved }
   return { out: null, in: null }
 }
 

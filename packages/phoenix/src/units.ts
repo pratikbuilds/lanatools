@@ -8,6 +8,8 @@
  */
 export const QUOTE_LOTS_DECIMALS = 6
 
+export const SOL_DECIMALS = 9
+
 /**
  * Exact decimal string for an integer amount with `decimals` decimals.
  * Some markets (kBONK, PUMP) have negative decimals: one lot is 100 tokens.
@@ -26,6 +28,9 @@ export function fromLots(lots: string | number, decimals: number): string {
 
 export const usdc = (quoteLots: string | number) =>
   fromLots(quoteLots, QUOTE_LOTS_DECIMALS)
+
+export const sol = (lamports: string | number) =>
+  fromLots(lamports, SOL_DECIMALS)
 
 // Phoenix timestamps arrive as ISO strings, Unix seconds or Unix ms.
 export function isoTime(value: string | number): string {

@@ -153,7 +153,26 @@ test('before preparation the review carries what the agent asked for as trade da
     kind: 'perp',
     venue: 'phoenix',
     action: 'deposit',
+    asset: 'USDC',
     amountUsdc: '25',
+  })
+  expect(
+    describe('phoenix_deposit', { amount: '0.5', asset: 'SOL' }).trade,
+  ).toEqual({
+    kind: 'perp',
+    venue: 'phoenix',
+    action: 'deposit',
+    asset: 'SOL',
+    amountSol: '0.5',
+  })
+  expect(
+    describe('phoenix_withdraw', { amount: '0.5', asset: 'SOL' }).trade,
+  ).toEqual({
+    kind: 'perp',
+    venue: 'phoenix',
+    action: 'withdraw',
+    asset: 'SOL',
+    amountSol: '0.5',
   })
   expect(describe('phoenix_activate_account', {}).trade).toEqual({
     kind: 'perp',

@@ -120,6 +120,17 @@ test('a bigint becomes a number only when it stays exact', () => {
   expect(() => exactNumber(largest + 1n, 'size')).toThrow('size is too large')
 })
 
+test('SOL amounts become lamports, exactly', () => {
+  expect(toLamports('0.01')).toBe(10_000_000n)
+  expect(toLamports('1.1')).toBe(1_100_000_000n)
+  expect(toLamports('0.000000001')).toBe(1n)
+  // Far past what a float holds exactly.
+  expect(toLamports('123456789.123456789')).toBe(123_456_789_123_456_789n)
+  expect(() => toLamports('0.0000000001')).toThrow('at most 9 decimals')
+  expect(() => toLamports('0')).toThrow('more than 0')
+  expect(() => toLamports('-1')).toThrow('decimal number')
+})
+
 test('float prices from Phoenix become decimal strings without exponents', () => {
   expect(decimalString(115.17999999999999)).toBe('115.17999999999999')
   expect(decimalString(1e-7)).toBe('0.0000001')

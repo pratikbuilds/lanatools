@@ -269,6 +269,24 @@ const cases = [
   ['phoenix_close_position', { symbol: 'SOL', maxSlippageBps: 50 }],
 ] as const
 
+test('a SOL deposit widens no signing policy', () => {
+  const system = '11111111111111111111111111111111'
+  const programs = (name: string) => transactionTools[name]?.programs ?? []
+  expect(programs('phoenix_deposit')).toContain(system)
+  // Embedded signing already allows everything the deposit tool may call.
+  const others = Object.keys(transactionTools)
+    .filter((name) => name !== 'phoenix_deposit')
+    .flatMap(programs)
+  expect(others).toContain(system)
+  expect(others).toEqual(
+    expect.arrayContaining([...programs('phoenix_deposit')]),
+  )
+  expect(transactionPrograms()).toEqual([...new Set(others)].sort())
+  // No other Phoenix tool may move SOL.
+  for (const [tool] of cases)
+    if (tool !== 'phoenix_deposit') expect(programs(tool)).not.toContain(system)
+})
+
 for (const [tool, args] of cases)
   for (const delivery of ['link', 'local', 'embedded'] as const) {
     test(`${tool} uses ${delivery} signing and the shared receipt`, async () => {

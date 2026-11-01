@@ -12,7 +12,7 @@ import {
   activationOf,
   traderAccountAddress,
 } from '../rise'
-import { OrderMarket, TraderBook } from '../schemas'
+import { OrderMarket, TraderBook, TraderCollateral } from '../schemas'
 import type { PerpTrade } from '@lanatools/contracts'
 import type { TradeContext } from '../tool'
 
@@ -56,7 +56,7 @@ export const Subaccount = z
 export const ISOLATED_WARNING =
   "Losses are limited to this position's collateral, and it can be liquidated while your cross account still holds funds."
 
-/** Throws `not_activated` unless the wallet's trader account can trade. */
+/** The wallet's trader account; throws `not_activated` unless it can trade. */
 export async function requireActivated(
   { rpc }: Pick<TradeContext, 'rpc'>,
   wallet: Address,
@@ -70,6 +70,7 @@ export async function requireActivated(
       'not_activated',
       'This wallet has no activated Phoenix account; call phoenix_activate_account first',
     )
+  return trader
 }
 
 /** A market's order config: accounts, tick size, lot decimals. */
@@ -181,6 +182,38 @@ const restingIn = (account: TraderSubaccount | undefined, symbol?: string) =>
     .filter((market) => symbol === undefined || market.symbol === symbol)
     .flatMap((market) => market.orders)
     .filter((order) => order.change !== 'closed')
+
+const traderStatePath = (wallet: Address) =>
+  `/v1/trader/state/${encodeURIComponent(wallet)}`
+
+function missingAccount(error: unknown): never {
+  if (error instanceof PhoenixError && error.code === 'not_found')
+    throw new PhoenixError(
+      'not_activated',
+      'This wallet has no Phoenix account; call phoenix_activate_account first',
+    )
+  throw error
+}
+
+/**
+ * The collateral in the wallet's cross-margin account (subaccount 0): USDC
+ * in base units, and its SOL row, in lamports.
+ */
+export async function crossCollateral(
+  { phoenix }: TradeContext,
+  wallet: Address,
+) {
+  const state = await phoenix
+    .get(traderStatePath(wallet), TraderCollateral)
+    .catch(missingAccount)
+  const cross = state.snapshot.subaccounts.find(
+    (subaccount) => subaccount.subaccountIndex === 0,
+  )
+  return {
+    usdc: BigInt(cross?.collateral ?? 0),
+    sol: cross?.spotCollaterals.find((row) => row.symbol === 'SOL'),
+  }
+}
 
 /**
  * One of the wallet's accounts as Phoenix's API sees it: collateral, positions

@@ -345,8 +345,12 @@ export const PerpTrade = type({
   'feeUsd?': 'string',
   'reduceOnly?': 'boolean',
   'postOnly?': 'boolean',
-  /** Deposit or withdrawal amount. */
+  /** What a deposit or withdrawal moves; older rows without it are USDC. */
+  'asset?': "'USDC' | 'SOL'",
+  /** Deposit or withdrawal amount, when the asset is USDC. */
   'amountUsdc?': 'string',
+  /** Deposit or withdrawal amount, when the asset is SOL. */
+  'amountSol?': 'string',
   /** The side of the position a close reduces. */
   'closing?': "'long' | 'short'",
   /** How many resting orders a cancel removes, when known. */

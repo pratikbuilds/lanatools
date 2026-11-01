@@ -59,20 +59,20 @@ const isolatedTerms = (input: Arguments) =>
       }
     : {}
 
+/** A deposit or withdrawal's asset and its amount. */
+const collateral = (input: Arguments) =>
+  input.asset === 'SOL'
+    ? { asset: 'SOL', amountSol: text(input.amount) }
+    : { asset: 'USDC', amountUsdc: text(input.amount) }
+
 /**
  * What each tool asks for, as trade data, before Phoenix's book is read. The
  * prepared transaction replaces it with the tool's own, exact terms.
  */
 const INTENTS: Record<string, (input: Arguments) => Arguments> = {
   phoenix_activate_account: () => ({ action: 'activate' }),
-  phoenix_deposit: (input) => ({
-    action: 'deposit',
-    amountUsdc: text(input.amount),
-  }),
-  phoenix_withdraw: (input) => ({
-    action: 'withdraw',
-    amountUsdc: text(input.amount),
-  }),
+  phoenix_deposit: (input) => ({ action: 'deposit', ...collateral(input) }),
+  phoenix_withdraw: (input) => ({ action: 'withdraw', ...collateral(input) }),
   phoenix_market_order: (input) => ({
     action: 'order',
     orderType: 'market',

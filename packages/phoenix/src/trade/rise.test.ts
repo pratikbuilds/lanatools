@@ -21,11 +21,18 @@ import {
 import {
   EMBER_PROGRAM,
   PHOENIX_PROGRAM,
+  SOL_ACCOUNTS,
+  SYSTEM_PROGRAM,
   activationOf,
   activationTransaction,
   decodeOrder,
   depositInstructions,
   positionLots,
+  solData,
+  solDepositCredit,
+  solDepositHeadroom,
+  solDepositInstructions,
+  solWithdrawInstruction,
   toInstruction,
   traderAccountAddress,
   withdrawInstructions,
@@ -171,4 +178,98 @@ test("a position is read from the trader account's own data", () => {
     BigInt(first.value.baseLotPosition),
   )
   expect(positionLots(TRADER_ACCOUNT_DATA, 9_999)).toBe(0n)
+})
+
+const ROOM = {
+  caps: {
+    maxPerTraderBalance: 1_000_000_000_000n,
+    maxGlobalBalance: 50_000_000_000_000n,
+    currGlobalBalance: 9_000_000_000_000n,
+  },
+  accountedLamports: 0n,
+  traderMaxLamports: 1_000_000_000_000n,
+  accountLamports: 1_000_000n,
+  rentExemptLamports: 1_000_000n,
+}
+
+test('SOL headroom is the tighter cap, and comes from Rise', () => {
+  expect(solDepositHeadroom(ROOM)).toBe(1_000_000_000_000n)
+  // The trader's own cap, not the asset's, is the one that binds.
+  expect(solDepositHeadroom({ ...ROOM, traderMaxLamports: 7n })).toBe(7n)
+  expect(
+    solDepositHeadroom({
+      ...ROOM,
+      caps: { ...ROOM.caps, currGlobalBalance: 49_999_999_999_990n },
+    }),
+  ).toBe(10n)
+  expect(
+    solDepositHeadroom({
+      ...ROOM,
+      accountedLamports: 400n,
+      accountLamports: 1_000_400n,
+      traderMaxLamports: 1_000n,
+    }),
+  ).toBe(600n)
+})
+
+test('uncounted lamports use up headroom; a rent deficit swallows credit', () => {
+  const excess = {
+    ...ROOM,
+    accountLamports: 1_000_300n,
+    traderMaxLamports: 1_000n,
+  }
+  expect(solDepositHeadroom(excess)).toBe(700n)
+  expect(solDepositCredit(excess, 700n)).toBe(700n)
+
+  const deficit = {
+    ...ROOM,
+    accountLamports: 999_900n,
+    traderMaxLamports: 1_000n,
+  }
+  expect(solDepositHeadroom(deficit)).toBe(1_100n)
+  expect(solDepositCredit(deficit, 150n)).toBe(50n)
+  expect(solDepositCredit(deficit, 50n)).toBe(0n)
+})
+
+test('a SOL deposit is the three steps Rise documents, in order', async () => {
+  const trader = await traderAccountAddress(WALLET)
+  const [realloc, transfer, sync, ...rest] = await solDepositInstructions(
+    WALLET,
+    KEYS,
+    10_000_000n,
+  )
+  expect(rest).toEqual([])
+  expect(realloc?.programAddress).toBe(PHOENIX_PROGRAM)
+  expect(realloc?.data).toEqual(solData.realloc())
+  expect(transfer?.programAddress).toBe(SYSTEM_PROGRAM)
+  expect(transfer?.data).toEqual(solData.transfer(10_000_000n))
+  expect(transfer?.accounts).toEqual([
+    { address: WALLET, role: AccountRole.WRITABLE_SIGNER },
+    { address: trader, role: AccountRole.WRITABLE },
+  ])
+  expect(sync?.programAddress).toBe(PHOENIX_PROGRAM)
+  expect(sync?.data).toEqual(solData.sync())
+  expect(sync?.accounts?.[SOL_ACCOUNTS.sync.traderAccount]?.address).toBe(
+    trader,
+  )
+})
+
+test('a SOL withdrawal pays the wallet and leaves uncounted lamports alone', async () => {
+  const instruction = await solWithdrawInstruction(WALLET, KEYS, 5_000_000n)
+  const { trader, traderAccount, destination } = SOL_ACCOUNTS.withdraw
+  expect(instruction.programAddress).toBe(PHOENIX_PROGRAM)
+  const accounts = instruction.accounts ?? []
+  expect(accounts.at(trader)).toEqual({
+    address: WALLET,
+    role: AccountRole.READONLY_SIGNER,
+  })
+  expect(accounts.at(traderAccount)?.address).toBe(
+    await traderAccountAddress(WALLET),
+  )
+  expect(accounts.at(destination)?.address).toBe(WALLET)
+  // Tag 2 is `withoutExcess`, then the amount as a u64.
+  const data = Uint8Array.from(instruction.data ?? [])
+  expect(data).toEqual(solData.withdraw(5_000_000n))
+  expect(data[8]).toBe(2)
+  expect(new DataView(data.buffer).getBigUint64(9, true)).toBe(5_000_000n)
 })

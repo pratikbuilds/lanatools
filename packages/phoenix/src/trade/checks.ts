@@ -8,6 +8,8 @@ import {
   MAX_SUBACCOUNTS,
   MIN_FILL_LOTS,
   PHOENIX_PROGRAM,
+  SOL_ACCOUNTS,
+  SYSTEM_PROGRAM,
   cancelData,
   collateralAmounts,
   conditionalOrdersAddress,
@@ -17,6 +19,7 @@ import {
   expectedPacket,
   isOnboardTraderDelegated,
   orderData,
+  solData,
   traderAccountAddress,
   transferSolData,
 } from './rise'
@@ -50,6 +53,15 @@ export const TRADE_PROGRAMS: readonly Address[] = [
   EMBER_PROGRAM,
   TOKEN_PROGRAM,
   ASSOCIATED_TOKEN_PROGRAM,
+]
+
+/**
+ * `phoenix_deposit` alone may call the System program, to move a SOL deposit
+ * into the wallet's own trader account (see `checkSolDeposit`).
+ */
+export const DEPOSIT_PROGRAMS: readonly Address[] = [
+  ...TRADE_PROGRAMS,
+  SYSTEM_PROGRAM,
 ]
 
 export type CheckRules = {
@@ -224,6 +236,111 @@ export function checkCollateral(
     collateralAmounts.emberWithdraw,
     amount,
     'Ember withdrawal',
+  )
+}
+
+/** One step of a SOL collateral instruction: its program and exact data. */
+function checkSolStep(
+  instruction: Instruction | undefined,
+  program: Address,
+  data: Uint8Array,
+  step: string,
+) {
+  if (instruction?.programAddress !== program)
+    fail(`the ${step} step calls the wrong program`)
+  if (!sameBytes(bytesOf(instruction), data))
+    fail(`the ${step} step does not match the request`)
+}
+
+function checkAccount(
+  instruction: Instruction | undefined,
+  index: number,
+  expected: Address,
+  what: string,
+) {
+  if (instruction?.accounts?.[index]?.address !== expected)
+    fail(`the ${what} is not the wallet's own`)
+}
+
+type SolTerms = { wallet: Address; traderAccount: Address; lamports: bigint }
+
+/**
+ * A SOL deposit is exactly `ReallocTrader`, a System transfer, `SyncNative`,
+ * all on the wallet's own trader account. The transfer's amount and
+ * destination are the money: lamports sent anywhere else are gone, and a sync
+ * of another account would leave them uncounted.
+ */
+export function checkSolDeposit(
+  instructions: readonly Instruction[],
+  { wallet, traderAccount, lamports }: SolTerms,
+) {
+  if (instructions.length !== 3) fail('the SOL deposit has unexpected steps')
+  const [realloc, transfer, sync] = instructions
+  checkSolStep(realloc, PHOENIX_PROGRAM, solData.realloc(), 'ReallocTrader')
+  checkAccount(realloc, SOL_ACCOUNTS.realloc.payer, wallet, 'rent payer')
+  checkAccount(realloc, SOL_ACCOUNTS.realloc.trader, wallet, 'trader authority')
+  checkAccount(
+    realloc,
+    SOL_ACCOUNTS.realloc.traderAccount,
+    traderAccount,
+    'reallocated trader account',
+  )
+  checkSolStep(
+    transfer,
+    SYSTEM_PROGRAM,
+    solData.transfer(lamports),
+    'SOL transfer',
+  )
+  checkAccount(transfer, SOL_ACCOUNTS.transfer.source, wallet, 'SOL source')
+  checkAccount(
+    transfer,
+    SOL_ACCOUNTS.transfer.destination,
+    traderAccount,
+    'SOL destination',
+  )
+  checkSolStep(sync, PHOENIX_PROGRAM, solData.sync(), 'SyncNative')
+  checkAccount(
+    sync,
+    SOL_ACCOUNTS.sync.traderAccount,
+    traderAccount,
+    'synced trader account',
+  )
+}
+
+/**
+ * A SOL withdrawal is exactly one Phoenix `WithdrawNativeSol` of counted
+ * lamports (`withoutExcess`), from the wallet's own trader account to the
+ * wallet.
+ */
+export function checkSolWithdraw(
+  instructions: readonly Instruction[],
+  { wallet, traderAccount, lamports }: SolTerms,
+) {
+  if (instructions.length !== 1) fail('the SOL withdrawal has unexpected steps')
+  const [withdraw] = instructions
+  checkSolStep(
+    withdraw,
+    PHOENIX_PROGRAM,
+    solData.withdraw(lamports),
+    'WithdrawNativeSol',
+  )
+  checkAccount(
+    withdraw,
+    SOL_ACCOUNTS.withdraw.trader,
+    wallet,
+    'withdrawing authority',
+  )
+  checkAccount(
+    withdraw,
+    SOL_ACCOUNTS.withdraw.traderAccount,
+    traderAccount,
+    'withdrawn trader account',
+  )
+  checkAccount(
+    withdraw,
+    SOL_ACCOUNTS.withdraw.destination,
+    wallet,
+    'withdrawal destination',
   )
 }
 
