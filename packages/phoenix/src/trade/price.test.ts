@@ -3,12 +3,14 @@ import { expect, test } from 'bun:test'
 import {
   bookTicks,
   decimalString,
+  exactNumber,
   fractionOfLots,
   limitRounding,
   priceToTicks,
   slippageLimit,
   ticksToPrice,
   toBaseLots,
+  toLamports,
   toUSDCUnits,
 } from './price'
 
@@ -96,6 +98,26 @@ test('USDC amounts become 6-decimal base units', () => {
   expect(toUSDCUnits('0.000001')).toBe(1n)
   expect(() => toUSDCUnits('0.0000001')).toThrow('at most 6 decimals')
   expect(() => toUSDCUnits('0')).toThrow('more than 0')
+})
+
+test('SOL amounts become exact lamports, named by their field', () => {
+  expect(toLamports('0.05')).toBe(50_000_000n)
+  expect(toLamports('0.000000001')).toBe(1n)
+  expect(() => toLamports('0.0000000001', 'collateralSol')).toThrow(
+    'collateralSol must have at most 9 decimals',
+  )
+  expect(() => toLamports('0', 'collateralSol')).toThrow(
+    'collateralSol must be more than 0',
+  )
+  expect(() => toUSDCUnits('0', 'collateralUsdc')).toThrow(
+    'collateralUsdc must be more than 0',
+  )
+})
+
+test('a bigint becomes a number only when it stays exact', () => {
+  const largest = BigInt(Number.MAX_SAFE_INTEGER)
+  expect(exactNumber(largest, 'size')).toBe(Number.MAX_SAFE_INTEGER)
+  expect(() => exactNumber(largest + 1n, 'size')).toThrow('size is too large')
 })
 
 test('float prices from Phoenix become decimal strings without exponents', () => {

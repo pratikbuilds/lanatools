@@ -7,6 +7,48 @@ const describe = (name: string, input: unknown) => {
   return tool.transaction.describe(input)
 }
 
+test('an isolated order says so before preparation; a cross one stays as it was', () => {
+  const isolated = describe('phoenix_market_order', {
+    symbol: 'GOLD',
+    side: 'buy',
+    size: '0.01',
+    maxSlippageBps: 50,
+    marginMode: 'isolated',
+    collateralUsdc: '2',
+    collateralSol: '0.05',
+  })
+  expect(isolated.trade).toMatchObject({
+    marginMode: 'isolated',
+    collateralUsdc: '2',
+    collateralSol: '0.05',
+  })
+  expect(isolated.description).toContain('isolated Phoenix position')
+  expect(isolated.description).toContain(
+    "Losses are limited to this position's collateral, and it can be liquidated while your cross account still holds funds.",
+  )
+  expect(
+    describe('phoenix_limit_order', {
+      symbol: 'GOLD',
+      side: 'buy',
+      size: '0.01',
+      price: '3000',
+      marginMode: 'isolated',
+      collateralUsdc: '2',
+    }).trade,
+  ).toMatchObject({ marginMode: 'isolated', collateralUsdc: '2' })
+
+  const cross = describe('phoenix_market_order', {
+    symbol: 'SOL',
+    side: 'buy',
+    size: '0.1',
+    maxSlippageBps: 50,
+  })
+  expect(cross.trade).not.toHaveProperty('marginMode')
+  expect(cross.description).toStartWith(
+    'Use your Phoenix cross-margin account.',
+  )
+})
+
 test('before preparation the review carries what the agent asked for as trade data', () => {
   expect(
     describe('phoenix_market_order', {

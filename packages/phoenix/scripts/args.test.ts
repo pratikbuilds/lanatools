@@ -81,6 +81,69 @@ test('each command maps to its trade tool and input', () => {
   expect(parseCli(['state', ...RPC])).toMatchObject({ command: 'state' })
 })
 
+test('--isolated sets the margin mode and exact collateral on orders', () => {
+  expect(
+    parseCli([
+      'market',
+      'GOLD',
+      'buy',
+      '0.01',
+      '--slippage-bps',
+      '50',
+      '--isolated',
+      '--collateral-usdc',
+      '2.50',
+      '--collateral-sol',
+      '0.05',
+      ...RPC,
+    ]),
+  ).toMatchObject({
+    tool: 'phoenix_market_order',
+    input: {
+      symbol: 'GOLD',
+      maxSlippageBps: 50,
+      marginMode: 'isolated',
+      collateralUsdc: '2.50',
+      collateralSol: '0.05',
+    },
+  })
+  const limit = parseCli([
+    'limit',
+    'GOLD',
+    'buy',
+    '0.01',
+    '3000',
+    '--isolated',
+    '--collateral-usdc',
+    '2',
+    ...RPC,
+  ])
+  expect(limit).toMatchObject({
+    tool: 'phoenix_limit_order',
+    input: { price: '3000', marginMode: 'isolated', collateralUsdc: '2' },
+  })
+  expect(limit).not.toHaveProperty('input.collateralSol')
+  // Adding to an open position may move no collateral.
+  expect(
+    parseCli(['limit', 'GOLD', 'buy', '0.01', '3000', '--isolated', ...RPC]),
+  ).toMatchObject({ input: { marginMode: 'isolated' } })
+})
+
+test('a cross order states no margin terms', () => {
+  const cross = parseCli(['limit', 'SOL', 'buy', '0.1', '50', ...RPC])
+  expect(cross).not.toHaveProperty('input.marginMode')
+})
+
+test('collateral needs --isolated and a plain decimal', () => {
+  const order = ['market', 'GOLD', 'buy', '0.01', '--slippage-bps', '50']
+  expect(() => parseCli([...order, '--collateral-usdc', '2', ...RPC])).toThrow(
+    '--collateral-usdc and --collateral-sol need --isolated',
+  )
+  expect(() =>
+    parseCli([...order, '--isolated', '--collateral-sol', 'lots', ...RPC]),
+  ).toThrow('--collateral-sol must be a number such as 0.5')
+})
+
 test('options default to the CLI wallet and real sends', () => {
   expect(parseCli(['state', ...RPC])).toMatchObject({
     rpc: 'https://rpc.example',

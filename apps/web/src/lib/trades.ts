@@ -150,16 +150,18 @@ export function tradeDetail(
     const rate = swapRate(trade, facts)
     return rate ? `Jupiter · ${rate}` : 'Jupiter'
   }
+  const venue =
+    trade.marginMode === 'isolated' ? 'Phoenix · Isolated' : 'Phoenix'
   const fill = facts?.fill
   if (fill && (trade.action === 'order' || trade.action === 'close')) {
     const realized = Number(fill.realizedPnlUsdc)
-    return `Phoenix · Filled at ${formatPrice(fill.price)}${realized ? `, realized ${formatUSD(realized, { signed: true })}` : ''}`
+    return `${venue} · Filled at ${formatPrice(fill.price)}${realized ? `, realized ${formatUSD(realized, { signed: true })}` : ''}`
   }
   switch (trade.action) {
     case 'order':
       if (trade.orderType === 'limit' && trade.limitPrice)
-        return `Phoenix · Limit at ${formatPrice(trade.limitPrice)}${trade.postOnly ? ', post only' : ''}`
-      return ['Phoenix · Market', worstPriceText(trade)]
+        return `${venue} · Limit at ${formatPrice(trade.limitPrice)}${trade.postOnly ? ', post only' : ''}`
+      return [`${venue} · Market`, worstPriceText(trade)]
         .filter(Boolean)
         .join(', ')
     case 'close':

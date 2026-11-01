@@ -74,6 +74,7 @@ const state = ({
       // Isolated subaccounts are never touched.
       {
         subaccountIndex: 3,
+        collateral: '0',
         positions: [{ symbol: 'SOL', basePositionLots: '500' }],
         orders: [{ symbol: 'SOL', orders: [order('99', '9000')] }],
       },

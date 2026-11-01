@@ -19,6 +19,7 @@ import { TRADE_PROGRAMS } from './checks'
 import { runTradeTool } from './tool'
 import type { TradeOpts, TradeTool } from './tool'
 import { relayReferralTransaction } from './submit'
+import { ISOLATED_RISK } from './tools/isolated'
 import { readSigned, rpcTimeout } from './transaction'
 
 export type PhoenixTransactionContext = TransactionContext & TradeOpts
@@ -46,6 +47,16 @@ const flag = (value: unknown) =>
 const side = (value: unknown) =>
   value === 'buy' || value === 'sell' ? value : undefined
 
+/** An order's isolated terms; a cross order states none. */
+const isolatedTerms = (input: Arguments) =>
+  input.marginMode === 'isolated'
+    ? {
+        marginMode: 'isolated',
+        collateralUsdc: text(input.collateralUsdc),
+        collateralSol: text(input.collateralSol),
+      }
+    : {}
+
 /**
  * What each tool asks for, as trade data, before Phoenix's book is read. The
  * prepared transaction replaces it with the tool's own, exact terms.
@@ -68,6 +79,7 @@ const INTENTS: Record<string, (input: Arguments) => Arguments> = {
     size: text(input.size),
     worstPrice: text(input.limitPrice),
     reduceOnly: flag(input.reduceOnly),
+    ...isolatedTerms(input),
   }),
   phoenix_limit_order: (input) => ({
     action: 'order',
@@ -78,6 +90,7 @@ const INTENTS: Record<string, (input: Arguments) => Arguments> = {
     limitPrice: text(input.price),
     postOnly: flag(input.postOnly),
     reduceOnly: flag(input.reduceOnly),
+    ...isolatedTerms(input),
   }),
   phoenix_cancel_orders: (input) => ({
     action: 'cancel',
@@ -134,7 +147,9 @@ export function phoenixTransactionTool<TSchema extends z.ZodObject>(
           title: tool.title,
           description: activation
             ? 'Activate your Phoenix account. Your wallet pays rent and fees in SOL and signs a Phoenix login message. Phoenix co-signs and submits.'
-            : 'Use your Phoenix cross-margin account. Exact terms are checked and simulated when prepared. Network fees are paid in SOL.',
+            : input.marginMode === 'isolated'
+              ? `Trade an isolated Phoenix position, funded from your cross-margin account. ${ISOLATED_RISK} Exact terms are checked and simulated when prepared. Network fees are paid in SOL.`
+              : 'Use your Phoenix cross-margin account. Exact terms are checked and simulated when prepared. Network fees are paid in SOL.',
           actionLabel: tool.title,
           fields: Object.entries(input)
             .filter(([, value]) => value !== undefined)

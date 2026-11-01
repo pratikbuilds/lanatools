@@ -64,11 +64,11 @@ type Described = {
   trade: PerpTrade
   warnings: string[]
   /**
-   * Market and close orders: Phoenix ignores the order after this slot (and
-   * still reports success), so it is never sent later.
+   * Cross market and close orders: Phoenix ignores the order after this slot
+   * (and still reports success), so it is never sent later.
    */
   expiresAfterSlot?: string
-  /** Market and close orders: the position the order changes. */
+  /** Cross market and close orders: the position the order changes. */
   position?: PositionRef
 }
 

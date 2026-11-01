@@ -171,7 +171,7 @@ export async function traderAccount(
   }
 }
 
-async function traderBook(
+export async function traderBook(
   { phoenix }: Pick<TradeContext, 'phoenix'>,
   wallet: Address,
 ) {

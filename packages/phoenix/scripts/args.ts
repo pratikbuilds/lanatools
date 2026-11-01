@@ -22,6 +22,7 @@ Commands:
   withdraw <usdc>
   market <symbol> <buy|sell> <size> (--slippage-bps N | --limit-price P) [--reduce-only]
   limit <symbol> <buy|sell> <size> <price> [--post-only] [--reduce-only]
+    Either order in isolated margin: --isolated [--collateral-usdc N] [--collateral-sol N]
   cancel <symbol> [--id ID ...]
   close <symbol> [--fraction F] (--slippage-bps N | --limit-price P)
 
@@ -61,10 +62,15 @@ function integer(value: string, what: string) {
   return Number(value)
 }
 
-function decimal(value: string, what: string) {
+/** A decimal argument as typed: amounts stay exact strings. */
+function decimalText(value: string, what: string) {
   if (!/^\d+(\.\d+)?$/.test(value))
     throw new UsageError(`${what} must be a number such as 0.5`)
-  return Number(value)
+  return value
+}
+
+function decimal(value: string, what: string) {
+  return Number(decimalText(value, what))
 }
 
 /** The worst price of a market or close order: exactly one, no default (D1). */
@@ -74,6 +80,28 @@ function worstPrice(slippage: string | undefined, limit: string | undefined) {
   return slippage === undefined
     ? { limitPrice: limit }
     : { maxSlippageBps: integer(slippage, '--slippage-bps') }
+}
+
+/** An order's isolated margin flags; a cross order states none. */
+function isolatedInput(
+  isolated: boolean,
+  usdc: string | undefined,
+  sol: string | undefined,
+) {
+  if (!isolated && (usdc !== undefined || sol !== undefined))
+    throw new UsageError(
+      '--collateral-usdc and --collateral-sol need --isolated',
+    )
+  if (!isolated) return {}
+  return {
+    marginMode: 'isolated',
+    ...(usdc === undefined
+      ? {}
+      : { collateralUsdc: decimalText(usdc, '--collateral-usdc') }),
+    ...(sol === undefined
+      ? {}
+      : { collateralSol: decimalText(sol, '--collateral-sol') }),
+  }
 }
 
 export function parseCli(argv: readonly string[]): CliArgs {
@@ -94,6 +122,9 @@ export function parseCli(argv: readonly string[]): CliArgs {
         'post-only': { type: 'boolean', default: false },
         id: { type: 'string', multiple: true },
         fraction: { type: 'string' },
+        isolated: { type: 'boolean', default: false },
+        'collateral-usdc': { type: 'string' },
+        'collateral-sol': { type: 'string' },
       },
     })
   } catch (error) {
@@ -103,6 +134,12 @@ export function parseCli(argv: readonly string[]): CliArgs {
   const [name, ...rest] = positionals
   const arg = (index: number, what: string) => need(rest[index], what)
   const reduceOnly = values['reduce-only']
+  const margin = () =>
+    isolatedInput(
+      values.isolated,
+      values['collateral-usdc'],
+      values['collateral-sol'],
+    )
 
   let command: Command
   switch (name) {
@@ -134,6 +171,7 @@ export function parseCli(argv: readonly string[]): CliArgs {
           size: arg(2, 'size in tokens'),
           ...worstPrice(values['slippage-bps'], values['limit-price']),
           reduceOnly,
+          ...margin(),
         },
       }
       break
@@ -148,6 +186,7 @@ export function parseCli(argv: readonly string[]): CliArgs {
           price: arg(3, 'price in USD'),
           postOnly: values['post-only'],
           reduceOnly,
+          ...margin(),
         },
       }
       break

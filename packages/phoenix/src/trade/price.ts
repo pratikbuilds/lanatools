@@ -196,16 +196,41 @@ export function fractionOfLots(lots: bigint, fraction: number) {
   return part
 }
 
-/** USDC base units (6 decimals) for an amount such as "12.5". */
-export function toUSDCUnits(amount: string) {
-  const { numerator, denominator } = parseDecimal(amount, 'amount')
-  if (denominator > MICRO_USD)
+/** Base units of a token with `decimals` decimals, for an amount such as "12.5". */
+function toUnits(amount: string, decimals: number, field: string) {
+  const { numerator, denominator } = parseDecimal(amount, field)
+  const scale = 10n ** BigInt(decimals)
+  if (denominator > scale)
     throw new PhoenixError(
       'invalid_input',
-      'amount must have at most 6 decimals',
+      `${field} must have at most ${decimals} decimals`,
     )
-  const units = numerator * (MICRO_USD / denominator)
+  const units = numerator * (scale / denominator)
   if (units < 1n)
-    throw new PhoenixError('invalid_input', 'amount must be more than 0')
+    throw new PhoenixError('invalid_input', `${field} must be more than 0`)
   return units
+}
+
+/** USDC base units (6 decimals) for an amount such as "12.5". */
+export const toUSDCUnits = (amount: string, field = 'amount') =>
+  toUnits(amount, QUOTE_LOTS_DECIMALS, field)
+
+export const SOL_DECIMALS = 9
+
+/** Lamports for a SOL amount such as "0.05". */
+export const toLamports = (amount: string, field = 'amount') =>
+  toUnits(amount, SOL_DECIMALS, field)
+
+/**
+ * A bigint as the JS number Rise's request schemas take. Above
+ * `MAX_SAFE_INTEGER` a number no longer holds every integer, so the request
+ * is refused rather than rounded.
+ */
+export function exactNumber(value: bigint, field: string) {
+  if (value > BigInt(Number.MAX_SAFE_INTEGER))
+    throw new PhoenixError(
+      'invalid_input',
+      `${field} is too large for Phoenix's order API`,
+    )
+  return Number(value)
 }
