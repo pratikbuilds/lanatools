@@ -9,6 +9,7 @@ import type { z } from 'zod'
 import { runTradeTool } from './tool'
 import type { TradeOpts, TradeOutcome, TradeTool } from './tool'
 import { activateAccount } from './tools/activate'
+import { addIsolatedMargin } from './tools/add-margin'
 import { cancelOrders } from './tools/cancel'
 import { closePosition } from './tools/close'
 import { deposit } from './tools/deposit'
@@ -24,6 +25,7 @@ export const phoenixTrade = [
   limitOrder,
   cancelOrders,
   closePosition,
+  addIsolatedMargin,
   withdraw,
 ] as const
 
@@ -34,6 +36,7 @@ export const phoenixTransactionTools = [
   phoenixTransactionTool(limitOrder),
   phoenixTransactionTool(cancelOrders),
   phoenixTransactionTool(closePosition),
+  phoenixTransactionTool(addIsolatedMargin),
   phoenixTransactionTool(withdraw),
 ]
 export type { PhoenixTransactionContext } from './operation'
@@ -52,6 +55,7 @@ const runners = new Map<string, Runner>([
   [limitOrder.name, runnerFor(limitOrder)],
   [cancelOrders.name, runnerFor(cancelOrders)],
   [closePosition.name, runnerFor(closePosition)],
+  [addIsolatedMargin.name, runnerFor(addIsolatedMargin)],
   [withdraw.name, runnerFor(withdraw)],
 ])
 

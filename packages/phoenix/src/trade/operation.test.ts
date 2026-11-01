@@ -109,6 +109,46 @@ test('before preparation the review carries what the agent asked for as trade da
     symbol: 'SOL',
     cancelled: 2,
   })
+  expect(
+    describe('phoenix_close_position', {
+      symbol: 'GOLD',
+      subaccount: 3,
+      limitPrice: '3900',
+    }).trade,
+  ).toEqual({
+    kind: 'perp',
+    venue: 'phoenix',
+    action: 'close',
+    orderType: 'market',
+    symbol: 'GOLD',
+    subaccount: 3,
+    worstPrice: '3900',
+    reduceOnly: true,
+  })
+  expect(
+    describe('phoenix_cancel_orders', { symbol: 'GOLD', subaccount: 3 }).trade,
+  ).toEqual({
+    kind: 'perp',
+    venue: 'phoenix',
+    action: 'cancel',
+    symbol: 'GOLD',
+    subaccount: 3,
+  })
+  expect(
+    describe('phoenix_add_isolated_margin', {
+      symbol: 'GOLD',
+      subaccount: 3,
+      amount: '2.5',
+    }).trade,
+  ).toEqual({
+    kind: 'perp',
+    venue: 'phoenix',
+    action: 'add_margin',
+    marginMode: 'isolated',
+    symbol: 'GOLD',
+    subaccount: 3,
+    collateralUsdc: '2.5',
+  })
   expect(describe('phoenix_deposit', { amount: '25' }).trade).toEqual({
     kind: 'perp',
     venue: 'phoenix',

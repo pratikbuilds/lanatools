@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test'
-import { fetchAccount, tokenBalance } from './chain'
+import { fetchAccount, positionSize, tokenBalance } from './chain'
 import { TOKEN_PROGRAM } from './checks'
 import { WALLET, accountInfo, fakeRpc, tokenAccountData } from './fixtures'
-import { PHOENIX_PROGRAM } from './rise'
+import { PHOENIX_PROGRAM, traderAccountAddress } from './rise'
 
 test('an account is read from the chain in base64', async () => {
   const data = tokenAccountData(42n)
@@ -22,6 +22,23 @@ test('an account is read from the chain in base64', async () => {
   ])
   const { rpc: empty } = fakeRpc({ getAccountInfo: () => ({ value: null }) })
   expect(await fetchAccount(empty, WALLET)).toBeNull()
+})
+
+test('a position is read from the account that holds it', async () => {
+  const market = { symbol: 'GOLD', assetId: 65556, baseLotsDecimals: 3 }
+  const accounts = async (
+    position: typeof market & { subaccount?: number },
+  ) => {
+    const { rpc, calls } = fakeRpc({
+      getAccountInfo: () => ({ value: null }),
+    })
+    expect(await positionSize(rpc, WALLET, position)).toBe('0')
+    return calls.map(([, args]) => args[0])
+  }
+  expect(await accounts(market)).toEqual([await traderAccountAddress(WALLET)])
+  expect(await accounts({ ...market, subaccount: 4 })).toEqual([
+    await traderAccountAddress(WALLET, 4),
+  ])
 })
 
 test('a token balance is read only from a token account', () => {

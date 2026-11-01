@@ -71,12 +71,12 @@ const state = ({
         positions: [{ symbol: 'SOL', basePositionLots }],
         orders: [{ symbol: 'SOL', orders }],
       },
-      // Isolated subaccounts are never touched.
+      // Another market's isolated subaccount is never touched.
       {
         subaccountIndex: 3,
         collateral: '0',
-        positions: [{ symbol: 'SOL', basePositionLots: '500' }],
-        orders: [{ symbol: 'SOL', orders: [order('99', '9000')] }],
+        positions: [{ symbol: 'ETH', basePositionLots: '500' }],
+        orders: [{ symbol: 'ETH', orders: [order('99', '9000')] }],
       },
     ],
   },
@@ -129,8 +129,7 @@ test('without IDs every resting order in the market is cancelled', async () => {
   expect(dataOf(outcome)).toEqual(cancelData(null))
   expect(outcome).toMatchObject({
     result: {
-      // The closed row is gone from the book; the isolated account's order
-      // is not ours to cancel here.
+      // The closed row is gone from the book.
       summary: 'Cancel all 2 resting SOL orders in the cross-margin account',
       details: { 'order 7': 'bid 0.1 at $50', 'order 9': 'bid 0.1 at $51' },
       trade: { action: 'cancel', symbol: 'SOL', cancelled: 2 },
