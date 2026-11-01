@@ -1,5 +1,6 @@
 import {
   DISCRIMINANTS,
+  Direction,
   EMBER_PROGRAM_ADDRESS,
   EMBER_STATE_ADDRESS,
   OrderFlags,
@@ -30,6 +31,7 @@ import {
   buildTransferSolIx,
   buildWithdrawIxsResolved,
   buildWithdrawNativeSolIx,
+  decodeConditionalOrderCollection,
   decodeTrader,
   encodeTransferNativeSol,
   encodeSyncNative,
@@ -1043,6 +1045,17 @@ export type BundleStep =
       disableSecond: boolean
     }
 
+/** A slot of a trader account's TP/SL account, with its live legs only. */
+export type ConditionalSlot = ConditionalPacket & {
+  /** The index a cancel names: 1 to 191, as Phoenix reserves slot 0. */
+  slot: number
+}
+
+/** A Rise request's trigger: `greaterTrigger` or `lessTrigger`. */
+export type TriggerRequest = NonNullable<
+  PlacePositionConditionalOrderRequest['greaterTrigger']
+>
+
 const startsWith = (data: Uint8Array, prefix: Uint8Array | undefined) =>
   prefix !== undefined &&
   data.length >= prefix.length &&
@@ -1065,6 +1078,62 @@ function triggerPacket(
     triggerPriceInTicks: trigger.triggerPrice,
     executionPriceInTicks: trigger.executionPrice,
   }
+}
+
+type CollectionOrder = ReturnType<
+  typeof decodeConditionalOrderCollection
+>['orders'][number]
+
+function liveLeg(
+  leg: CollectionOrder['greaterTriggerOrder'],
+  direction: Direction,
+): TriggerPacket | null {
+  if (!leg.isActive) return null
+  if (leg.executionDirection !== direction)
+    throw new PhoenixError(
+      'check_failed',
+      'A TP/SL leg in the account fires the wrong way for its place; nothing was built',
+    )
+  return triggerPacket({
+    ...leg,
+    triggerDirection: leg.executionDirection,
+  })
+}
+
+/**
+ * The live slots of a TP/SL account, read from its on-chain data. One slot
+ * holds a greater and a less leg that share one size. A cancelled slot stays
+ * in the account inactive, so only active legs come back.
+ */
+export function conditionalSlots(
+  data: Uint8Array,
+  traderAccount: Address,
+): ConditionalSlot[] {
+  const collection = tryDecode(() => decodeConditionalOrderCollection(data))
+  if (!collection)
+    throw new PhoenixError(
+      'upstream_error',
+      'Could not read the Phoenix TP/SL account',
+    )
+  if (collection.header.traderKey !== traderAccount)
+    throw new PhoenixError(
+      'check_failed',
+      'The Phoenix TP/SL account belongs to another trader; nothing was built',
+    )
+  return collection.activeOrderIndices.flatMap((slot) => {
+    const order = collection.orders[slot]
+    if (!order) return []
+    return [
+      {
+        slot,
+        assetId: order.assetId,
+        greater: liveLeg(order.greaterTriggerOrder, Direction.GreaterThan),
+        less: liveLeg(order.lessTriggerOrder, Direction.LessThan),
+        sizeBaseLots: order.usePercent ? null : order.maxSize,
+        sizePercent: order.usePercent ? order.percent : null,
+      },
+    ]
+  })
 }
 
 /** Reads one Phoenix instruction, or returns null when it is no known step. */

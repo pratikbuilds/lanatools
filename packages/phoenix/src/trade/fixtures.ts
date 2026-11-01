@@ -1,8 +1,13 @@
 import {
+  ACCOUNT_DISCRIMINANTS,
+  Direction,
   OrderFlags,
   SelfTradeBehavior,
   Side,
+  StopLossOrderKind,
   baseLots,
+  buildCancelConditionalOrderIx,
+  buildPlacePositionConditionalOrderIx,
   getOnboardTraderDelegatedEncoder,
   getPlaceMarketOrderEncoder,
   getPlacePostOnlyOrderEncoder,
@@ -14,11 +19,18 @@ import {
   AccountRole,
   address,
   blockhash,
+  getAddressEncoder,
   getBase58Decoder,
   getBase64Encoder,
 } from '@solana/kit'
 import type { Address, Instruction } from '@solana/kit'
-import { PHOENIX_PROGRAM } from './rise'
+import {
+  PHOENIX_PROGRAM,
+  conditionalOrdersAddress,
+  toInstruction,
+  traderAccountAddress,
+} from './rise'
+import type { PhoenixOrders, TriggerPacket, TriggerRequest } from './rise'
 import { ExchangeKeys } from './schemas'
 import traderAccount from './fixtures/trader-account.json'
 import type { TradeRpc } from './transaction'
@@ -305,4 +317,161 @@ export const SOL_BOOK = {
     [115.2, 284.43],
     [115.16, 157.09],
   ],
+}
+
+/** One slot of `conditionalAccountData`; a missing leg is inactive. */
+export type FakeSlot = {
+  slot: number
+  assetId?: number
+  sizeBaseLots?: bigint
+  sizePercent?: number
+  greater?: Omit<TriggerPacket, 'triggerDirection'> | undefined
+  less?: Omit<TriggerPacket, 'triggerDirection'> | undefined
+}
+
+const HEADER_BYTES = 96
+const ORDER_BYTES = 112
+function writeLeg(
+  view: DataView,
+  offset: number,
+  leg: FakeSlot['greater'],
+  greater: boolean,
+) {
+  if (!leg) return
+  view.setBigUint64(offset, leg.triggerPriceInTicks, true)
+  view.setBigUint64(offset + 8, leg.executionPriceInTicks, true)
+  view.setUint8(
+    offset + 17,
+    0x01 |
+      (greater ? 0x02 : 0) |
+      (leg.side === 'buy' ? 0x04 : 0) |
+      (leg.orderKind === 'limit' ? 0x08 : 0),
+  )
+}
+
+/** A TP/SL account's bytes, in the layout Rise's decoder reads. */
+export function conditionalAccountData(
+  trader: Address,
+  slots: readonly FakeSlot[],
+  capacity = Math.max(8, ...slots.map((each) => each.slot + 1)),
+) {
+  const bytes = new Uint8Array(HEADER_BYTES + capacity * ORDER_BYTES)
+  bytes.set(ACCOUNT_DISCRIMINANTS.CONDITIONAL_ORDER_COLLECTION ?? [], 0)
+  bytes.set(getAddressEncoder().encode(trader), 8)
+  const view = new DataView(bytes.buffer)
+  view.setUint8(88, slots.length)
+  view.setUint8(89, capacity)
+  for (const each of slots) {
+    const start = HEADER_BYTES + each.slot * ORDER_BYTES
+    view.setBigUint64(start + 24, each.sizeBaseLots ?? 0n, true)
+    view.setUint32(start + 56, each.assetId ?? 0, true)
+    if (each.sizePercent !== undefined) {
+      view.setUint8(start + 60, 0x01)
+      view.setUint8(start + 61, each.sizePercent)
+    }
+    writeLeg(view, start + 64, each.greater, true)
+    writeLeg(view, start + 88, each.less, false)
+  }
+  return bytes
+}
+
+const riseLeg = (trigger: TriggerRequest, direction: Direction) => ({
+  triggerDirection: direction,
+  tradeSide: trigger.side === 'buy' ? Side.Bid : Side.Ask,
+  orderKind:
+    trigger.orderKind === 'limit'
+      ? StopLossOrderKind.Limit
+      : StopLossOrderKind.IOC,
+  triggerPrice: ticks(BigInt(trigger.triggerPriceInTicks ?? 0)),
+  executionPrice: ticks(BigInt(trigger.executionPriceInTicks ?? 0)),
+})
+
+/**
+ * Phoenix's build routes from memory, through Rise's real builders. `calls`
+ * records each request; `tamper` changes one before it is built, as a wrong
+ * server answer would.
+ */
+export function fakeOrders({
+  tamperPlace = (request) => request,
+  tamperCancel = (request) => request,
+}: {
+  tamperPlace?: (
+    request: Parameters<PhoenixOrders['placePositionConditionalOrder']>[0],
+  ) => Parameters<PhoenixOrders['placePositionConditionalOrder']>[0]
+  tamperCancel?: (
+    request: Parameters<PhoenixOrders['cancelConditionalOrder']>[0],
+  ) => Parameters<PhoenixOrders['cancelConditionalOrder']>[0]
+} = {}) {
+  const place: Array<
+    Parameters<PhoenixOrders['placePositionConditionalOrder']>[0]
+  > = []
+  const cancel: Array<Parameters<PhoenixOrders['cancelConditionalOrder']>[0]> =
+    []
+  const traderOf = (authority: string, subaccount?: number | null) =>
+    traderAccountAddress(address(authority), subaccount ?? 0)
+  const orders: PhoenixOrders = {
+    placeIsolatedMarketOrder: () => {
+      throw new Error('unexpected isolated market order')
+    },
+    placeIsolatedLimitOrder: () => {
+      throw new Error('unexpected isolated limit order')
+    },
+    placePositionConditionalOrder: async (asked) => {
+      place.push(asked)
+      const request = tamperPlace(asked)
+      const trader = await traderOf(
+        request.authority,
+        request.traderSubaccountIndex,
+      )
+      return [
+        toInstruction(
+          buildPlacePositionConditionalOrderIx({
+            payer: address(request.authority) as never,
+            traderAccount: trader as never,
+            perpAssetMap: KEYS.perpAssetMap as never,
+            globalTraderIndex: KEYS.globalTraderIndex as never,
+            activeTraderBuffer: KEYS.activeTraderBuffer as never,
+            orderbook: address(SOL_MARKET.marketPubkey) as never,
+            splineCollection: address(SOL_MARKET.splinePubkey) as never,
+            traderWallet: address(request.authority) as never,
+            traderConditionalOrders: await conditionalOrdersAddress(trader),
+            assetId: SOL_MARKET.assetId,
+            greaterTriggerOrder: request.greaterTrigger
+              ? riseLeg(request.greaterTrigger, Direction.GreaterThan)
+              : null,
+            lessTriggerOrder: request.lessTrigger
+              ? riseLeg(request.lessTrigger, Direction.LessThan)
+              : null,
+            sizeBaseLots:
+              request.numBaseLots === undefined || request.numBaseLots === null
+                ? null
+                : baseLots(BigInt(request.numBaseLots)),
+            sizePercent: request.sizePercent ?? null,
+          }),
+        ),
+      ]
+    },
+    cancelConditionalOrder: async (asked) => {
+      cancel.push(asked)
+      const request = tamperCancel(asked)
+      const trader = await traderOf(
+        request.authority,
+        request.traderSubaccountIndex,
+      )
+      return [
+        toInstruction(
+          buildCancelConditionalOrderIx({
+            traderAccount: trader as never,
+            traderWallet: address(request.authority) as never,
+            orderbook: address(SOL_MARKET.marketPubkey) as never,
+            traderConditionalOrders: await conditionalOrdersAddress(trader),
+            conditionalOrderIndex: request.conditionalOrderIndex,
+            disableFirst: request.executionDirection === 'greater_than',
+            disableSecond: request.executionDirection === 'less_than',
+          }),
+        ),
+      ]
+    },
+  }
+  return { orders, place, cancel }
 }

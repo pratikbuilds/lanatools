@@ -372,7 +372,7 @@ test('each client sees the catalog and only the tool families it was given', asy
   expect(phoenix).not.toContain('phoenix_market_order')
   expect(phoenix).not.toContain('phoenix_activate_account')
   const trading = await list(['account:read', 'phoenix:trade'])
-  expect(count(trading, 'phoenix_')).toBe(8)
+  expect(count(trading, 'phoenix_')).toBe(10)
   expect(trading).toContain('phoenix_activate_account')
   expect(trading).toContain('phoenix_market_order')
   expect(trading).not.toContain('phoenix_get_account')

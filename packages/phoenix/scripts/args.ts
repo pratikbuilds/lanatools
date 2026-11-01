@@ -26,6 +26,8 @@ Commands:
   cancel <symbol> [--id ID ...] [--subaccount N]
   close <symbol> [--fraction F] (--slippage-bps N | --limit-price P) [--subaccount N]
   add-margin <symbol> <usdc> [--subaccount N]
+  set-tpsl <symbol> [--tp P --tp-worst P] [--sl P --sl-worst P] (--percent N | --size S) [--subaccount N]
+  cancel-tpsl <symbol> <takeProfit|stopLoss|both> [--slot N] [--subaccount N]
 
 Options:
   --rpc URL        Solana mainnet RPC (required)
@@ -82,6 +84,40 @@ function asset(value: string | undefined) {
   return { asset: value }
 }
 
+/** A TP or SL: a trigger and its worst price come together (D5). */
+function trigger(
+  price: string | undefined,
+  worst: string | undefined,
+  flag: string,
+) {
+  if ((price === undefined) !== (worst === undefined))
+    throw new UsageError(`Give both --${flag} and --${flag}-worst`)
+  return price === undefined
+    ? undefined
+    : { triggerPrice: price, worstPrice: worst }
+}
+
+function leg(value: string | undefined) {
+  const given = need(value, 'leg (takeProfit, stopLoss or both)')
+  if (given !== 'takeProfit' && given !== 'stopLoss' && given !== 'both')
+    throw new UsageError(
+      `Leg must be takeProfit, stopLoss or both, not ${given}`,
+    )
+  return given
+}
+
+/** How much of a position a TP/SL covers: exactly one, no default. */
+function coverage(percent: string | undefined, size: string | undefined) {
+  if ((percent === undefined) === (size === undefined))
+    throw new UsageError('Give exactly one of --percent or --size')
+  return percent === undefined
+    ? { size }
+    : { percent: integer(percent, '--percent') }
+}
+
+const subaccount = (value: string | undefined) =>
+  value === undefined ? {} : { subaccount: integer(value, '--subaccount') }
+
 /** The worst price of a market or close order: exactly one, no default (D1). */
 function worstPrice(slippage: string | undefined, limit: string | undefined) {
   if ((slippage === undefined) === (limit === undefined))
@@ -136,6 +172,13 @@ export function parseCli(argv: readonly string[]): CliArgs {
         'collateral-sol': { type: 'string' },
         subaccount: { type: 'string' },
         asset: { type: 'string' },
+        tp: { type: 'string' },
+        'tp-worst': { type: 'string' },
+        sl: { type: 'string' },
+        'sl-worst': { type: 'string' },
+        percent: { type: 'string' },
+        size: { type: 'string' },
+        slot: { type: 'string' },
       },
     })
   } catch (error) {
@@ -151,10 +194,6 @@ export function parseCli(argv: readonly string[]): CliArgs {
       values['collateral-usdc'],
       values['collateral-sol'],
     )
-  const subaccount = () =>
-    values.subaccount === undefined
-      ? {}
-      : { subaccount: integer(values.subaccount, '--subaccount') }
 
   let command: Command
   switch (name) {
@@ -211,7 +250,7 @@ export function parseCli(argv: readonly string[]): CliArgs {
         tool: 'phoenix_cancel_orders',
         input: {
           symbol: arg(0, 'market symbol'),
-          ...subaccount(),
+          ...subaccount(values.subaccount),
           ...(values.id ? { orderIds: values.id } : {}),
         },
       }
@@ -222,7 +261,7 @@ export function parseCli(argv: readonly string[]): CliArgs {
         tool: 'phoenix_close_position',
         input: {
           symbol: arg(0, 'market symbol'),
-          ...subaccount(),
+          ...subaccount(values.subaccount),
           ...(values.fraction === undefined
             ? {}
             : { fraction: decimal(values.fraction, '--fraction') }),
@@ -237,7 +276,39 @@ export function parseCli(argv: readonly string[]): CliArgs {
         input: {
           symbol: arg(0, 'market symbol'),
           amount: arg(1, 'USDC amount'),
-          ...subaccount(),
+          ...subaccount(values.subaccount),
+        },
+      }
+      break
+    case 'set-tpsl': {
+      const takeProfit = trigger(values.tp, values['tp-worst'], 'tp')
+      const stopLoss = trigger(values.sl, values['sl-worst'], 'sl')
+      if (!takeProfit && !stopLoss)
+        throw new UsageError('Give --tp, --sl or both')
+      command = {
+        command: 'tool',
+        tool: 'phoenix_set_tpsl',
+        input: {
+          symbol: arg(0, 'market symbol'),
+          ...(takeProfit ? { takeProfit } : {}),
+          ...(stopLoss ? { stopLoss } : {}),
+          ...coverage(values.percent, values.size),
+          ...subaccount(values.subaccount),
+        },
+      }
+      break
+    }
+    case 'cancel-tpsl':
+      command = {
+        command: 'tool',
+        tool: 'phoenix_cancel_tpsl',
+        input: {
+          symbol: arg(0, 'market symbol'),
+          leg: leg(rest[1]),
+          ...(values.slot === undefined
+            ? {}
+            : { slot: integer(values.slot, '--slot') }),
+          ...subaccount(values.subaccount),
         },
       }
       break

@@ -5,6 +5,7 @@ import {
 import {
   SOLANA_ERROR__JSON_RPC__SERVER_ERROR_SEND_TRANSACTION_PREFLIGHT_FAILURE,
   SOLANA_ERROR__TRANSACTION_ERROR__ALREADY_PROCESSED,
+  SOLANA_ERROR__TRANSACTION__TOO_MANY_INSTRUCTIONS,
   appendTransactionMessageInstructions,
   assertIsFullySignedTransaction,
   blockhash as toBlockhash,
@@ -18,6 +19,7 @@ import {
   getSignatureFromTransaction,
   getTransactionDecoder,
   isSolanaError,
+  isTransactionWithinSizeLimit,
   pipe,
   setTransactionMessageFeePayer,
   setTransactionMessageLifetimeUsingBlockhash,
@@ -133,6 +135,42 @@ export async function simulateTransaction(
       'The RPC simulated the transaction but reported no compute use',
     )
   return { ok: true, computeUnits, logs }
+}
+
+/** Whether `instructions` fit one transaction beside our compute budget. */
+export function fitsOneTransaction(
+  feePayer: Address,
+  instructions: readonly Instruction[],
+) {
+  const message = pipe(
+    createTransactionMessage({ version: 0 }),
+    (draft) => setTransactionMessageFeePayer(feePayer, draft),
+    (draft) =>
+      setTransactionMessageLifetimeUsingBlockhash(
+        {
+          blockhash: toBlockhash('11111111111111111111111111111111'),
+          lastValidBlockHeight: 0n,
+        },
+        draft,
+      ),
+    (draft) =>
+      appendTransactionMessageInstructions(
+        [
+          getSetComputeUnitLimitInstruction({ units: MAX_COMPUTE_UNITS }),
+          getSetComputeUnitPriceInstruction({ microLamports: 1n }),
+          ...instructions,
+        ],
+        draft,
+      ),
+  )
+  try {
+    return isTransactionWithinSizeLimit(compileTransaction(message))
+  } catch (error) {
+    // Kit refuses to compile a message over its instruction limit.
+    if (isSolanaError(error, SOLANA_ERROR__TRANSACTION__TOO_MANY_INSTRUCTIONS))
+      return false
+    throw error
+  }
 }
 
 /**

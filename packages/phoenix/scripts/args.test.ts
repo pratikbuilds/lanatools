@@ -119,6 +119,68 @@ test('each command maps to its trade tool and input', () => {
         input: { symbol: 'GOLD', amount: '2.5', subaccount: 3 },
       },
     ],
+    [
+      [
+        'set-tpsl',
+        'SOL',
+        '--tp',
+        '120',
+        '--tp-worst',
+        '119',
+        '--sl',
+        '110',
+        '--sl-worst',
+        '105',
+        '--percent',
+        '50',
+      ],
+      {
+        tool: 'phoenix_set_tpsl',
+        input: {
+          symbol: 'SOL',
+          takeProfit: { triggerPrice: '120', worstPrice: '119' },
+          stopLoss: { triggerPrice: '110', worstPrice: '105' },
+          percent: 50,
+        },
+      },
+    ],
+    [
+      [
+        'set-tpsl',
+        'GOLD',
+        '--sl',
+        '3700',
+        '--sl-worst',
+        '3600',
+        '--size',
+        '0.001',
+        '--subaccount',
+        '3',
+      ],
+      {
+        tool: 'phoenix_set_tpsl',
+        input: {
+          symbol: 'GOLD',
+          stopLoss: { triggerPrice: '3700', worstPrice: '3600' },
+          size: '0.001',
+          subaccount: 3,
+        },
+      },
+    ],
+    [
+      ['cancel-tpsl', 'SOL', 'takeProfit'],
+      {
+        tool: 'phoenix_cancel_tpsl',
+        input: { symbol: 'SOL', leg: 'takeProfit' },
+      },
+    ],
+    [
+      ['cancel-tpsl', 'SOL', 'both', '--slot', '2', '--subaccount', '3'],
+      {
+        tool: 'phoenix_cancel_tpsl',
+        input: { symbol: 'SOL', leg: 'both', slot: 2, subaccount: 3 },
+      },
+    ],
   ]
   for (const [argv, expected] of cases)
     expect(parseCli([...argv, ...RPC])).toMatchObject({
@@ -234,6 +296,39 @@ test('market and close orders need exactly one worst price', () => {
     expect(() => parseCli([...argv, ...RPC])).toThrow(
       'Give exactly one of --slippage-bps or --limit-price',
     )
+})
+
+test('set-tpsl needs a leg, both of its prices, and exactly one size', () => {
+  const tp = ['--tp', '120', '--tp-worst', '119']
+  for (const [argv, message] of [
+    [['set-tpsl', 'SOL', '--percent', '50'], 'Give --tp, --sl or both'],
+    [
+      ['set-tpsl', 'SOL', '--tp', '120', '--percent', '50'],
+      'Give both --tp and --tp-worst',
+    ],
+    [
+      ['set-tpsl', 'SOL', '--sl-worst', '105', '--percent', '50'],
+      'Give both --sl and --sl-worst',
+    ],
+    [['set-tpsl', 'SOL', ...tp], 'Give exactly one of --percent or --size'],
+    [
+      ['set-tpsl', 'SOL', ...tp, '--percent', '50', '--size', '1'],
+      'Give exactly one of --percent or --size',
+    ],
+    [['set-tpsl', 'SOL', ...tp, '--percent', 'half'], 'whole number'],
+    [['set-tpsl', ...tp, '--percent', '50'], 'Missing market symbol'],
+  ] as const)
+    expect(() => parseCli([...argv, ...RPC])).toThrow(message)
+})
+
+test('cancel-tpsl needs a market and a leg', () => {
+  for (const [argv, message] of [
+    [['cancel-tpsl'], 'Missing market symbol'],
+    [['cancel-tpsl', 'SOL'], 'Missing leg'],
+    [['cancel-tpsl', 'SOL', 'all'], 'Leg must be takeProfit, stopLoss or both'],
+    [['cancel-tpsl', 'SOL', 'both', '--slot', 'x'], 'whole number'],
+  ] as const)
+    expect(() => parseCli([...argv, ...RPC])).toThrow(message)
 })
 
 test('missing or malformed arguments are usage errors', () => {

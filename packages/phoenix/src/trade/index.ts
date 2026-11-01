@@ -11,10 +11,12 @@ import type { TradeOpts, TradeOutcome, TradeTool } from './tool'
 import { activateAccount } from './tools/activate'
 import { addIsolatedMargin } from './tools/add-margin'
 import { cancelOrders } from './tools/cancel'
+import { cancelTpsl } from './tools/cancel-tpsl'
 import { closePosition } from './tools/close'
 import { deposit } from './tools/deposit'
 import { limitOrder } from './tools/limit-order'
 import { marketOrder } from './tools/market-order'
+import { setTpsl } from './tools/set-tpsl'
 import { withdraw } from './tools/withdraw'
 
 /** Phoenix trade tools, in the order an agent usually needs them. */
@@ -26,6 +28,8 @@ export const phoenixTrade = [
   cancelOrders,
   closePosition,
   addIsolatedMargin,
+  setTpsl,
+  cancelTpsl,
   withdraw,
 ] as const
 
@@ -37,6 +41,8 @@ export const phoenixTransactionTools = [
   phoenixTransactionTool(cancelOrders),
   phoenixTransactionTool(closePosition),
   phoenixTransactionTool(addIsolatedMargin),
+  phoenixTransactionTool(setTpsl),
+  phoenixTransactionTool(cancelTpsl),
   phoenixTransactionTool(withdraw),
 ]
 export type { PhoenixTransactionContext } from './operation'
@@ -56,6 +62,8 @@ const runners = new Map<string, Runner>([
   [cancelOrders.name, runnerFor(cancelOrders)],
   [closePosition.name, runnerFor(closePosition)],
   [addIsolatedMargin.name, runnerFor(addIsolatedMargin)],
+  [setTpsl.name, runnerFor(setTpsl)],
+  [cancelTpsl.name, runnerFor(cancelTpsl)],
   [withdraw.name, runnerFor(withdraw)],
 ])
 

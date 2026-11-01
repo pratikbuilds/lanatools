@@ -59,9 +59,10 @@ All on 2026-11-01. Simulations were unsigned and used public wallets, as in the 
 **Not known yet**
 
 - **How long a trigger takes to fire** (**Q1**), and **whether a missed stop is retried** (**Q2**).
-- **One unexplained failure.** Four partial TP/SL simulations on AMZN failed with `InvalidInstructionData`. The same kinds of request passed minutes later, and that wallet's AMZN position had changed in between. Having no position gives a different error, so the cause is still open; Phase 4 must explain it.
 - Whether cross market order plus TP/SL works in one transaction. Only the isolated path is simulated. Rise's README says that path is full-position only, so partial TP/SL goes through `phoenix_set_tpsl`.
 - Isolated limit orders have not been simulated.
+- **Explained in Phase 4: the AMZN failure.** `InvalidInstructionData` is how Phoenix reports "Conditional order must be in opposite direction of trader position". That wallet's AMZN position had flipped, so the triggers fired on the position's own side. Size, entry and distance from mark do not cause it. No position gives `InvalidAccountData`.
+- **Answered in Phase 4: a cancel's index.** It is a slot in the on-chain TP/SL account, not `conditionalStopLossId`. `disableFirst` is the greater leg and `disableSecond` the less, shown by simulating Phoenix's route on a live position.
 
 ## 3. Design
 

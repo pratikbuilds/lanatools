@@ -180,3 +180,34 @@ test('before preparation the review carries what the agent asked for as trade da
     action: 'activate',
   })
 })
+
+test('TP/SL tools carry their terms before preparation', () => {
+  const set = describe('phoenix_set_tpsl', {
+    symbol: 'SOL',
+    subaccount: 3,
+    takeProfit: { triggerPrice: '120', worstPrice: '119' },
+    stopLoss: { triggerPrice: '110', worstPrice: '105' },
+    percent: 50,
+  })
+  expect(set.trade).toEqual({
+    kind: 'perp',
+    venue: 'phoenix',
+    action: 'set_tpsl',
+    symbol: 'SOL',
+    subaccount: 3,
+    takeProfitPrice: '120',
+    stopLossPrice: '110',
+  })
+  expect(set.fields).toContainEqual({
+    label: 'takeProfit',
+    value: 'triggerPrice 120, worstPrice 119',
+  })
+  expect(
+    describe('phoenix_cancel_tpsl', { symbol: 'SOL', leg: 'both' }).trade,
+  ).toEqual({
+    kind: 'perp',
+    venue: 'phoenix',
+    action: 'cancel_tpsl',
+    symbol: 'SOL',
+  })
+})

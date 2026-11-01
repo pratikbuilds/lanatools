@@ -7,6 +7,7 @@ import type { BundleIntent } from './checks'
 import bundles from './fixtures/phoenix-bundles.json'
 import {
   addMarginInstructions,
+  conditionalOrdersAddress,
   decodeBundleStep,
   sweepInstructions,
   toInstruction,
@@ -17,6 +18,7 @@ import { ExchangeKeys } from './schemas'
 
 // Real responses from Phoenix's build routes, 2026-11-01. Wallets are public.
 const A = address(bundles.wallets.A)
+const C = address(bundles.wallets.C)
 const D = address(bundles.wallets.D)
 const STRANGER = address('11111111111111111111111111111112')
 const keys = ExchangeKeys.parse(bundles.keys)
@@ -56,6 +58,15 @@ const openIntent: BundleIntent = {
     sizeBaseLots: null,
     sizePercent: 100,
   },
+}
+
+// A real wallet's live TP/SL: Phoenix's cancel route, 2026-11-01.
+const cancelIntent: BundleIntent = {
+  wallet: C,
+  keys,
+  market:
+    bundles.markets[bundles.cancelMeta.symbol as keyof typeof bundles.markets],
+  subaccount: 0,
 }
 
 const { conditional: _conditional, ...noTpsl } = openIntent
@@ -189,6 +200,67 @@ describe('checkPhoenixBundle accepts what Phoenix really builds', () => {
       }),
     ).toEqual({ subaccount: 0 })
   })
+
+  test('a fixed-size TP and SL on an isolated short', async () => {
+    const meta = bundles.isolatedShortMeta
+    const market = bundles.markets[meta.symbol as keyof typeof bundles.markets]
+    expect(
+      await checkPhoenixBundle(instructions(bundles.isolatedShort), {
+        wallet: D,
+        keys,
+        market,
+        subaccount: meta.subaccount,
+        conditional: {
+          assetId: market.assetId,
+          greater: {
+            triggerDirection: 'greater',
+            side: 'buy',
+            orderKind: 'ioc',
+            triggerPriceInTicks: BigInt(meta.greaterTicks),
+            executionPriceInTicks: BigInt(meta.worstTicks),
+          },
+          less: {
+            triggerDirection: 'less',
+            side: 'buy',
+            orderKind: 'limit',
+            triggerPriceInTicks: BigInt(meta.lessTicks),
+            executionPriceInTicks: BigInt(meta.lessTicks),
+          },
+          sizeBaseLots: 1n,
+          sizePercent: null,
+        },
+      }),
+    ).toEqual({ subaccount: meta.subaccount })
+  })
+
+  test('cancelling each leg of a live TP/SL', async () => {
+    const { slot } = bundles.cancelMeta
+    expect(
+      await checkPhoenixBundle(instructions(bundles.cancelGreater), {
+        ...cancelIntent,
+        cancels: [{ slot, leg: 'greater' }],
+      }),
+    ).toEqual({ subaccount: 0 })
+    await checkPhoenixBundle(instructions(bundles.cancelLess), {
+      ...cancelIntent,
+      cancels: [{ slot, leg: 'less' }],
+    })
+  })
+
+  test('cancelling both legs in one transaction', () =>
+    checkPhoenixBundle(
+      [
+        ...instructions(bundles.cancelLess),
+        ...instructions(bundles.cancelGreater),
+      ],
+      {
+        ...cancelIntent,
+        cancels: [
+          { slot: bundles.cancelMeta.slot, leg: 'greater' },
+          { slot: bundles.cancelMeta.slot, leg: 'less' },
+        ],
+      },
+    ))
 })
 
 const replaceAccount = (from: string, to: string) =>
@@ -390,6 +462,135 @@ describe('checkPhoenixBundle refuses a wrong answer', () => {
       ],
       openIntent,
       'unexpected signer',
+    )
+  })
+})
+
+describe('checkPhoenixBundle holds a TP/SL cancel to the request', () => {
+  const { slot } = bundles.cancelMeta
+  const greater = instructions(bundles.cancelGreater)
+  const less = instructions(bundles.cancelLess)
+  const wantGreater = {
+    ...cancelIntent,
+    cancels: [{ slot, leg: 'greater' as const }],
+  }
+
+  test('a real cancel is one instruction of 7 accounts', () => {
+    expect(greater).toHaveLength(1)
+    expect(greater[0]?.accounts).toHaveLength(7)
+    expect(decodeBundleStep(Uint8Array.from(greater[0]?.data ?? []))).toEqual({
+      kind: 'cancel_conditional',
+      index: slot,
+      disableFirst: true,
+      disableSecond: false,
+    })
+    expect(decodeBundleStep(Uint8Array.from(less[0]?.data ?? []))).toEqual({
+      kind: 'cancel_conditional',
+      index: slot,
+      disableFirst: false,
+      disableSecond: true,
+    })
+  })
+
+  test('the other leg', () =>
+    refused(less, wantGreater, 'cancels a TP/SL nobody asked to'))
+
+  test('another slot', () =>
+    refused(
+      greater,
+      { ...cancelIntent, cancels: [{ slot: slot + 1, leg: 'greater' }] },
+      'cancels a TP/SL nobody asked to',
+    ))
+
+  test('a cancel nobody asked for', async () => {
+    await refused(greater, cancelIntent, 'cancels a TP/SL nobody asked to')
+    await refused(
+      [...greater, ...less],
+      wantGreater,
+      'cancels a TP/SL nobody asked to',
+    )
+  })
+
+  test('the same cancel twice', () =>
+    refused(
+      [...greater, ...greater],
+      wantGreater,
+      'cancels a TP/SL nobody asked to',
+    ))
+
+  test('a cancel that is missing', () =>
+    refused(
+      greater,
+      {
+        ...cancelIntent,
+        cancels: [
+          { slot, leg: 'greater' },
+          { slot, leg: 'less' },
+        ],
+      },
+      'TP/SL cancel is missing',
+    ))
+
+  test('a cancel that names no leg or both', async () => {
+    const [instruction] = greater
+    if (!instruction) throw new Error('fixture has an instruction')
+    for (const flags of [
+      [0, 0],
+      [1, 1],
+    ] as const) {
+      const data = Uint8Array.from(instruction.data ?? [])
+      data.set(flags, data.length - 2)
+      await refused(
+        [{ ...instruction, data }],
+        wantGreater,
+        'does not name one leg',
+      )
+    }
+  })
+
+  test('a cancel for another market', () =>
+    refused(
+      greater,
+      {
+        ...wantGreater,
+        market: { ...cancelIntent.market, marketPubkey: STRANGER },
+      },
+      'unexpected account',
+    ))
+
+  test("a cancel of another trader's TP/SL", async () => {
+    const [instruction] = greater
+    if (!instruction) throw new Error('fixture has an instruction')
+    const other = await conditionalOrdersAddress(await traderAccountAddress(D))
+    await refused(
+      [
+        {
+          ...instruction,
+          accounts: (instruction.accounts ?? []).map((account, position) =>
+            position === 6 ? { ...account, address: other } : account,
+          ),
+        },
+      ],
+      wantGreater,
+      'unexpected account',
+    )
+  })
+
+  test('a cancel for the wrong wallet', () =>
+    refused(greater, { ...wantGreater, wallet: D }, 'unexpected'))
+
+  test('accounts in the wrong places', async () => {
+    const [instruction] = greater
+    if (!instruction) throw new Error('fixture has an instruction')
+    const accounts = [...(instruction.accounts ?? [])]
+    const [trader, , market] = [accounts[3], accounts[4], accounts[5]]
+    if (!trader || !market) throw new Error('fixture has accounts')
+    accounts[3] = market
+    accounts[5] = trader
+    await refused(
+      [{ ...instruction, accounts }],
+      wantGreater,
+      'another account or market',
     )
   })
 })

@@ -65,6 +65,21 @@ const collateral = (input: Arguments) =>
     ? { asset: 'SOL', amountSol: text(input.amount) }
     : { asset: 'USDC', amountUsdc: text(input.amount) }
 
+const triggerPrice = (value: unknown) =>
+  typeof value === 'object' && value !== null && 'triggerPrice' in value
+    ? text(value.triggerPrice)
+    : undefined
+
+/** An input as one line of the review: objects such as a trigger, spelled out. */
+function fieldValue(value: unknown) {
+  if (Array.isArray(value)) return value.join(', ')
+  if (typeof value === 'object' && value !== null)
+    return Object.entries(value)
+      .map(([key, item]) => `${key} ${String(item)}`)
+      .join(', ')
+  return String(value)
+}
+
 /**
  * What each tool asks for, as trade data, before Phoenix's book is read. The
  * prepared transaction replaces it with the tool's own, exact terms.
@@ -117,6 +132,19 @@ const INTENTS: Record<string, (input: Arguments) => Arguments> = {
     subaccount: count(input.subaccount),
     collateralUsdc: text(input.amount),
   }),
+  phoenix_set_tpsl: (input) => ({
+    action: 'set_tpsl',
+    symbol: text(input.symbol),
+    subaccount: count(input.subaccount),
+    size: text(input.size),
+    takeProfitPrice: triggerPrice(input.takeProfit),
+    stopLossPrice: triggerPrice(input.stopLoss),
+  }),
+  phoenix_cancel_tpsl: (input) => ({
+    action: 'cancel_tpsl',
+    symbol: text(input.symbol),
+    subaccount: count(input.subaccount),
+  }),
 }
 
 function intendedTrade(tool: string, input: Arguments) {
@@ -164,10 +192,7 @@ export function phoenixTransactionTool<TSchema extends z.ZodObject>(
           actionLabel: tool.title,
           fields: Object.entries(input)
             .filter(([, value]) => value !== undefined)
-            .map(([label, value]) => ({
-              label,
-              value: Array.isArray(value) ? value.join(', ') : String(value),
-            })),
+            .map(([label, value]) => ({ label, value: fieldValue(value) })),
           ...(trade ? { trade } : {}),
         }
       },

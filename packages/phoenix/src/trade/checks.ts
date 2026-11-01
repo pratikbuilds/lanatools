@@ -380,6 +380,11 @@ export function checkActivation(
     fail('activation does not onboard the trader')
 }
 
+/** One leg of one TP/SL slot to cancel. */
+export type ConditionalCancel = { slot: number; leg: 'greater' | 'less' }
+
+const cancelKey = ({ slot, leg }: ConditionalCancel) => `${slot}:${leg}`
+
 /** What a tool asked Phoenix's server for; `checkPhoenixBundle` holds it to it. */
 export type BundleIntent = {
   wallet: Address
@@ -396,6 +401,8 @@ export type BundleIntent = {
   collateralLamports?: bigint
   /** The position TP/SL this bundle must set, or nothing when none. */
   conditional?: ConditionalPacket
+  /** The TP/SL legs this bundle must cancel, or nothing when none. */
+  cancels?: readonly ConditionalCancel[]
   /** The subaccount, when the tool knows it. New positions leave it out. */
   subaccount?: number
 }
@@ -465,15 +472,16 @@ export async function checkPhoenixBundle(
     fail('the bundle trades in the wrong subaccount')
   const cross = await traderAccountAddress(wallet)
   const child = await traderAccountAddress(wallet, subaccount)
-  const conditionals = new Set<string>([await conditionalOrdersAddress(child)])
+  const conditionals = await conditionalOrdersAddress(child)
   for (const account of unknown)
-    if (!conditionals.has(account))
+    if (account !== conditionals)
       fail(`the bundle writes to an unexpected account ${account}`)
 
   let orders = 0
   let usdc = 0n
   let sol = 0
   let conditional = 0
+  const cancels = new Set((intent.cancels ?? []).map(cancelKey))
   for (const instruction of instructions) {
     const data = bytesOf(instruction)
     const step = decodeBundleStep(data)
@@ -543,8 +551,25 @@ export async function checkPhoenixBundle(
           fail('the TP/SL does not match the request')
         break
       }
-      case 'cancel_conditional':
-        fail('the bundle cancels a TP/SL nobody asked to')
+      case 'cancel_conditional': {
+        // disableFirst is the greater leg, disableSecond the less. Rise does
+        // not say so; a mainnet simulation showed it, from Phoenix's route
+        // and from the accounts after each flag.
+        if (step.disableFirst === step.disableSecond)
+          fail('the TP/SL cancel does not name one leg')
+        const leg = step.disableFirst ? 'greater' : 'less'
+        if (!cancels.delete(cancelKey({ slot: step.index, leg })))
+          fail('the bundle cancels a TP/SL nobody asked to')
+        // CancelConditionalOrder names the trader at 3, the market at 5 and
+        // the TP/SL account at 6.
+        if (
+          instruction.accounts?.[3]?.address !== child ||
+          instruction.accounts[5]?.address !== market.marketPubkey ||
+          instruction.accounts[6]?.address !== conditionals
+        )
+          fail('the TP/SL cancel is for another account or market')
+        break
+      }
     }
   }
   if (orders !== (intent.order ? 1 : 0)) fail('the order is missing')
@@ -553,5 +578,6 @@ export async function checkPhoenixBundle(
   if (sol !== ((intent.collateralLamports ?? 0n) > 0n ? 1 : 0))
     fail('the SOL collateral does not match the request')
   if (conditional !== (intent.conditional ? 1 : 0)) fail('the TP/SL is missing')
+  if (cancels.size > 0) fail('the TP/SL cancel is missing')
   return { subaccount }
 }
