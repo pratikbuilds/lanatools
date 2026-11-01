@@ -56,6 +56,8 @@ export type PositionRef = {
   symbol: string
   assetId: number
   baseLotsDecimals: number
+  /** The account that holds the position; cross margin when left out. */
+  subaccount?: number
 }
 
 type Described = {

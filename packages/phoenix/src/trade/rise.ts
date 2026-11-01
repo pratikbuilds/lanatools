@@ -19,6 +19,10 @@ import {
   buildPlaceMarketOrderIxResolved,
   buildPlacePostOnlyOrderIxResolved,
   buildReferralActivationTransaction,
+  buildSyncParentToChildIxResolved,
+  buildTransferCollateralChildToParentIxResolved,
+  buildTransferCollateralIxResolved,
+  buildTransferNativeSolFromChildToParentIx,
   buildWithdrawIxsResolved,
   decodeTrader,
   encodeTransferNativeSol,
@@ -668,6 +672,88 @@ export function cancelData(targets: readonly CancelTarget[] | null) {
       ? getCancelAllEncoder().encode(undefined)
       : getCancelOrdersByIdEncoder().encode({ orderIds: cancelIds(targets) }),
   )
+}
+
+/** Everything Rise's parent and child builders name for one subaccount. */
+async function isolatedAccounts(
+  wallet: Address,
+  keys: ExchangeKeys,
+  subaccount: number,
+) {
+  const exchange = exchangeAccounts(keys)
+  const [parentTraderAccount, childTraderAccount] = await Promise.all([
+    traderAccountAddress(wallet),
+    traderAccountAddress(wallet, subaccount),
+  ])
+  return {
+    exchange: {
+      phoenixProgramAddress: exchange.phoenixProgramAddress,
+      logAuthorityAddress: exchange.logAuthorityAddress,
+      globalConfigurationAddress: exchange.globalConfigurationAddress,
+      perpAssetMap: exchange.perpAssetMap,
+      globalTraderIndex: exchange.globalTraderIndex,
+      activeTraderBuffer: exchange.activeTraderBuffer,
+    },
+    authority: brand<Authority>(wallet),
+    parentTraderAccount: brand<TraderAddress>(parentTraderAccount),
+    childTraderAccount: brand<TraderAddress>(childTraderAccount),
+  }
+}
+
+/**
+ * Move `amount` USDC base units from cross into an isolated subaccount: sync
+ * the child with its parent, then transfer, in the order Rise's flows use.
+ */
+export async function addMarginInstructions(
+  wallet: Address,
+  keys: ExchangeKeys,
+  subaccount: number,
+  amount: bigint,
+) {
+  const { exchange, authority, parentTraderAccount, childTraderAccount } =
+    await isolatedAccounts(wallet, keys, subaccount)
+  return [
+    buildSyncParentToChildIxResolved({
+      exchange,
+      trader: { authority, parentTraderAccount, childTraderAccount },
+    }),
+    buildTransferCollateralIxResolved({
+      exchange,
+      trader: {
+        authority,
+        srcTraderAccount: parentTraderAccount,
+        dstTraderAccount: childTraderAccount,
+      },
+      amount,
+    }),
+  ].map(toInstruction)
+}
+
+/**
+ * Return an emptied isolated subaccount's USDC and native SOL to cross. Both
+ * are silent no-ops on-chain while the subaccount holds an order or position.
+ */
+export async function sweepInstructions(
+  wallet: Address,
+  keys: ExchangeKeys,
+  subaccount: number,
+) {
+  const { exchange, authority, parentTraderAccount, childTraderAccount } =
+    await isolatedAccounts(wallet, keys, subaccount)
+  return [
+    buildTransferCollateralChildToParentIxResolved({
+      exchange,
+      trader: { authority, childTraderAccount, parentTraderAccount },
+    }),
+    buildTransferNativeSolFromChildToParentIx({
+      trader: authority,
+      childTraderAccount,
+      parentTraderAccount,
+      perpAssetMap: exchange.perpAssetMap,
+      globalTraderIndex: exchange.globalTraderIndex,
+      activeTraderBuffer: exchange.activeTraderBuffer,
+    }),
+  ].map(toInstruction)
 }
 
 /** The cancel instruction, from Rise's resolved builders. */

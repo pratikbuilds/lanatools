@@ -72,6 +72,41 @@ test('each command maps to its trade tool and input', () => {
         input: { symbol: 'SOL', fraction: 0.5, maxSlippageBps: 100 },
       },
     ],
+    [
+      ['close', 'GOLD', '--subaccount', '3', '--limit-price', '3900'],
+      {
+        tool: 'phoenix_close_position',
+        input: { symbol: 'GOLD', subaccount: 3, limitPrice: '3900' },
+      },
+    ],
+    [
+      ['close', 'SOL', '--subaccount', '0', '--slippage-bps', '100'],
+      {
+        tool: 'phoenix_close_position',
+        input: { symbol: 'SOL', subaccount: 0, maxSlippageBps: 100 },
+      },
+    ],
+    [
+      ['cancel', 'GOLD', '--subaccount', '3', '--id', '7'],
+      {
+        tool: 'phoenix_cancel_orders',
+        input: { symbol: 'GOLD', subaccount: 3, orderIds: ['7'] },
+      },
+    ],
+    [
+      ['add-margin', 'GOLD', '2.5'],
+      {
+        tool: 'phoenix_add_isolated_margin',
+        input: { symbol: 'GOLD', amount: '2.5' },
+      },
+    ],
+    [
+      ['add-margin', 'GOLD', '2.5', '--subaccount', '3'],
+      {
+        tool: 'phoenix_add_isolated_margin',
+        input: { symbol: 'GOLD', amount: '2.5', subaccount: 3 },
+      },
+    ],
   ]
   for (const [argv, expected] of cases)
     expect(parseCli([...argv, ...RPC])).toMatchObject({
@@ -194,6 +229,11 @@ test('missing or malformed arguments are usage errors', () => {
     [[], 'Missing command'],
     [['buy'], 'Unknown command buy'],
     [['deposit'], 'Missing USDC amount'],
+    [['add-margin', 'GOLD'], 'Missing USDC amount'],
+    [
+      ['add-margin', 'GOLD', '1', '--subaccount', 'two'],
+      '--subaccount must be a whole number',
+    ],
     [
       ['market', 'SOL', 'long', '1', '--slippage-bps', '5'],
       'Side must be buy or sell',

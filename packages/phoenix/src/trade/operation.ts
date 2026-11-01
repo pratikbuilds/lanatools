@@ -45,6 +45,8 @@ const flag = (value: unknown) =>
   typeof value === 'boolean' ? value : undefined
 const side = (value: unknown) =>
   value === 'buy' || value === 'sell' ? value : undefined
+const count = (value: unknown) =>
+  typeof value === 'number' ? value : undefined
 
 /** An order's isolated terms; a cross order states none. */
 const isolatedTerms = (input: Arguments) =>
@@ -94,6 +96,7 @@ const INTENTS: Record<string, (input: Arguments) => Arguments> = {
   phoenix_cancel_orders: (input) => ({
     action: 'cancel',
     symbol: text(input.symbol),
+    subaccount: count(input.subaccount),
     cancelled: Array.isArray(input.orderIds)
       ? input.orderIds.length
       : undefined,
@@ -102,8 +105,16 @@ const INTENTS: Record<string, (input: Arguments) => Arguments> = {
     action: 'close',
     orderType: 'market',
     symbol: text(input.symbol),
+    subaccount: count(input.subaccount),
     worstPrice: text(input.limitPrice),
     reduceOnly: true,
+  }),
+  phoenix_add_isolated_margin: (input) => ({
+    action: 'add_margin',
+    marginMode: 'isolated',
+    symbol: text(input.symbol),
+    subaccount: count(input.subaccount),
+    collateralUsdc: text(input.amount),
   }),
 }
 
