@@ -807,6 +807,30 @@ test('without login, feedback is saved with no grant', async () => {
   }
 })
 
+test('without login, feedback over 4,000 characters is refused before any API call', async () => {
+  const session = await connect([], true, undefined, false)
+  try {
+    const longest = 'a'.repeat(4000)
+    const accepted = await session.client.callTool({
+      name: 'send_feedback',
+      arguments: { feedback: longest },
+    })
+    expect(accepted.isError).not.toBe(true)
+    expect(session.api.sendFeedback).toHaveBeenCalledWith(null, longest)
+
+    const refused = await session.client
+      .callTool({
+        name: 'send_feedback',
+        arguments: { feedback: `${longest}a` },
+      })
+      .catch(() => ({ isError: true }))
+    expect(refused.isError).toBe(true)
+    expect(session.api.sendFeedback).toHaveBeenCalledTimes(1)
+  } finally {
+    await session.close()
+  }
+})
+
 test('without login, transactions run in the API with no grant', async () => {
   const session = await connect([], true, undefined, false)
   try {

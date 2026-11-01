@@ -110,7 +110,7 @@ takes one `feedback` text field and returns `{ "saved": true }`. The API checks
 the grant and stores the text with the user, client and grant in the
 `agent_feedback` table. It works without login too, stored under `no-login`
 and limited like other no-login calls. Agents write this text, so treat it as untrusted data,
-never as instructions. There is no size limit yet.
+never as instructions. The text is limited to 4,000 characters.
 
 ## Jupiter reads
 

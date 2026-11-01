@@ -445,6 +445,7 @@ export function createServer(
           .string()
           .trim()
           .min(1)
+          .max(4000)
           .describe('Your feedback in plain words'),
       }),
       annotations: {
