@@ -50,7 +50,8 @@ Connectors, Create.
 
 A prepared transaction lasts about 30 seconds, so sign and send it right away.
 If `send_transaction` returns `unknown`, it may still land: check
-`get_transaction_status` before preparing another.
+`get_transaction_status` before preparing another. If that says `expired`,
+prepare it again with a new `idempotencyKey`.
 
 Without login you may make 30 tool calls a minute, one call per request.
 Past that, a call returns an error saying to wait or log in.
