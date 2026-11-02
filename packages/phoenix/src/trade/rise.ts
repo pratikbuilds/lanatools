@@ -235,7 +235,7 @@ export async function conditionalOrdersAddress(traderAccount: Address) {
 }
 
 /** A wallet can hold this many isolated subaccounts. */
-export const MAX_SUBACCOUNTS = 100
+export { MAX_SUBACCOUNTS } from '@ellipsis-labs/rise'
 
 /** The wallet's USDC token account, which deposits draw from. */
 export async function usdcAccountAddress(wallet: Address) {

@@ -210,6 +210,26 @@ describe('checkPhoenixBundle refuses a wrong answer', () => {
     await refused(swapped, openIntent, 'from cross to the subaccount')
   })
 
+  test('an order or TP/SL placed in cross instead of the subaccount', async () => {
+    const child = await traderAccountAddress(A, 1)
+    const cross = await traderAccountAddress(A)
+    const moved = (kind: string) =>
+      open.map((instruction) =>
+        decodeBundleStep(Uint8Array.from(instruction.data ?? []))?.kind === kind
+          ? {
+              ...instruction,
+              accounts: (instruction.accounts ?? []).map((account) =>
+                account.address === child
+                  ? { ...account, address: cross }
+                  : account,
+              ),
+            }
+          : instruction,
+      )
+    await refused(moved('order'), openIntent, 'order is not placed')
+    await refused(moved('place_conditional'), openIntent, 'TP/SL is not set')
+  })
+
   test('another trader’s account', async () => {
     const child = await traderAccountAddress(A, 1)
     await refused(

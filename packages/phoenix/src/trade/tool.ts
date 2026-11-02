@@ -47,6 +47,10 @@ export type Submit =
       login: { message: string; nonceId: string }
     }
 
+/** Shown wherever an isolated position is opened, funded or reviewed. */
+export const ISOLATED_RISK =
+  "Losses are limited to this position's collateral, and it can be liquidated while your cross account still holds funds."
+
 /** The market whose position an order changes, to report what filled. */
 export type PositionRef = {
   symbol: string
