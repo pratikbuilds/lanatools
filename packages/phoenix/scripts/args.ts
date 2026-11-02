@@ -23,8 +23,9 @@ Commands:
   market <symbol> <buy|sell> <size> (--slippage-bps N | --limit-price P) [--reduce-only]
   limit <symbol> <buy|sell> <size> <price> [--post-only] [--reduce-only]
     Either order in isolated margin: --isolated [--collateral-usdc N] [--collateral-sol N]
-  cancel <symbol> [--id ID ...]
-  close <symbol> [--fraction F] (--slippage-bps N | --limit-price P)
+  cancel <symbol> [--id ID ...] [--subaccount N]
+  close <symbol> [--fraction F] (--slippage-bps N | --limit-price P) [--subaccount N]
+  add-margin <symbol> <usdc> [--subaccount N]
 
 Options:
   --rpc URL        Solana mainnet RPC (required)
@@ -125,6 +126,7 @@ export function parseCli(argv: readonly string[]): CliArgs {
         isolated: { type: 'boolean', default: false },
         'collateral-usdc': { type: 'string' },
         'collateral-sol': { type: 'string' },
+        subaccount: { type: 'string' },
       },
     })
   } catch (error) {
@@ -140,6 +142,10 @@ export function parseCli(argv: readonly string[]): CliArgs {
       values['collateral-usdc'],
       values['collateral-sol'],
     )
+  const subaccount = () =>
+    values.subaccount === undefined
+      ? {}
+      : { subaccount: integer(values.subaccount, '--subaccount') }
 
   let command: Command
   switch (name) {
@@ -196,6 +202,7 @@ export function parseCli(argv: readonly string[]): CliArgs {
         tool: 'phoenix_cancel_orders',
         input: {
           symbol: arg(0, 'market symbol'),
+          ...subaccount(),
           ...(values.id ? { orderIds: values.id } : {}),
         },
       }
@@ -206,10 +213,22 @@ export function parseCli(argv: readonly string[]): CliArgs {
         tool: 'phoenix_close_position',
         input: {
           symbol: arg(0, 'market symbol'),
+          ...subaccount(),
           ...(values.fraction === undefined
             ? {}
             : { fraction: decimal(values.fraction, '--fraction') }),
           ...worstPrice(values['slippage-bps'], values['limit-price']),
+        },
+      }
+      break
+    case 'add-margin':
+      command = {
+        command: 'tool',
+        tool: 'phoenix_add_isolated_margin',
+        input: {
+          symbol: arg(0, 'market symbol'),
+          amount: arg(1, 'USDC amount'),
+          ...subaccount(),
         },
       }
       break

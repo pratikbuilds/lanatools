@@ -48,16 +48,19 @@ export function tokenBalance(account: ChainAccount | null) {
 }
 
 /**
- * The wallet's cross-margin position in one market, in tokens (negative for
- * a short), read from the chain: what an order actually filled is the
- * difference before and after it.
+ * The wallet's position in one market, in tokens (negative for a short), in
+ * the account `position` names (cross margin by default), read from the
+ * chain: what an order actually filled is the difference before and after it.
  */
 export async function positionSize(
   rpc: TradeRpc,
   wallet: Address,
   position: PositionRef,
 ) {
-  const trader = await fetchAccount(rpc, await traderAccountAddress(wallet))
+  const trader = await fetchAccount(
+    rpc,
+    await traderAccountAddress(wallet, position.subaccount),
+  )
   const lots = trader ? positionLots(trader.data, position.assetId) : 0n
   return fromLots(lots.toString(), position.baseLotsDecimals)
 }

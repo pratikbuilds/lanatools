@@ -121,9 +121,9 @@ and routing combinations remain unverified by this live test.
 
 ## Phoenix
 
-All seven `phoenix_*` trade tools use the same link, local and embedded paths:
+All eight `phoenix_*` trade tools use the same link, local and embedded paths:
 activate account, deposit, withdraw, market order, limit order, cancel orders,
-and close position. They require `phoenix:trade`, a separate opt-in from
+close position, and add isolated margin. They require `phoenix:trade`, a separate opt-in from
 `phoenix:read`, and a mainnet deployment with a matching RPC. Their checked
 builders, unsigned simulation, accounts and submission routing stay in
 `packages/phoenix/src/trade/operation.ts`. No caller can select the network.

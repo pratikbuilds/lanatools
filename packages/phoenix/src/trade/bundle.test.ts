@@ -5,7 +5,13 @@ import { PhoenixError } from '../client'
 import { checkPhoenixBundle } from './checks'
 import type { BundleIntent } from './checks'
 import bundles from './fixtures/phoenix-bundles.json'
-import { decodeBundleStep, toInstruction, traderAccountAddress } from './rise'
+import {
+  addMarginInstructions,
+  decodeBundleStep,
+  sweepInstructions,
+  toInstruction,
+  traderAccountAddress,
+} from './rise'
 import type { RiseInstruction } from './rise'
 import { ExchangeKeys } from './schemas'
 
@@ -129,6 +135,29 @@ describe('checkPhoenixBundle accepts what Phoenix really builds', () => {
         },
       }),
     ).toEqual({ subaccount: bundles.closeMeta.subaccount })
+  })
+
+  test('adding margin moves exactly that amount into the subaccount', async () => {
+    const market = bundles.markets.STONK
+    const amount = 2_500_000n
+    expect(
+      await checkPhoenixBundle(
+        await addMarginInstructions(D, keys, 3, amount),
+        { wallet: D, keys, market, subaccount: 3, collateralUsdc: amount },
+      ),
+    ).toEqual({ subaccount: 3 })
+  })
+
+  test('sweeps move nothing out of cross', async () => {
+    const market = bundles.markets.STONK
+    expect(
+      await checkPhoenixBundle(await sweepInstructions(D, keys, 3), {
+        wallet: D,
+        keys,
+        market,
+        subaccount: 3,
+      }),
+    ).toEqual({ subaccount: 3 })
   })
 
   test('partial TP and SL on a cross position', async () => {
@@ -282,6 +311,73 @@ describe('checkPhoenixBundle refuses a wrong answer', () => {
 
   test('the wrong subaccount', () =>
     refused(open, { ...openIntent, subaccount: 2 }, 'wrong subaccount'))
+
+  describe('adding margin', () => {
+    const intent = (collateralUsdc: bigint, subaccount = 3): BundleIntent => ({
+      wallet: D,
+      keys,
+      market: bundles.markets.STONK,
+      subaccount,
+      collateralUsdc,
+    })
+
+    test('another amount than asked for', async () => {
+      const built = await addMarginInstructions(D, keys, 3, 1_000_000n)
+      await refused(built, intent(2_000_000n), 'USDC collateral')
+    })
+
+    test('another subaccount than asked for', async () => {
+      const built = await addMarginInstructions(D, keys, 3, 1_000_000n)
+      await refused(built, intent(1_000_000n, 4), 'wrong subaccount')
+    })
+
+    test('collateral moved out of the subaccount', async () => {
+      const cross = await traderAccountAddress(D)
+      const child = await traderAccountAddress(D, 3)
+      const reversed = (
+        await addMarginInstructions(D, keys, 3, 1_000_000n)
+      ).map((instruction) => ({
+        ...instruction,
+        accounts: (instruction.accounts ?? []).map((account) =>
+          account.address === cross
+            ? { ...account, address: child }
+            : account.address === child
+              ? { ...account, address: cross }
+              : account,
+        ),
+      }))
+      await refused(
+        reversed,
+        intent(1_000_000n),
+        'from cross to the subaccount',
+      )
+    })
+  })
+
+  test('a close that takes collateral out of cross', async () => {
+    const market = bundles.markets.STONK
+    const { subaccount } = bundles.closeMeta
+    await refused(
+      [
+        ...instructions(bundles.close),
+        ...(await addMarginInstructions(D, keys, subaccount, 1n)),
+      ],
+      {
+        wallet: D,
+        keys,
+        market,
+        subaccount,
+        order: {
+          kind: 'market',
+          side: 'buy',
+          priceInTicks: 12972n,
+          numBaseLots: 7n,
+          reduceOnly: true,
+        },
+      },
+      'USDC collateral',
+    )
+  })
 
   test('an instruction this check does not know', () => {
     const [first] = open
