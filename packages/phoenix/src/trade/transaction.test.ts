@@ -77,6 +77,31 @@ function readWire(wire: string) {
   }
 }
 
+test('an RPC node behind on blockhashes does not fail the build', async () => {
+  // A node that has not seen the blockhash refuses it unless replaced.
+  const { rpc } = fakeRpc({
+    getLatestBlockhash: latest,
+    simulateTransaction: (_wire, config) => ({
+      value: (config as { replaceRecentBlockhash: boolean })
+        .replaceRecentBlockhash
+        ? { err: null, unitsConsumed: 40_000n, logs: [] }
+        : { err: 'BlockhashNotFound', unitsConsumed: 0n, logs: [] },
+    }),
+  })
+  const built = await buildTransaction(rpc, {
+    feePayer: WALLET,
+    instructions: [phoenixInstruction()],
+    fees: FEES,
+  })
+  expect(built.simulation.ok).toBe(true)
+  // What the wallet signs still carries the blockhash it was built with.
+  const { lifetimeToken } = getCompiledTransactionMessageDecoder().decode(
+    getTransactionDecoder().decode(getBase64Encoder().encode(built.transaction))
+      .messageBytes,
+  )
+  expect(lifetimeToken).toBe(BLOCKHASH)
+})
+
 test('a transaction is measured by simulation and compiled with the margin', async () => {
   const { rpc, calls } = fakeRpc({
     getLatestBlockhash: latest,
@@ -96,7 +121,7 @@ test('a transaction is measured by simulation and compiled with the margin', asy
     encoding: 'base64',
     commitment: 'confirmed',
     sigVerify: false,
-    replaceRecentBlockhash: false,
+    replaceRecentBlockhash: true,
   })
   expect(readWire(String(probe)).units).toBe(MAX_COMPUTE_UNITS)
 
