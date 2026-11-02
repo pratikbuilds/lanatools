@@ -69,6 +69,16 @@ for (const width of [390, 1440]) {
     const positions = page.getByRole('region', { name: 'Positions' })
     await expect(positions.getByText('SOL-PERP')).toBeVisible()
     await expect(positions.getByText('+$13.95')).toBeVisible()
+
+    // A position's take profit and stop loss, in its row and on its chart.
+    await expect(
+      positions.locator('[title*="TP $66,000.00"]').locator('visible=true'),
+    ).toHaveText('TP 64,800 (0.004 BTC) +1 · SL 63,200 (50%)')
+    await markets.getByRole('button', { name: /BTC-PERP/ }).click()
+    await expect(page.getByText('TP $64,800.00')).toBeVisible()
+    await expect(page.getByText('TP $66,000.00')).toBeVisible()
+    await expect(page.getByText('SL $63,200.00')).toBeVisible()
+
     const fills = page.getByRole('region', { name: 'Fills' })
     if (width >= 1024) {
       await expect(

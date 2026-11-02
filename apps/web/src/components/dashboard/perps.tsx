@@ -4,7 +4,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { isAddress } from '@solana/kit'
 import { PHOENIX_CANDLE_INTERVALS } from '@lanatools/contracts'
@@ -17,7 +17,12 @@ import type {
 import { dayLabel, explorerURL, formatTime } from '#/lib/activity'
 import type { PhoenixReader } from '#/lib/phoenix'
 import { shortAddress } from '#/lib/transactions'
-import { formatPrice, formatUSD, perpMarket } from '#/lib/trades'
+import {
+  formatPrice,
+  formatUSD,
+  perpMarket,
+  triggerSummary,
+} from '#/lib/trades'
 import { PageHead, SectionHead } from './page-head'
 import { PerpChart } from './perp-chart'
 import type { ChartLine } from './perp-chart'
@@ -25,10 +30,11 @@ import { Skeleton } from './skeleton'
 
 /**
  * One wallet's Phoenix account: the account's value, a candlestick chart
- * with the position's entry, liquidation and order levels, then positions,
- * resting orders and fills. Read-only; agents trade. Served both in the
- * dashboard and, with no login, as a public page; a failed refresh keeps the
- * last data on screen, says how old it is, and the next one recovers.
+ * with the position's entry, liquidation, take profit, stop loss and order
+ * levels, then positions, resting orders and fills. Read-only; agents trade.
+ * Served both in the dashboard and, with no login, as a public page; a
+ * failed refresh keeps the last data on screen, says how old it is, and the
+ * next one recovers.
  */
 export function PerpsPage({
   address,
@@ -304,6 +310,54 @@ function Stat({
   )
 }
 
+/** The levels drawn for what the chart is focused on. */
+export function chartLevels(
+  position: PhoenixPosition | undefined,
+  orders: PhoenixOrder[],
+) {
+  const levels: ChartLine[] = []
+  if (position?.entryPrice)
+    levels.push({
+      price: Number(position.entryPrice),
+      title: 'Entry',
+      tone: 'entry',
+    })
+  if (position?.liquidationPrice)
+    levels.push({
+      price: Number(position.liquidationPrice),
+      title: 'Liquidation',
+      tone: 'liquidation',
+    })
+  for (const trigger of position?.takeProfit ?? [])
+    levels.push({
+      price: Number(trigger.triggerPrice),
+      title: 'TP',
+      tone: 'takeProfit',
+    })
+  for (const trigger of position?.stopLoss ?? [])
+    levels.push({
+      price: Number(trigger.triggerPrice),
+      title: 'SL',
+      tone: 'stopLoss',
+    })
+  for (const order of orders)
+    levels.push({
+      price: Number(order.price),
+      title: `${order.side === 'buy' ? 'Buy' : 'Sell'} ${order.type}`,
+      tone: 'order',
+    })
+  return levels
+}
+
+/** The key under the chart, drawn as each level is. */
+const LEVEL_SWATCH: Record<ChartLine['tone'], string> = {
+  entry: 'border-t-[1.5px] border-dashed border-fg-2',
+  liquidation: 'border-t-2 border-bad',
+  takeProfit: 'border-t-[1.5px] border-dashed border-live',
+  stopLoss: 'border-t-[1.5px] border-dashed border-bad',
+  order: 'border-t-[1.5px] border-dotted border-fg-3',
+}
+
 function TradeCard({
   account,
   charted,
@@ -336,28 +390,7 @@ function TradeCard({
       ),
     [account.orders, focus],
   )
-  const lines = useMemo(() => {
-    const levels: ChartLine[] = []
-    if (position?.entryPrice)
-      levels.push({
-        price: Number(position.entryPrice),
-        title: 'Entry',
-        tone: 'entry',
-      })
-    if (position?.liquidationPrice)
-      levels.push({
-        price: Number(position.liquidationPrice),
-        title: 'Liquidation',
-        tone: 'liquidation',
-      })
-    for (const order of orders)
-      levels.push({
-        price: Number(order.price),
-        title: `${order.side === 'buy' ? 'Buy' : 'Sell'} ${order.type}`,
-        tone: 'order',
-      })
-    return levels
-  }, [position, orders])
+  const lines = useMemo(() => chartLevels(position, orders), [position, orders])
 
   return (
     <div className="d-card mt-5">
@@ -442,11 +475,11 @@ function TradeCard({
             <Skeleton className="m-4 h-[356px]" />
           )}
           <p className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line px-4 py-2.5 font-mono text-[12px] text-fg-2">
-            {lines.map((line) => (
-              <span key={`${line.tone}-${line.price}`}>
+            {lines.map((line, index) => (
+              <span key={`${line.tone}-${line.price}-${index}`}>
                 <i
                   aria-hidden="true"
-                  className={`mr-1.5 inline-block w-3.5 align-middle ${line.tone === 'liquidation' ? 'border-t-2 border-bad' : line.tone === 'entry' ? 'border-t-[1.5px] border-dashed border-fg-2' : 'border-t-[1.5px] border-dotted border-fg-3'}`}
+                  className={`mr-1.5 inline-block w-3.5 align-middle ${LEVEL_SWATCH[line.tone]}`}
                 />
                 {line.title} {formatPrice(line.price)}
               </span>
@@ -641,7 +674,21 @@ function SideTag({ side }: { side: 'long' | 'short' | 'buy' | 'sell' }) {
   )
 }
 
-function Positions({
+/** TP and SL on one line, or on two where the table has no room for that. */
+function TriggerParts({ parts }: { parts: string[] }) {
+  return (
+    <span className="whitespace-normal">
+      {parts.map((part, index) => (
+        <Fragment key={part}>
+          {index > 0 && ' · '}
+          <span className="inline-block whitespace-nowrap">{part}</span>
+        </Fragment>
+      ))}
+    </span>
+  )
+}
+
+export function Positions({
   positions,
   focus,
   onFocus,
@@ -662,54 +709,74 @@ function Positions({
           <th className={`${TH} text-right max-lg:hidden`}>Entry</th>
           <th className={`${TH} text-right max-lg:hidden`}>Mark</th>
           <th className={`${TH} text-right max-lg:hidden`}>Liquidation</th>
+          <th className={`${TH} text-right max-lg:hidden`}>TP/SL</th>
           <th className={`${TH} text-right`}>Unrealized PnL</th>
         </>
       }
     >
-      {positions.map((position) => (
-        <tr
-          key={`${position.subaccount}-${position.symbol}`}
-          aria-selected={
-            chartKey(position.subaccount, position.symbol) === focus
-          }
-          onClick={() =>
-            onFocus(chartKey(position.subaccount, position.symbol))
-          }
-          className="cursor-pointer hover:bg-surface aria-selected:bg-surface aria-selected:[&>td:first-child]:shadow-[inset_3px_0_0_var(--d-accent)]"
-        >
-          <td>
-            <b className="font-semibold">{perpMarket(position.symbol)}</b>
-            {position.marginMode === 'isolated' && (
-              <span className="ml-1.5 text-[11px] text-fg-3">isolated</span>
-            )}
-            <small
-              className={`block text-[11px] sm:hidden ${position.side === 'long' ? 'text-live' : 'text-bad'}`}
-            >
-              {position.side === 'long' ? 'Long' : 'Short'}
-            </small>
-          </td>
-          <td className="max-sm:hidden">
-            <SideTag side={position.side} />
-          </td>
-          <td className="text-right">
-            {position.size} <span className="text-fg-3">{position.symbol}</span>
-          </td>
-          <td className="text-right max-lg:hidden">
-            {price(position.entryPrice)}
-          </td>
-          <td className="text-right max-lg:hidden">
-            {price(position.markPrice)}
-          </td>
-          <td className="text-right max-lg:hidden">
-            {price(position.liquidationPrice)}
-          </td>
-          <td
-            className={`text-right font-semibold ${tone(position.unrealizedPnlUsd)}`}
+      {positions.map((position) => {
+        const triggers = triggerSummary(position)
+        return (
+          <tr
+            key={`${position.subaccount}-${position.symbol}`}
+            aria-selected={
+              chartKey(position.subaccount, position.symbol) === focus
+            }
+            onClick={() =>
+              onFocus(chartKey(position.subaccount, position.symbol))
+            }
+            className="cursor-pointer hover:bg-surface aria-selected:bg-surface aria-selected:[&>td:first-child]:shadow-[inset_3px_0_0_var(--d-accent)]"
           >
-            {signed(position.unrealizedPnlUsd)}
-          </td>
-        </tr>
-      ))}
+            <td>
+              <b className="font-semibold">{perpMarket(position.symbol)}</b>
+              {position.marginMode === 'isolated' && (
+                <span className="ml-1.5 text-[11px] text-fg-3">isolated</span>
+              )}
+              <small
+                className={`block text-[11px] sm:hidden ${position.side === 'long' ? 'text-live' : 'text-bad'}`}
+              >
+                {position.side === 'long' ? 'Long' : 'Short'}
+              </small>
+              {triggers && (
+                <small
+                  // Wraps within the market's width, leaving PnL in view.
+                  className="block w-0 min-w-full text-[11px] whitespace-normal text-fg-3 lg:hidden"
+                  title={triggers.detail}
+                >
+                  <TriggerParts parts={triggers.parts} />
+                </small>
+              )}
+            </td>
+            <td className="max-sm:hidden">
+              <SideTag side={position.side} />
+            </td>
+            <td className="text-right">
+              {position.size}{' '}
+              <span className="text-fg-3">{position.symbol}</span>
+            </td>
+            <td className="text-right max-lg:hidden">
+              {price(position.entryPrice)}
+            </td>
+            <td className="text-right max-lg:hidden">
+              {price(position.markPrice)}
+            </td>
+            <td className="text-right max-lg:hidden">
+              {price(position.liquidationPrice)}
+            </td>
+            <td
+              className={`text-right max-lg:hidden ${triggers ? '' : 'text-fg-3'}`}
+              title={triggers?.detail}
+            >
+              {triggers ? <TriggerParts parts={triggers.parts} /> : '—'}
+            </td>
+            <td
+              className={`text-right font-semibold ${tone(position.unrealizedPnlUsd)}`}
+            >
+              {signed(position.unrealizedPnlUsd)}
+            </td>
+          </tr>
+        )
+      })}
     </Table>
   )
 }

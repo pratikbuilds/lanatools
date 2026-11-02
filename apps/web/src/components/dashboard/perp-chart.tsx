@@ -18,12 +18,25 @@ import { formatPrice } from '#/lib/trades'
 
 type Candle = PhoenixCandles['candles'][number]
 
-/** A horizontal level on the chart: entry, liquidation or a resting order. */
+/**
+ * A horizontal level on the chart: entry, liquidation, a take profit or stop
+ * loss trigger, or a resting order.
+ */
 export type ChartLine = {
   price: number
   title: string
-  tone: 'entry' | 'liquidation' | 'order'
+  tone: 'entry' | 'liquidation' | 'takeProfit' | 'stopLoss' | 'order'
 }
+
+/** How each level is drawn; its color follows the theme. */
+const LINE_LOOK: Record<ChartLine['tone'], { style: LineStyle; width: 1 | 2 }> =
+  {
+    entry: { style: LineStyle.Dashed, width: 1 },
+    liquidation: { style: LineStyle.Solid, width: 2 },
+    takeProfit: { style: LineStyle.LargeDashed, width: 1 },
+    stopLoss: { style: LineStyle.LargeDashed, width: 1 },
+    order: { style: LineStyle.SparseDotted, width: 1 },
+  }
 
 /** Decimals the market quotes in: the most any recent candle carries, cents at least. */
 function decimalsFor(candles: Candle[]) {
@@ -256,6 +269,13 @@ export function PerpChart({
     const api = chart.current
     if (!candlesticks || !api) return
     const colors = palette(api.chartElement())
+    const color: Record<ChartLine['tone'], string> = {
+      entry: colors.entry,
+      liquidation: colors.down,
+      takeProfit: colors.up,
+      stopLoss: colors.down,
+      order: colors.muted,
+    }
     for (const line of drawn.current) candlesticks.removePriceLine(line)
     const levels = latestLines.current
     drawn.current = levels.map((line) =>
@@ -263,19 +283,9 @@ export function PerpChart({
         price: line.price,
         title: line.title,
         axisLabelVisible: true,
-        color:
-          line.tone === 'liquidation'
-            ? colors.down
-            : line.tone === 'entry'
-              ? colors.entry
-              : colors.muted,
-        lineWidth: line.tone === 'liquidation' ? 2 : 1,
-        lineStyle:
-          line.tone === 'entry'
-            ? LineStyle.Dashed
-            : line.tone === 'order'
-              ? LineStyle.SparseDotted
-              : LineStyle.Solid,
+        color: color[line.tone],
+        lineWidth: LINE_LOOK[line.tone].width,
+        lineStyle: LINE_LOOK[line.tone].style,
       }),
     )
     reach.current = fitLiquidation ? levels.map((line) => line.price) : []
@@ -312,7 +322,7 @@ export function PerpChart({
         ref={setHost}
         className="h-[360px] w-full"
         role="img"
-        aria-label="Price chart with entry, liquidation and order levels"
+        aria-label="Price chart with entry, liquidation, take profit, stop loss and order levels"
       />
     </div>
   )
