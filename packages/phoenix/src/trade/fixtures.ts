@@ -27,15 +27,38 @@ import type { Address, Instruction } from '@solana/kit'
 import {
   PHOENIX_PROGRAM,
   conditionalOrdersAddress,
+  decodeBundleStep,
   toInstruction,
   traderAccountAddress,
 } from './rise'
 import type { PhoenixOrders, TriggerPacket, TriggerRequest } from './rise'
 import { ExchangeKeys } from './schemas'
 import traderAccount from './fixtures/trader-account.json'
+import type { TradeOutcome } from './tool'
+import { messageOf } from './transaction'
 import type { TradeRpc } from './transaction'
 
 /** Test data for the trade tools. Not exported from the package. */
+
+/** D5's fees: a 20% compute margin, no priority fee. */
+export const FEES = { computeUnitMargin: 0.2, microLamportsPerComputeUnit: 0n }
+
+/** A prepared result, or a thrown error naming what came back instead. */
+export function ready(outcome: TradeOutcome) {
+  if (!outcome.ok || outcome.result.status !== 'ready')
+    throw new Error(`unexpected ${JSON.stringify(outcome)}`)
+  return outcome.result
+}
+
+/** The kind of Phoenix step an instruction is, or null. */
+export const stepKind = (instruction: Pick<Instruction, 'data'>) =>
+  decodeBundleStep(Uint8Array.from(instruction.data ?? []))?.kind ?? null
+
+/** A ready result's Phoenix instructions, without the compute budget. */
+export const phoenixSteps = (outcome: TradeOutcome) =>
+  messageOf(ready(outcome).transaction).instructions.filter(
+    (instruction) => instruction.programAddress === PHOENIX_PROGRAM,
+  )
 
 export const WALLET = address('DuyJffWSmNtaauW2UDiULLUeT1J57UQWphUoZCwvvDdm')
 export const OTHER = address('2nHGAaEw3D5dd4hVueaUNoygkQFmoeKqRQWnSPqSMFUC')
@@ -212,6 +235,29 @@ export function tokenAccountData(amount: bigint) {
   const data = new Uint8Array(165)
   new DataView(data.buffer).setBigUint64(64, amount, true)
   return data
+}
+
+/**
+ * An RPC for a prepared trade: these accounts are Phoenix's, the blockhash
+ * is fixed and every simulation succeeds, using `unitsConsumed`.
+ */
+export function readyRpc(
+  accounts: ReadonlyMap<string, Uint8Array>,
+  unitsConsumed: bigint,
+) {
+  return fakeRpc({
+    getSlot: () => 1_000n,
+    getAccountInfo: (account) => {
+      const data = accounts.get(String(account))
+      return data ? accountInfo(PHOENIX_PROGRAM, data) : { value: null }
+    },
+    getLatestBlockhash: () => ({
+      value: { blockhash: BLOCKHASH, lastValidBlockHeight: 500n },
+    }),
+    simulateTransaction: () => ({
+      value: { err: null, unitsConsumed, logs: [] },
+    }),
+  })
 }
 
 /** An RPC that answers from memory; `calls` records what was asked. */
@@ -394,7 +440,16 @@ const riseLeg = (trigger: TriggerRequest, direction: Direction) => ({
 export function fakeOrders({
   tamperPlace = (request) => request,
   tamperCancel = (request) => request,
+  isolatedMarket = () => {
+    throw new Error('unexpected isolated market order')
+  },
+  isolatedLimit = () => {
+    throw new Error('unexpected isolated limit order')
+  },
 }: {
+  /** Phoenix's isolated order routes, which a test answers with its bundle. */
+  isolatedMarket?: PhoenixOrders['placeIsolatedMarketOrder']
+  isolatedLimit?: PhoenixOrders['placeIsolatedLimitOrder']
   tamperPlace?: (
     request: Parameters<PhoenixOrders['placePositionConditionalOrder']>[0],
   ) => Parameters<PhoenixOrders['placePositionConditionalOrder']>[0]
@@ -410,12 +465,8 @@ export function fakeOrders({
   const traderOf = (authority: string, subaccount?: number | null) =>
     traderAccountAddress(address(authority), subaccount ?? 0)
   const orders: PhoenixOrders = {
-    placeIsolatedMarketOrder: () => {
-      throw new Error('unexpected isolated market order')
-    },
-    placeIsolatedLimitOrder: () => {
-      throw new Error('unexpected isolated limit order')
-    },
+    placeIsolatedMarketOrder: isolatedMarket,
+    placeIsolatedLimitOrder: isolatedLimit,
     placePositionConditionalOrder: async (asked) => {
       place.push(asked)
       const request = tamperPlace(asked)

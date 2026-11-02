@@ -3,19 +3,21 @@ import { isWritableRole } from '@solana/kit'
 import type { Instruction } from '@solana/kit'
 import bundles from '../fixtures/phoenix-bundles.json'
 import {
-  BLOCKHASH,
+  FEES,
   KEYS,
   SOL_BOOK,
   SOL_MARKET,
   TRADER_ACCOUNT_DATA,
   WALLET,
-  accountInfo,
+  fakeOrders,
   fakePhoenix,
-  fakeRpc,
   marketOrderData,
+  phoenixSteps,
+  readyRpc,
+  ready,
+  stepKind,
 } from '../fixtures'
 import {
-  PHOENIX_PROGRAM,
   cancelData,
   decodeBundleStep,
   decodeOrder,
@@ -24,13 +26,10 @@ import {
 } from '../rise'
 import type { PhoenixOrders } from '../rise'
 import { runTradeTool } from '../tool'
-import type { TradeOutcome } from '../tool'
-import { messageOf } from '../transaction'
 import { addIsolatedMargin } from './add-margin'
 import { cancelOrders } from './cancel'
 import { closePosition } from './close'
 
-const FEES = { computeUnitMargin: 0.2, microLamportsPerComputeUnit: 0n }
 const CROSS = await traderAccountAddress(WALLET)
 const STONK = bundles.markets.STONK
 const { subaccount: CHILD_INDEX } = bundles.closeMeta
@@ -90,7 +89,7 @@ const serverClose = (
   request: Parameters<PhoenixOrders['placeIsolatedMarketOrder']>[0],
 ): Instruction[] =>
   bundles.close.map(toInstruction).map((instruction) =>
-    decodeBundleStep(Uint8Array.from(instruction.data ?? []))?.kind === 'order'
+    stepKind(instruction) === 'order'
       ? {
           ...instruction,
           data: marketOrderData({
@@ -105,37 +104,20 @@ const serverClose = (
       : instruction,
   )
 
-function fakeOrders(build: typeof serverClose = serverClose) {
+/** Phoenix's isolated market route answering with `build`; records requests. */
+function closeOrders(build: typeof serverClose = serverClose) {
   const requests: unknown[] = []
-  const unused = () => {
-    throw new Error('unexpected Phoenix order route')
-  }
-  const orders: PhoenixOrders = {
-    placeIsolatedMarketOrder: async (request) => {
+  const { orders } = fakeOrders({
+    isolatedMarket: async (request) => {
       requests.push(request)
       return build(request)
     },
-    placeIsolatedLimitOrder: unused,
-    placePositionConditionalOrder: unused,
-    cancelConditionalOrder: unused,
-  }
+  })
   return { orders, requests }
 }
 
-function opts(state: unknown, orders = fakeOrders().orders) {
-  const { rpc } = fakeRpc({
-    getSlot: () => 1_000n,
-    getAccountInfo: (account) =>
-      account === CROSS
-        ? accountInfo(PHOENIX_PROGRAM, TRADER_ACCOUNT_DATA)
-        : { value: null },
-    getLatestBlockhash: () => ({
-      value: { blockhash: BLOCKHASH, lastValidBlockHeight: 500n },
-    }),
-    simulateTransaction: () => ({
-      value: { err: null, unitsConsumed: 300_000n, logs: [] },
-    }),
-  })
+function opts(state: unknown, orders = closeOrders().orders) {
+  const { rpc } = readyRpc(new Map([[CROSS, TRADER_ACCOUNT_DATA]]), 300_000n)
   return {
     rpc,
     fees: FEES,
@@ -149,23 +131,7 @@ function opts(state: unknown, orders = fakeOrders().orders) {
   }
 }
 
-function ready(outcome: TradeOutcome) {
-  if (!outcome.ok || outcome.result.status !== 'ready')
-    throw new Error(`unexpected ${JSON.stringify(outcome)}`)
-  return outcome.result
-}
-
-/** A ready result's Phoenix instructions, without the compute budget. */
-function phoenixSteps(outcome: TradeOutcome) {
-  return messageOf(ready(outcome).transaction).instructions.filter(
-    (instruction) => instruction.programAddress === PHOENIX_PROGRAM,
-  )
-}
-
-const kinds = (steps: readonly Instruction[]) =>
-  steps.map(
-    (step) => decodeBundleStep(Uint8Array.from(step.data ?? []))?.kind ?? null,
-  )
+const kinds = (steps: readonly Instruction[]) => steps.map(stepKind)
 
 const writes = (instruction: Instruction | undefined, account: string) =>
   (instruction?.accounts ?? []).some(
@@ -328,20 +294,8 @@ describe('closing an isolated position', () => {
 
 describe('closing a cross position stays as it was', () => {
   const cross = (input: Record<string, unknown>, state: unknown) => {
-    const { orders, requests } = fakeOrders()
-    const { rpc } = fakeRpc({
-      getAccountInfo: (account) =>
-        account === CROSS
-          ? accountInfo(PHOENIX_PROGRAM, TRADER_ACCOUNT_DATA)
-          : { value: null },
-      getSlot: () => 1_000n,
-      getLatestBlockhash: () => ({
-        value: { blockhash: BLOCKHASH, lastValidBlockHeight: 500n },
-      }),
-      simulateTransaction: () => ({
-        value: { err: null, unitsConsumed: 300_000n, logs: [] },
-      }),
-    })
+    const { orders, requests } = closeOrders()
+    const { rpc } = readyRpc(new Map([[CROSS, TRADER_ACCOUNT_DATA]]), 300_000n)
     return {
       requests,
       run: runTradeTool(

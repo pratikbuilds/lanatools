@@ -4,6 +4,7 @@ import type { AccountMeta, Instruction } from '@solana/kit'
 import { PhoenixError } from '../client'
 import { checkPhoenixBundle } from './checks'
 import type { BundleIntent } from './checks'
+import { stepKind } from './fixtures'
 import bundles from './fixtures/phoenix-bundles.json'
 import {
   addMarginInstructions,
@@ -321,7 +322,7 @@ describe('checkPhoenixBundle refuses a wrong answer', () => {
     const cross = await traderAccountAddress(A)
     const moved = (kind: string) =>
       open.map((instruction) =>
-        decodeBundleStep(Uint8Array.from(instruction.data ?? []))?.kind === kind
+        stepKind(instruction) === kind
           ? {
               ...instruction,
               accounts: (instruction.accounts ?? []).map((account) =>
@@ -358,15 +359,10 @@ describe('checkPhoenixBundle refuses a wrong answer', () => {
   })
 
   test('a missing order or TP/SL', async () => {
-    const withoutOrder = open.filter(
-      (each) =>
-        decodeBundleStep(Uint8Array.from(each.data ?? []))?.kind !== 'order',
-    )
+    const withoutOrder = open.filter((each) => stepKind(each) !== 'order')
     await refused(withoutOrder, openIntent, 'order is missing')
     const withoutTpsl = open.filter(
-      (each) =>
-        decodeBundleStep(Uint8Array.from(each.data ?? []))?.kind !==
-        'place_conditional',
+      (each) => stepKind(each) !== 'place_conditional',
     )
     await refused(withoutTpsl, openIntent, 'TP/SL is missing')
   })
@@ -628,7 +624,7 @@ describe('checkPhoenixBundle keeps collateral between the wallet’s accounts', 
     change: (accounts: AccountMeta[]) => AccountMeta[],
   ) =>
     bundle.map((instruction) =>
-      decodeBundleStep(Uint8Array.from(instruction.data ?? []))?.kind === kind
+      stepKind(instruction) === kind
         ? {
             ...instruction,
             accounts: change([
@@ -719,7 +715,7 @@ describe('checkPhoenixBundle keeps collateral between the wallet’s accounts', 
   test('anything extra in the order bytes', () =>
     refused(
       open.map((each) =>
-        decodeBundleStep(Uint8Array.from(each.data ?? []))?.kind === 'order'
+        stepKind(each) === 'order'
           ? {
               ...each,
               data: Uint8Array.from([...(each.data ?? []), 0, 0, 0, 0]),

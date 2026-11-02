@@ -2,26 +2,22 @@ import { describe, expect, test } from 'bun:test'
 import { address } from '@solana/kit'
 import type { Instruction } from '@solana/kit'
 import {
-  BLOCKHASH,
+  FEES,
+  KEYS,
   SOL_BOOK,
   SOL_MARKET,
-  KEYS,
   TRADER_ACCOUNT_DATA,
   WALLET,
-  accountInfo,
+  fakeOrders,
   fakePhoenix,
-  fakeRpc,
+  readyRpc,
+  ready,
+  stepKind,
 } from '../fixtures'
 import bundles from '../fixtures/phoenix-bundles.json'
-import {
-  PHOENIX_PROGRAM,
-  decodeBundleStep,
-  toInstruction,
-  traderAccountAddress,
-} from '../rise'
-import type { PhoenixOrders, RiseInstruction } from '../rise'
+import { toInstruction, traderAccountAddress } from '../rise'
+import type { RiseInstruction } from '../rise'
 import { ISOLATED_RISK, runTradeTool } from '../tool'
-import type { TradeOutcome } from '../tool'
 import { limitOrder } from './limit-order'
 import { marketOrder } from './market-order'
 
@@ -31,7 +27,6 @@ const A = address(bundles.wallets.A)
 const D = address(bundles.wallets.D)
 const GOLD = bundles.markets.GOLD
 const STONK = bundles.markets.STONK
-const FEES = { computeUnitMargin: 0.2, microLamportsPerComputeUnit: 0n }
 const FIRST_USE =
   'This order creates a new Phoenix subaccount, which costs a small one-time rent in SOL. Treat it as spent.'
 
@@ -79,34 +74,25 @@ const stateFor = (position: Row['positions']) =>
 
 type Call = { route: string; request: Record<string, unknown> }
 
-function fakeOrders(bundle: readonly RiseInstruction[] | Instruction[]) {
+/** Phoenix's isolated routes, answering with `bundle`; `calls` records each. */
+function isolatedOrders(bundle: readonly RiseInstruction[] | Instruction[]) {
   const calls: Call[] = []
   const answer = (route: string) => async (request: object) => {
     calls.push({ route, request: { ...request } })
     return (bundle as RiseInstruction[]).map(toInstruction)
   }
-  const orders = {
-    placeIsolatedMarketOrder: answer('market'),
-    placeIsolatedLimitOrder: answer('limit'),
-  } as unknown as PhoenixOrders
+  const { orders } = fakeOrders({
+    isolatedMarket: answer('market'),
+    isolatedLimit: answer('limit'),
+  })
   return { orders, calls }
 }
 
-async function rpcFor(wallet: typeof A) {
-  const trader = await traderAccountAddress(wallet)
-  return fakeRpc({
-    getAccountInfo: (account) =>
-      account === trader
-        ? accountInfo(PHOENIX_PROGRAM, TRADER_ACCOUNT_DATA)
-        : { value: null },
-    getLatestBlockhash: () => ({
-      value: { blockhash: BLOCKHASH, lastValidBlockHeight: 500n },
-    }),
-    simulateTransaction: () => ({
-      value: { err: null, unitsConsumed: 180_000n, logs: [] },
-    }),
-  })
-}
+const traderRpc = async (wallet: typeof A, unitsConsumed = 180_000n) =>
+  readyRpc(
+    new Map([[await traderAccountAddress(wallet), TRADER_ACCOUNT_DATA]]),
+    unitsConsumed,
+  )
 
 async function setup(
   bundle: readonly RiseInstruction[] | Instruction[],
@@ -120,8 +106,8 @@ async function setup(
     answers?: Record<string, unknown>
   } = {},
 ) {
-  const { orders, calls } = fakeOrders(bundle)
-  const { rpc } = await rpcFor(wallet)
+  const { orders, calls } = isolatedOrders(bundle)
+  const { rpc } = await traderRpc(wallet)
   return {
     calls,
     opts: {
@@ -161,24 +147,13 @@ const resting = {
   collateralUsdc: '2',
 }
 
-function ready(outcome: TradeOutcome) {
-  if (!outcome.ok || outcome.result.status !== 'ready')
-    throw new Error(`unexpected ${JSON.stringify(outcome)}`)
-  return outcome.result
-}
-
 const refused = (code: string, message: string) => ({
   ok: false,
   error: { code, message: expect.stringContaining(message) as string },
 })
 
 const without = (bundle: readonly RiseInstruction[], kinds: string[]) =>
-  bundle.filter(
-    ({ data }) =>
-      !kinds.includes(
-        decodeBundleStep(Uint8Array.from(data ?? []))?.kind ?? 'unknown',
-      ),
-  )
+  bundle.filter((step) => !kinds.includes(stepKind(toInstruction(step)) ?? ''))
 
 describe('an isolated market order', () => {
   test('a short asks for the worst price and exact collateral', async () => {
@@ -397,38 +372,14 @@ describe('an isolated limit order', () => {
 })
 
 describe("Phoenix's answer is refused unless it is exactly the request", () => {
-  test.each([
-    ['a different price', { limitPrice: '3851' }, 'priceInTicks'],
-    ['a different size', { size: '0.02' }, 'numBaseLots'],
-    ['the other side', { side: 'buy', limitPrice: '3850.2' }, 'side'],
-    ['different collateral', { collateralUsdc: '3' }, 'USDC collateral'],
-  ])('%s', async (_name, change, reason) => {
+  // checkPhoenixBundle's own tests cover each field; this proves the tools
+  // run it on Phoenix's answer before anything is simulated.
+  test('a different price', async () => {
     const { opts, calls } = await setup(bundles.sellShort)
     expect(
-      await runTradeTool(marketOrder, { ...short, ...change }, opts),
-    ).toMatchObject(refused('check_failed', reason))
+      await runTradeTool(marketOrder, { ...short, limitPrice: '3851' }, opts),
+    ).toMatchObject(refused('check_failed', 'priceInTicks'))
     expect(calls).toHaveLength(1)
-  })
-
-  test('a TP/SL nobody asked for', async () => {
-    const { opts } = await setup(bundles.openWithTpsl)
-    expect(
-      await runTradeTool(
-        marketOrder,
-        { ...short, side: 'buy', limitPrice: '3928' },
-        opts,
-      ),
-    ).toMatchObject(refused('check_failed', 'TP/SL nobody asked for'))
-  })
-
-  test('a bundle for another wallet', async () => {
-    const { opts } = await setup(bundles.sellShort, {
-      wallet: WALLET,
-      answers: { [`/v1/trader/state/${WALLET}`]: stateFor([]) },
-    })
-    expect(
-      await runTradeTool(marketOrder, { ...short, wallet: WALLET }, opts),
-    ).toMatchObject(refused('check_failed', 'safety check'))
   })
 
   test('a subaccount other than the one holding the position', async () => {
@@ -440,13 +391,6 @@ describe("Phoenix's answer is refused unless it is exactly the request", () => {
     })
     expect(await runTradeTool(marketOrder, short, opts)).toMatchObject(
       refused('check_failed', 'wrong subaccount'),
-    )
-  })
-
-  test('a limit order that came back post-only', async () => {
-    const { opts } = await setup(bundles.limitPost)
-    expect(await runTradeTool(limitOrder, resting, opts)).toMatchObject(
-      refused('check_failed', 'kind'),
     )
   })
 })
@@ -675,21 +619,8 @@ describe('cross orders', () => {
 
   test('never ask Phoenix to build, and state no margin terms', async () => {
     const { collateralUsdc: _none, ...order } = cross
-    const { orders, calls } = fakeOrders([])
-    const trader = await traderAccountAddress(WALLET)
-    const { rpc } = fakeRpc({
-      getAccountInfo: (account) =>
-        account === trader
-          ? accountInfo(PHOENIX_PROGRAM, TRADER_ACCOUNT_DATA)
-          : { value: null },
-      getSlot: () => 1_000n,
-      getLatestBlockhash: () => ({
-        value: { blockhash: BLOCKHASH, lastValidBlockHeight: 500n },
-      }),
-      simulateTransaction: () => ({
-        value: { err: null, unitsConsumed: 480_000n, logs: [] },
-      }),
-    })
+    const { orders, calls } = isolatedOrders([])
+    const { rpc } = await traderRpc(WALLET, 480_000n)
     const opts = {
       rpc,
       fees: FEES,

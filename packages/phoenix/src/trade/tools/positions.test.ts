@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import {
   BLOCKHASH,
+  FEES,
   KEYS,
   SOL_BOOK,
   SOL_MARKET,
@@ -22,7 +23,6 @@ import { messageOf } from '../transaction'
 import { cancelOrders } from './cancel'
 import { closePosition } from './close'
 
-const FEES = { computeUnitMargin: 0.2, microLamportsPerComputeUnit: 0n }
 const TRADER = await traderAccountAddress(WALLET)
 
 const rpc = () =>

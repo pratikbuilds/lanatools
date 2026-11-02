@@ -4,6 +4,7 @@ import { TOKEN_PROGRAM, TRADE_PROGRAMS } from '../checks'
 import {
   BLOCKHASH,
   COLLATERAL_ASSETS,
+  FEES,
   KEYS,
   PERMISSION,
   REGISTERED_TRADER_ACCOUNT_DATA,
@@ -30,7 +31,6 @@ import { limitOrder } from './limit-order'
 import { marketOrder } from './market-order'
 import { withdraw } from './withdraw'
 
-const FEES = { computeUnitMargin: 0.2, microLamportsPerComputeUnit: 0n }
 const TRADER = await traderAccountAddress(WALLET)
 const USDC = await usdcAccountAddress(WALLET)
 /** The rent floor `chain` reports; `accountInfo`'s default lamports. */

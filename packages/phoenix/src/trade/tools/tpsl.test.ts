@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
-  BLOCKHASH,
+  FEES,
   KEYS,
   SOL_BOOK,
   SOL_MARKET,
@@ -11,6 +11,10 @@ import {
   fakeOrders,
   fakePhoenix,
   fakeRpc,
+  phoenixSteps,
+  readyRpc,
+  ready,
+  stepKind,
 } from '../fixtures'
 import type { FakeSlot } from '../fixtures'
 import {
@@ -22,13 +26,11 @@ import {
 import type { TriggerPacket } from '../rise'
 import { runTradeTool } from '../tool'
 import type { TradeOutcome } from '../tool'
-import { messageOf } from '../transaction'
 import { cancelTpsl } from './cancel-tpsl'
 import { marketOrder } from './market-order'
 import { setTpsl } from './set-tpsl'
 import { checkAgainstMark, positionLegs, tpslTerms } from './tpsl'
 
-const FEES = { computeUnitMargin: 0.2, microLamportsPerComputeUnit: 0n }
 const CROSS = await traderAccountAddress(WALLET)
 const ISOLATED = await traderAccountAddress(WALLET, 3)
 const UNITS = { tickSize: 100n, baseLotsDecimals: 2 }
@@ -95,18 +97,7 @@ async function context(world: World, orders = fakeOrders()) {
   return {
     orders: orders.orders,
     fees: FEES,
-    rpc: fakeRpc({
-      getAccountInfo: (account) => {
-        const data = accounts.get(String(account))
-        return data ? accountInfo(PHOENIX_PROGRAM, data) : { value: null }
-      },
-      getLatestBlockhash: () => ({
-        value: { blockhash: BLOCKHASH, lastValidBlockHeight: 500n },
-      }),
-      simulateTransaction: () => ({
-        value: { err: null, unitsConsumed: 40_000n, logs: [] },
-      }),
-    }).rpc,
+    rpc: readyRpc(accounts, 40_000n).rpc,
     fetch: fakePhoenix({
       '/v1/view/exchange/market/SOL': SOL_MARKET,
       '/v1/view/exchange/keys': KEYS,
@@ -114,12 +105,6 @@ async function context(world: World, orders = fakeOrders()) {
       [`/v1/trader/state/${WALLET}`]: state(world),
     }).fetch,
   }
-}
-
-function ready(outcome: TradeOutcome) {
-  if (!outcome.ok || outcome.result.status !== 'ready')
-    throw new Error(`unexpected ${JSON.stringify(outcome)}`)
-  return outcome.result
 }
 
 const TP = { triggerPrice: '120', worstPrice: '119.5' }
@@ -153,13 +138,10 @@ const cancel = async (
   requests: orders.cancel,
 })
 
-function steps(outcome: TradeOutcome) {
-  if (!outcome.ok || outcome.result.status !== 'ready')
-    throw new Error(`unexpected ${JSON.stringify(outcome)}`)
-  return messageOf(outcome.result.transaction)
-    .instructions.slice(1)
-    .map((each) => decodeBundleStep(Uint8Array.from(each.data ?? [])))
-}
+const steps = (outcome: TradeOutcome) =>
+  phoenixSteps(outcome).map((each) =>
+    decodeBundleStep(Uint8Array.from(each.data ?? [])),
+  )
 
 const refusal = (code: string, message: string) => ({
   ok: false,
@@ -991,19 +973,7 @@ describe('TP/SL on a market order', () => {
     orders = fakeOrders(),
   ) => {
     const base = await context(world, orders)
-    const { rpc } = fakeRpc({
-      getSlot: () => 1_000n,
-      getAccountInfo: (account) =>
-        String(account) === CROSS
-          ? accountInfo(PHOENIX_PROGRAM, TRADER_ACCOUNT_DATA)
-          : { value: null },
-      getLatestBlockhash: () => ({
-        value: { blockhash: BLOCKHASH, lastValidBlockHeight: 500n },
-      }),
-      simulateTransaction: () => ({
-        value: { err: null, unitsConsumed: 40_000n, logs: [] },
-      }),
-    })
+    const { rpc } = readyRpc(new Map([[CROSS, TRADER_ACCOUNT_DATA]]), 40_000n)
     return {
       outcome: await runTradeTool(
         marketOrder,
@@ -1047,14 +1017,10 @@ describe('TP/SL on a market order', () => {
       'when one fires, Phoenix cancels the other',
     )
     expect(result.expiresAfterSlot).toBeDefined()
-    expect(
-      messageOf(result.transaction)
-        .instructions.filter((step) => step.programAddress === PHOENIX_PROGRAM)
-        .map(
-          (step) =>
-            decodeBundleStep(Uint8Array.from(step.data ?? []))?.kind ?? null,
-        ),
-    ).toEqual(['order', 'place_conditional'])
+    expect(phoenixSteps(outcome).map(stepKind)).toEqual([
+      'order',
+      'place_conditional',
+    ])
   })
 
   test('without TP/SL nothing else is asked for', async () => {
