@@ -23,7 +23,7 @@ import bundles from './fixtures/phoenix-bundles.json'
 import {
   EMBER_PROGRAM,
   PHOENIX_PROGRAM,
-  SOL_ACCOUNTS,
+  ACCOUNT_AT,
   SYSTEM_PROGRAM,
   activationOf,
   activationTransaction,
@@ -252,14 +252,12 @@ test('a SOL deposit is the three steps Rise documents, in order', async () => {
   ])
   expect(sync?.programAddress).toBe(PHOENIX_PROGRAM)
   expect(sync?.data).toEqual(solData.sync())
-  expect(sync?.accounts?.[SOL_ACCOUNTS.sync.traderAccount]?.address).toBe(
-    trader,
-  )
+  expect(sync?.accounts?.[ACCOUNT_AT.sync.traderAccount]?.address).toBe(trader)
 })
 
 test('a SOL withdrawal pays the wallet and leaves uncounted lamports alone', async () => {
   const instruction = await solWithdrawInstruction(WALLET, KEYS, 5_000_000n)
-  const { trader, traderAccount, destination } = SOL_ACCOUNTS.withdraw
+  const { trader, traderAccount, destination } = ACCOUNT_AT.withdraw
   expect(instruction.programAddress).toBe(PHOENIX_PROGRAM)
   const accounts = instruction.accounts ?? []
   expect(accounts.at(trader)).toEqual({

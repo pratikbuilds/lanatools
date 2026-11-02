@@ -20,9 +20,8 @@ import {
   traderAccountAddress,
 } from '../rise'
 import type { PhoenixOrders, RiseInstruction } from '../rise'
-import { runTradeTool } from '../tool'
+import { ISOLATED_RISK, runTradeTool } from '../tool'
 import type { TradeOutcome } from '../tool'
-import { ISOLATED_RISK } from './isolated'
 import { limitOrder } from './limit-order'
 import { marketOrder } from './market-order'
 
@@ -53,7 +52,11 @@ const STONK_BOOK = {
 type Row = {
   subaccountIndex: number
   collateral?: string
-  spotCollaterals?: Array<{ symbol: string; balance: string }>
+  spotCollaterals?: Array<{
+    symbol: string
+    balance: string
+    maxBalance: string
+  }>
   positions?: Array<{ symbol: string; basePositionLots: string }>
 }
 
@@ -61,7 +64,9 @@ type Row = {
 const CROSS: Row = {
   subaccountIndex: 0,
   collateral: '5000000',
-  spotCollaterals: [{ symbol: 'SOL', balance: '100000000' }],
+  spotCollaterals: [
+    { symbol: 'SOL', balance: '100000000', maxBalance: '1000000000000' },
+  ],
   positions: [],
 }
 const state = (...rows: Row[]) => ({
@@ -587,7 +592,13 @@ describe('refused before asking Phoenix', () => {
     const rich = state({
       ...CROSS,
       collateral: '90071992547409930000',
-      spotCollaterals: [{ symbol: 'SOL', balance: '90071992547409930000' }],
+      spotCollaterals: [
+        {
+          symbol: 'SOL',
+          balance: '90071992547409930000',
+          maxBalance: '90071992547409930000',
+        },
+      ],
     })
     const message = "too large for Phoenix's order API"
     await refusedUnasked(

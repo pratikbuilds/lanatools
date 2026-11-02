@@ -8,7 +8,7 @@ import {
   MAX_SUBACCOUNTS,
   MIN_FILL_LOTS,
   PHOENIX_PROGRAM,
-  SOL_ACCOUNTS,
+  ACCOUNT_AT,
   SYSTEM_PROGRAM,
   cancelData,
   collateralAmounts,
@@ -21,7 +21,6 @@ import {
   orderData,
   solData,
   traderAccountAddress,
-  transferSolData,
 } from './rise'
 import type {
   CancelTarget,
@@ -277,11 +276,11 @@ export function checkSolDeposit(
   if (instructions.length !== 3) fail('the SOL deposit has unexpected steps')
   const [realloc, transfer, sync] = instructions
   checkSolStep(realloc, PHOENIX_PROGRAM, solData.realloc(), 'ReallocTrader')
-  checkAccount(realloc, SOL_ACCOUNTS.realloc.payer, wallet, 'rent payer')
-  checkAccount(realloc, SOL_ACCOUNTS.realloc.trader, wallet, 'trader authority')
+  checkAccount(realloc, ACCOUNT_AT.realloc.payer, wallet, 'rent payer')
+  checkAccount(realloc, ACCOUNT_AT.realloc.trader, wallet, 'trader authority')
   checkAccount(
     realloc,
-    SOL_ACCOUNTS.realloc.traderAccount,
+    ACCOUNT_AT.realloc.traderAccount,
     traderAccount,
     'reallocated trader account',
   )
@@ -291,17 +290,17 @@ export function checkSolDeposit(
     solData.transfer(lamports),
     'SOL transfer',
   )
-  checkAccount(transfer, SOL_ACCOUNTS.transfer.source, wallet, 'SOL source')
+  checkAccount(transfer, ACCOUNT_AT.transfer.source, wallet, 'SOL source')
   checkAccount(
     transfer,
-    SOL_ACCOUNTS.transfer.destination,
+    ACCOUNT_AT.transfer.destination,
     traderAccount,
     'SOL destination',
   )
   checkSolStep(sync, PHOENIX_PROGRAM, solData.sync(), 'SyncNative')
   checkAccount(
     sync,
-    SOL_ACCOUNTS.sync.traderAccount,
+    ACCOUNT_AT.sync.traderAccount,
     traderAccount,
     'synced trader account',
   )
@@ -326,19 +325,19 @@ export function checkSolWithdraw(
   )
   checkAccount(
     withdraw,
-    SOL_ACCOUNTS.withdraw.trader,
+    ACCOUNT_AT.withdraw.trader,
     wallet,
     'withdrawing authority',
   )
   checkAccount(
     withdraw,
-    SOL_ACCOUNTS.withdraw.traderAccount,
+    ACCOUNT_AT.withdraw.traderAccount,
     traderAccount,
     'withdrawn trader account',
   )
   checkAccount(
     withdraw,
-    SOL_ACCOUNTS.withdraw.destination,
+    ACCOUNT_AT.withdraw.destination,
     wallet,
     'withdrawal destination',
   )
@@ -483,6 +482,10 @@ export async function checkPhoenixBundle(
   for (const account of unknown)
     if (account !== conditionals)
       fail(`the bundle writes to an unexpected account ${account}`)
+  // Every bundle writes cross too, so where the order and TP/SL land must be
+  // pinned to the subaccount.
+  const at = (instruction: Instruction, index: number) =>
+    instruction.accounts?.[index]?.address
 
   // Collateral steps name their source at 4 and their destination at 5.
   const moves = (instruction: Instruction, from: Address, to: Address) =>
@@ -528,13 +531,20 @@ export async function checkPhoenixBundle(
         if (!moves(instruction, cross, child))
           fail('the collateral does not move from cross to the subaccount')
         sol += 1
-        if (!sameBytes(data, transferSolData(intent.collateralLamports ?? 0n)))
+        if (
+          !sameBytes(
+            data,
+            solData.toSubaccount(intent.collateralLamports ?? 0n),
+          )
+        )
           fail('the SOL collateral does not match the request')
         break
       case 'order': {
         orders += 1
         const { order } = intent
         if (!order) fail('the bundle places an order nobody asked for')
+        if (at(instruction, ACCOUNT_AT.order.traderAccount) !== child)
+          fail('the order is not placed in the subaccount')
         const { packet } = step
         if (packet.priceInTicks === null) fail('the order has no price limit')
         for (const field of [
@@ -573,6 +583,13 @@ export async function checkPhoenixBundle(
         conditional += 1
         const wanted = intent.conditional
         if (!wanted) fail('the bundle sets a TP/SL nobody asked for')
+        if (
+          at(instruction, ACCOUNT_AT.placeConditional.traderAccount) !==
+            child ||
+          at(instruction, ACCOUNT_AT.placeConditional.conditionalOrders) !==
+            conditionals
+        )
+          fail('the TP/SL is not set in the subaccount')
         const { packet } = step
         if (
           packet.assetId !== wanted.assetId ||

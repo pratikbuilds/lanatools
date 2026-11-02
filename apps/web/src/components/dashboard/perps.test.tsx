@@ -50,16 +50,12 @@ test('the positions table has a TP/SL column, with a dash for none', () => {
 
 test('a position with triggers shows the nearest and lists all in a title', () => {
   const html = table([guarded])
-  // In its column, and under the market where that column is hidden.
-  expect(html).toContain(
-    '<span class="inline-block whitespace-nowrap">TP 110.5 +1</span> · <span class="inline-block whitespace-nowrap">SL 92</span>',
-  )
-  expect(html).toMatch(
-    /lg:hidden" title="[^"]*">TP 110\.5 \+1 · SL 92<\/small>/,
-  )
-  expect(html).toContain(
-    'title="TP $110.50 · worst $110.50 · active\nTP $120.00 · worst $120.00 · active\nSL $92.00 · worst $92.00 · active"',
-  )
+  // In its column, and under the market where that column is hidden; the
+  // detail's wording is pinned in trades.test.ts.
+  const parts =
+    '<span class="inline-block whitespace-nowrap">TP 110.5 +1</span> · <span class="inline-block whitespace-nowrap">SL 92</span>'
+  expect(html.split(parts)).toHaveLength(3)
+  expect(html.split('title="TP $110.50 · worst')).toHaveLength(3)
 })
 
 test('the chart draws every take profit and stop loss with the other levels', () => {

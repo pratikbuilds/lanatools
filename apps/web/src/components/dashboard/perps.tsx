@@ -704,7 +704,7 @@ export function Positions({
                   className="block w-0 min-w-full text-[11px] whitespace-normal text-fg-3 lg:hidden"
                   title={triggers.detail}
                 >
-                  {triggers.parts.join(' · ')}
+                  <TriggerParts parts={triggers.parts} />
                 </small>
               )}
             </td>

@@ -90,27 +90,6 @@ export const CollateralAssets = z.object({
   ),
 })
 
-/** GET /v1/trader/state/{wallet}: collateral, per subaccount. */
-export const TraderCollateral = z.object({
-  snapshot: z.object({
-    subaccounts: z.array(
-      z.object({
-        subaccountIndex: z.number().int(),
-        collateral: Integer,
-        spotCollaterals: z
-          .array(
-            z.object({
-              symbol: z.string(),
-              balance: Units,
-              maxBalance: Units,
-            }),
-          )
-          .default([]),
-      }),
-    ),
-  }),
-})
-
 /**
  * GET /v1/trader/state/{wallet}: collateral, positions and resting orders,
  * per subaccount. `collateral` is in USDC base units, a spot balance in its
@@ -123,7 +102,9 @@ export const TraderBook = z.object({
         subaccountIndex: z.number().int(),
         collateral: Integer,
         spotCollaterals: z
-          .array(z.object({ symbol: z.string(), balance: Integer }))
+          .array(
+            z.object({ symbol: z.string(), balance: Units, maxBalance: Units }),
+          )
           .default([]),
         positions: z
           .array(z.object({ symbol: z.string(), basePositionLots: Integer }))
