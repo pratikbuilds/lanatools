@@ -62,7 +62,7 @@ nothing in the package signs or holds a key. See
 | `phoenix_deposit` / `phoenix_withdraw`     | USDC (default) or SOL in and out of the cross-margin account                                                  |
 | `phoenix_market_order`                     | Fill now up to a required worst price; partial fills; cross or isolated; optional TP/SL on the whole position |
 | `phoenix_limit_order`                      | Rest on the book (post-only never slides); cross or isolated                                                  |
-| `phoenix_cancel_orders`                    | Cancel resting orders by ID, or all in a market                                                               |
+| `phoenix_cancel_orders`                    | Cancel resting orders by ID, or all in a market; cross or one isolated subaccount                             |
 | `phoenix_close_position`                   | Reduce-only close of all or part of a position; a full isolated close returns the collateral to cross         |
 | `phoenix_add_isolated_margin`              | USDC from cross into an open isolated position                                                                |
 | `phoenix_set_tpsl` / `phoenix_cancel_tpsl` | Full or partial TP/SL on an open position, and cancelling it                                                  |

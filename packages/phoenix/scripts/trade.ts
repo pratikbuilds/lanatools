@@ -147,14 +147,6 @@ async function main() {
         'Nothing filled: the transaction landed, but no part of the order traded.',
       )
   }
-  if (
-    sent.status === 'confirmed' &&
-    result.trade.marginMode === 'isolated' &&
-    result.trade.action === 'order'
-  )
-    console.log(
-      '\nIsolated orders show no fill here; read `state` for the position.',
-    )
   console.log('\nPhoenix account now:')
   await printState(wallet)
   if (sent.status !== 'confirmed') process.exit(1)

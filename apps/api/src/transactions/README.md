@@ -123,8 +123,9 @@ and routing combinations remain unverified by this live test.
 
 All ten `phoenix_*` trade tools use the same link, local and embedded paths:
 activate account, deposit, withdraw, market order, limit order, cancel orders,
-close position, add isolated margin, set TP/SL and cancel TP/SL. They require `phoenix:trade`, a separate opt-in from
-`phoenix:read`, and a mainnet deployment with a matching RPC. Their checked
+close position, add isolated margin, set TP/SL and cancel TP/SL. They require
+`phoenix:trade`, a separate opt-in from `phoenix:read`, and a mainnet
+deployment with a matching RPC. Their checked
 builders, unsigned simulation, accounts and submission routing stay in
 `packages/phoenix/src/trade/operation.ts`. No caller can select the network.
 

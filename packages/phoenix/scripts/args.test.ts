@@ -273,14 +273,14 @@ test('a cross order states no margin terms', () => {
   expect(cross).not.toHaveProperty('input.marginMode')
 })
 
-test('collateral needs --isolated and a plain decimal', () => {
+test('collateral flags pass through for the tool to check', () => {
   const order = ['market', 'GOLD', 'buy', '0.01', '--slippage-bps', '50']
-  expect(() => parseCli([...order, '--collateral-usdc', '2', ...RPC])).toThrow(
-    '--collateral-usdc and --collateral-sol need --isolated',
-  )
-  expect(() =>
-    parseCli([...order, '--isolated', '--collateral-sol', 'lots', ...RPC]),
-  ).toThrow('--collateral-sol must be a number such as 0.5')
+  // Without --isolated the tool refuses it: collateral needs isolated margin.
+  const { input } = parseCli([...order, '--collateral-usdc', '2', ...RPC]) as {
+    input: Record<string, unknown>
+  }
+  expect(input.collateralUsdc).toBe('2')
+  expect(input).not.toHaveProperty('marginMode')
 })
 
 test('options default to the CLI wallet and real sends', () => {
@@ -328,10 +328,9 @@ test('market and close orders need exactly one worst price', () => {
     )
 })
 
-test('set-tpsl needs a leg, both of its prices, and exactly one size', () => {
+test('set-tpsl needs a market and both prices of each leg', () => {
   const tp = ['--tp', '120', '--tp-worst', '119']
   for (const [argv, message] of [
-    [['set-tpsl', 'SOL', '--percent', '50'], 'Give --tp, --sl or both'],
     [
       ['set-tpsl', 'SOL', '--tp', '120', '--percent', '50'],
       'Give both --tp and --tp-worst',
@@ -339,11 +338,6 @@ test('set-tpsl needs a leg, both of its prices, and exactly one size', () => {
     [
       ['set-tpsl', 'SOL', '--sl-worst', '105', '--percent', '50'],
       'Give both --sl and --sl-worst',
-    ],
-    [['set-tpsl', 'SOL', ...tp], 'Give exactly one of --percent or --size'],
-    [
-      ['set-tpsl', 'SOL', ...tp, '--percent', '50', '--size', '1'],
-      'Give exactly one of --percent or --size',
     ],
     [['set-tpsl', 'SOL', ...tp, '--percent', 'half'], 'whole number'],
     [['set-tpsl', ...tp, '--percent', '50'], 'Missing market symbol'],
@@ -355,7 +349,6 @@ test('cancel-tpsl needs a market and a leg', () => {
   for (const [argv, message] of [
     [['cancel-tpsl'], 'Missing market symbol'],
     [['cancel-tpsl', 'SOL'], 'Missing leg'],
-    [['cancel-tpsl', 'SOL', 'all'], 'Leg must be takeProfit, stopLoss or both'],
     [['cancel-tpsl', 'SOL', 'both', '--slot', 'x'], 'whole number'],
   ] as const)
     expect(() => parseCli([...argv, ...RPC])).toThrow(message)
@@ -366,7 +359,6 @@ test('missing or malformed arguments are usage errors', () => {
     [[], 'Missing command'],
     [['buy'], 'Unknown command buy'],
     [['deposit'], 'Missing amount'],
-    [['deposit', '1', '--asset', 'BTC'], '--asset must be USDC or SOL'],
     [['add-margin', 'GOLD'], 'Missing USDC amount'],
     [
       ['add-margin', 'GOLD', '1', '--subaccount', 'two'],
