@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AccountRouteImport } from './routes/_account'
 import { Route as AccountDashboardRouteImport } from './routes/_account/dashboard'
 import { Route as AccountSignInRouteImport } from './routes/_account/sign-in'
+import { Route as PerpsAddressRouteImport } from './routes/perps.$address'
 import { Route as TxLinkIdRouteImport } from './routes/tx.$linkId'
 import { Route as AccountDashboardIndexRouteImport } from './routes/_account/dashboard/index'
 import { Route as AccountDashboardActivityRouteImport } from './routes/_account/dashboard/activity'
@@ -40,6 +41,11 @@ const AccountSignInRoute = AccountSignInRouteImport.update({
   id: '/sign-in',
   path: '/sign-in',
   getParentRoute: () => AccountRoute,
+} as any)
+const PerpsAddressRoute = PerpsAddressRouteImport.update({
+  id: '/perps/$address',
+  path: '/perps/$address',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const TxLinkIdRoute = TxLinkIdRouteImport.update({
   id: '/tx/$linkId',
@@ -92,6 +98,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dashboard': typeof AccountDashboardRouteWithChildren
   '/sign-in': typeof AccountSignInRoute
+  '/perps/$address': typeof PerpsAddressRoute
   '/tx/$linkId': typeof TxLinkIdRoute
   '/dashboard/activity': typeof AccountDashboardActivityRoute
   '/dashboard/payments': typeof AccountDashboardPaymentsRoute
@@ -104,6 +111,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/sign-in': typeof AccountSignInRoute
+  '/perps/$address': typeof PerpsAddressRoute
   '/tx/$linkId': typeof TxLinkIdRoute
   '/dashboard/activity': typeof AccountDashboardActivityRoute
   '/dashboard/payments': typeof AccountDashboardPaymentsRoute
@@ -119,6 +127,7 @@ export interface FileRoutesById {
   '/_account': typeof AccountRouteWithChildren
   '/_account/dashboard': typeof AccountDashboardRouteWithChildren
   '/_account/sign-in': typeof AccountSignInRoute
+  '/perps/$address': typeof PerpsAddressRoute
   '/tx/$linkId': typeof TxLinkIdRoute
   '/_account/dashboard/activity': typeof AccountDashboardActivityRoute
   '/_account/dashboard/payments': typeof AccountDashboardPaymentsRoute
@@ -134,6 +143,7 @@ export interface FileRouteTypes {
     | '/'
     | '/dashboard'
     | '/sign-in'
+    | '/perps/$address'
     | '/tx/$linkId'
     | '/dashboard/activity'
     | '/dashboard/payments'
@@ -146,6 +156,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/sign-in'
+    | '/perps/$address'
     | '/tx/$linkId'
     | '/dashboard/activity'
     | '/dashboard/payments'
@@ -160,6 +171,7 @@ export interface FileRouteTypes {
     | '/_account'
     | '/_account/dashboard'
     | '/_account/sign-in'
+    | '/perps/$address'
     | '/tx/$linkId'
     | '/_account/dashboard/activity'
     | '/_account/dashboard/payments'
@@ -173,6 +185,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AccountRoute: typeof AccountRouteWithChildren
+  PerpsAddressRoute: typeof PerpsAddressRoute
   TxLinkIdRoute: typeof TxLinkIdRoute
 }
 
@@ -205,6 +218,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/sign-in'
       preLoaderRoute: typeof AccountSignInRouteImport
       parentRoute: typeof AccountRoute
+    }
+    '/perps/$address': {
+      id: '/perps/$address'
+      path: '/perps/$address'
+      fullPath: '/perps/$address'
+      preLoaderRoute: typeof PerpsAddressRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/tx/$linkId': {
       id: '/tx/$linkId'
@@ -304,6 +324,7 @@ const AccountRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AccountRoute: AccountRouteWithChildren,
+  PerpsAddressRoute: PerpsAddressRoute,
   TxLinkIdRoute: TxLinkIdRoute,
 }
 export const routeTree = rootRouteImport
