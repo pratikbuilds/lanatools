@@ -40,6 +40,7 @@ import {
   prepareTransactionLink,
   sendTransaction,
   sendTransactionLink,
+  transactionStatus,
 } from './requests'
 import {
   transactionPrograms,
@@ -328,6 +329,9 @@ for (const [tool, args] of cases)
         if (!result.ok) throw new Error(JSON.stringify(result.error))
         expect(TransactionResult.allows(result.result)).toBe(true)
         const final = result.result
+        const accountUrl = {
+          accountUrl: expect.stringContaining(`/perps/${wallet.address}`),
+        }
         if (delivery !== 'embedded') {
           const prepared =
             delivery === 'local'
@@ -372,6 +376,18 @@ for (const [tool, args] of cases)
           if (!outcome.ok) throw new Error(JSON.stringify(outcome.error))
           expect(outcome.result.status).toBe('confirmed')
           expect(outcome.result.receipt?.commitment).toBe('confirmed')
+          // A link's agent reads the outcome from status; only that has the URL.
+          const read =
+            delivery === 'local'
+              ? outcome
+              : await transactionStatus(
+                  env(),
+                  f.identity,
+                  result.result.id,
+                  options,
+                )
+          if (!read.ok) throw new Error(JSON.stringify(read.error))
+          expect(read.result).toMatchObject(accountUrl)
           expect(
             (
               await sendTransactionLink(
@@ -382,7 +398,10 @@ for (const [tool, args] of cases)
               )
             ).ok,
           ).toBe(true)
-        } else expect(final.status).toBe('confirmed')
+        } else {
+          expect(final.status).toBe('confirmed')
+          expect(final).toMatchObject(accountUrl)
+        }
         expect(f.sent()).toBe(1)
         const saved = await row(result.result.id)
         const trade = { kind: 'perp', venue: 'phoenix', action: ACTIONS[tool] }
