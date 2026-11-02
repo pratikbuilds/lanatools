@@ -65,6 +65,30 @@ export const OrderMarket = z.object({
 export type OrderMarket = z.infer<typeof OrderMarket>
 
 const Integer = z.union([z.string().regex(/^-?\d+$/), z.number().int()])
+const Units = Integer.transform(BigInt)
+
+/**
+ * GET /v1/collateral/assets: what Phoenix takes as collateral. Quote USDC has
+ * no `spot` terms.
+ */
+export const CollateralAssets = z.object({
+  assets: z.array(
+    z.object({
+      symbol: z.string(),
+      decimals: z.number().int().nonnegative(),
+      spot: z
+        .object({
+          isActive: z.boolean(),
+          maxPerTraderBalance: Units,
+          maxGlobalBalance: Units,
+          currGlobalBalance: Units,
+          minMarginDiscountBps: z.number().int().nonnegative(),
+          maxMarginDiscountBps: z.number().int().nonnegative(),
+        })
+        .optional(),
+    }),
+  ),
+})
 
 /**
  * GET /v1/trader/state/{wallet}: collateral, positions and resting orders,
@@ -78,7 +102,9 @@ export const TraderBook = z.object({
         subaccountIndex: z.number().int(),
         collateral: Integer,
         spotCollaterals: z
-          .array(z.object({ symbol: z.string(), balance: Integer }))
+          .array(
+            z.object({ symbol: z.string(), balance: Units, maxBalance: Units }),
+          )
           .default([]),
         positions: z
           .array(z.object({ symbol: z.string(), basePositionLots: Integer }))

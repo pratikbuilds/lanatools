@@ -134,6 +134,26 @@ export const KEYS = ExchangeKeys.parse({
   activeTraderBuffer: ['2U32rSzzrQS3eVmGHsnbw5kcqKF3wQXpHGd3hMq5YJok'],
 })
 
+/** GET /v1/collateral/assets on 2026-11-01, trimmed. */
+export const COLLATERAL_ASSETS = {
+  assets: [
+    { assetIndex: 4294967295, symbol: 'USDC', decimals: 6 },
+    {
+      assetIndex: 4294901760,
+      symbol: 'SOL',
+      decimals: 9,
+      spot: {
+        isActive: true,
+        maxPerTraderBalance: '1000000000000',
+        maxGlobalBalance: '50000000000000',
+        currGlobalBalance: '9549963151032',
+        minMarginDiscountBps: 2000,
+        maxMarginDiscountBps: 2000,
+      },
+    },
+  ],
+}
+
 /** GET /v1/referral/activation-permission on 2026-10-08. */
 export const PERMISSION = {
   trader_onboarder: 'EzkM8YbCkBLaCqX2cdxtMyxfTLpKui3mWQWnhe5w2P4Z',

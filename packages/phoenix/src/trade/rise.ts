@@ -8,9 +8,11 @@ import {
   PHOENIX_PROGRAM_ADDRESS,
   PhoenixHttpClient,
   PhoenixHttpError,
+  SYSTEM_PROGRAM_ADDRESS,
   SelfTradeBehavior,
   Side,
   USDC_MINT_ADDRESS,
+  attributedNativeSolDepositLamports,
   baseLots,
   buildCancelAllIxResolved,
   buildCancelOrdersByIdIxResolved,
@@ -18,14 +20,21 @@ import {
   buildPlaceLimitOrderIxResolved,
   buildPlaceMarketOrderIxResolved,
   buildPlacePostOnlyOrderIxResolved,
+  buildReallocTraderIx,
   buildReferralActivationTransaction,
   buildSyncParentToChildIxResolved,
   buildTransferCollateralChildToParentIxResolved,
   buildTransferCollateralIxResolved,
   buildTransferNativeSolFromChildToParentIx,
+  buildSyncNativeIx,
+  buildTransferSolIx,
   buildWithdrawIxsResolved,
+  buildWithdrawNativeSolIx,
   decodeTrader,
   encodeTransferNativeSol,
+  encodeSyncNative,
+  encodeSystemTransferSol,
+  encodeWithdrawNativeSol,
   getEmberVaultAddress,
   getCancelAllEncoder,
   getCancelConditionalOrderDecoder,
@@ -50,6 +59,8 @@ import {
   getTransferCollateralDecoder,
   getWithdrawFundsDecoder,
   hasReferralActivationCapabilities,
+  nativeSolCollateralHeadroomLamports,
+  nativeSolSyncDeltaLamports,
   quoteLots,
   ticks,
 } from '@ellipsis-labs/rise'
@@ -86,6 +97,7 @@ import type { ExchangeKeys } from './schemas'
 export const PHOENIX_PROGRAM = address(PHOENIX_PROGRAM_ADDRESS)
 export const EMBER_PROGRAM = address(EMBER_PROGRAM_ADDRESS)
 export const USDC_MINT = address(USDC_MINT_ADDRESS)
+export const SYSTEM_PROGRAM = address(SYSTEM_PROGRAM_ADDRESS)
 
 /**
  * Rise brands each kind of address with a private symbol and exports no way
@@ -227,6 +239,9 @@ export async function traderAccountAddress(
     }),
   )
 }
+
+const riseTraderAccount = async (wallet: Address) =>
+  brand<TraderAddress>(await traderAccountAddress(wallet))
 
 /** The account holding a trader account's TP/SL orders. */
 export async function conditionalOrdersAddress(traderAccount: Address) {
@@ -374,6 +389,153 @@ export async function withdrawInstructions(
   const accounts = await collateralAccounts(wallet, keys)
   return buildWithdrawIxsResolved({ ...accounts, amount }).instructions.map(
     toInstruction,
+  )
+}
+
+/** Phoenix's caps on SOL collateral, from `/v1/collateral/assets`. */
+export type SolCaps = {
+  maxPerTraderBalance: bigint
+  maxGlobalBalance: bigint
+  currGlobalBalance: bigint
+}
+
+/** Where a trader account's SOL collateral stands before a deposit. */
+export type SolDepositRoom = {
+  caps: SolCaps
+  /** Lamports already counted as collateral. */
+  accountedLamports: bigint
+  /** The trader's own cap: `maxBalance` in trader state. */
+  traderMaxLamports: bigint
+  /** All lamports in the trader account, rent included. */
+  accountLamports: bigint
+  /** The rent floor for the trader account's own data length. */
+  rentExemptLamports: bigint
+}
+
+const solRoomParams = (room: SolDepositRoom) => ({
+  metadata: room.caps,
+  traderNativeSolLamports: room.accountedLamports,
+  traderMaxBalanceLamports: room.traderMaxLamports,
+  traderSyncDeltaLamports: nativeSolSyncDeltaLamports({
+    accountBalanceLamports: room.accountLamports,
+    accountedLamports: room.accountedLamports,
+    rentExemptMinimumLamports: room.rentExemptLamports,
+  }),
+})
+
+/**
+ * The most a SOL deposit can be before some of it lands uncounted:
+ * `SyncNative` clamps to Phoenix's caps instead of failing.
+ */
+export const solDepositHeadroom = (room: SolDepositRoom) =>
+  nativeSolCollateralHeadroomLamports(solRoomParams(room))
+
+/** How much of a deposit within the headroom Phoenix will count. */
+export const solDepositCredit = (room: SolDepositRoom, lamports: bigint) =>
+  attributedNativeSolDepositLamports({
+    ...solRoomParams(room),
+    depositLamports: lamports,
+  })
+
+/**
+ * The accounts the checks compare, by their place in Rise's builders and
+ * Phoenix's server answers. If an upgrade moves them, the checks fail and
+ * nothing gets signed.
+ */
+export const ACCOUNT_AT = {
+  order: { traderAccount: 4 },
+  placeConditional: { traderAccount: 4, conditionalOrders: 11 },
+  transferCollateral: { source: 4, destination: 5 },
+  realloc: { payer: 3, trader: 4, traderAccount: 5 },
+  transfer: { source: 0, destination: 1 },
+  sync: { traderAccount: 3 },
+  withdraw: { trader: 3, traderAccount: 4, destination: 6 },
+} as const
+
+/** The exact data of each SOL collateral instruction, from Rise's encoders. */
+export const solData = {
+  realloc: () => Uint8Array.from(DISCRIMINANTS.REALLOC_TRADER ?? []),
+  transfer: (lamports: bigint) =>
+    Uint8Array.from(encodeSystemTransferSol(lamports)),
+  sync: () => Uint8Array.from(encodeSyncNative()),
+  withdraw: (lamports: bigint) =>
+    Uint8Array.from(
+      encodeWithdrawNativeSol({ kind: 'withoutExcess', lamports }),
+    ),
+  /** Phoenix's `TransferNativeSol`, from cross to a subaccount. */
+  toSubaccount: (lamports: bigint) =>
+    Uint8Array.from(encodeTransferNativeSol(lamports)),
+}
+
+function solContext(wallet: Address, keys: ExchangeKeys) {
+  const exchange = exchangeAccounts(keys)
+  return {
+    addresses: {
+      phoenixProgramAddress: exchange.phoenixProgramAddress,
+      logAuthorityAddress: exchange.logAuthorityAddress,
+      globalConfigurationAddress: exchange.globalConfigurationAddress,
+    },
+    indexes: {
+      globalTraderIndex: exchange.globalTraderIndex,
+      activeTraderBuffer: exchange.activeTraderBuffer,
+    },
+    exchange,
+    authority: brand<Authority>(wallet),
+  }
+}
+
+/**
+ * Deposit `lamports` of the wallet's SOL into its cross-margin account:
+ * reserve the account's SOL slot (any new rent is paid apart from the deposit),
+ * move the lamports in, then have Phoenix count them. The same three steps as
+ * Rise's `buildNativeSolDepositFlow`, which needs an RPC-backed client where
+ * we already hold the resolved accounts.
+ */
+export async function solDepositInstructions(
+  wallet: Address,
+  keys: ExchangeKeys,
+  lamports: bigint,
+) {
+  const { addresses, indexes, authority } = solContext(wallet, keys)
+  const traderAccount = await riseTraderAccount(wallet)
+  return [
+    buildReallocTraderIx({
+      ...addresses,
+      payer: authority,
+      trader: authority,
+      traderAccount,
+    }),
+    buildTransferSolIx({
+      source: authority,
+      destination: traderAccount,
+      lamports,
+    }),
+    buildSyncNativeIx({ ...addresses, ...indexes, traderAccount }),
+  ].map(toInstruction)
+}
+
+/**
+ * Withdraw `lamports` of counted SOL collateral to the wallet. `withoutExcess`
+ * never touches lamports Phoenix has not counted. Never queued: it clears now
+ * or fails.
+ */
+export async function solWithdrawInstruction(
+  wallet: Address,
+  keys: ExchangeKeys,
+  lamports: bigint,
+) {
+  const { addresses, indexes, exchange, authority } = solContext(wallet, keys)
+  return toInstruction(
+    buildWithdrawNativeSolIx({
+      ...addresses,
+      ...indexes,
+      trader: authority,
+      traderAccount: await riseTraderAccount(wallet),
+      perpAssetMap: exchange.perpAssetMap,
+      destination: wallet,
+      withdrawQueue: exchange.withdrawQueue,
+      action: { kind: 'withoutExcess', lamports },
+    }),
   )
 }
 
@@ -959,7 +1121,3 @@ export function decodeBundleStep(data: Uint8Array): BundleStep | null {
   const packet = decodeOrder(data)
   return packet ? { kind: 'order', packet } : null
 }
-
-/** A `TransferNativeSol` instruction's exact data for `lamports`. */
-export const transferSolData = (lamports: bigint) =>
-  Uint8Array.from(encodeTransferNativeSol(lamports))

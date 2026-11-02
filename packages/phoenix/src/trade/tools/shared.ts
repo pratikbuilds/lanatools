@@ -52,7 +52,7 @@ export const Subaccount = z
     'Subaccount from phoenix_get_account: 0 is cross margin, the others isolated',
   )
 
-/** Throws `not_activated` unless the wallet's trader account can trade. */
+/** The wallet's trader account; throws `not_activated` unless it can trade. */
 export async function requireActivated(
   { rpc }: Pick<TradeContext, 'rpc'>,
   wallet: Address,
@@ -66,6 +66,7 @@ export async function requireActivated(
       'not_activated',
       'This wallet has no activated Phoenix account; call phoenix_activate_account first',
     )
+  return trader
 }
 
 /** A market's order config: accounts, tick size, lot decimals. */
@@ -178,6 +179,33 @@ const restingIn = (account: TraderSubaccount | undefined, symbol?: string) =>
     .flatMap((market) => market.orders)
     .filter((order) => order.change !== 'closed')
 
+const traderStatePath = (wallet: Address) =>
+  `/v1/trader/state/${encodeURIComponent(wallet)}`
+
+function missingAccount(error: unknown): never {
+  if (error instanceof PhoenixError && error.code === 'not_found')
+    throw new PhoenixError(
+      'not_activated',
+      'This wallet has no Phoenix account; call phoenix_activate_account first',
+    )
+  throw error
+}
+
+/**
+ * The collateral in the wallet's cross-margin account (subaccount 0): USDC
+ * in base units, and its SOL row, in lamports.
+ */
+export async function crossCollateral(context: TradeContext, wallet: Address) {
+  const { snapshot } = await traderBook(context, wallet)
+  const cross = snapshot.subaccounts.find(
+    (subaccount) => subaccount.subaccountIndex === 0,
+  )
+  return {
+    usdc: BigInt(cross?.collateral ?? 0),
+    sol: cross?.spotCollaterals.find((row) => row.symbol === 'SOL'),
+  }
+}
+
 /**
  * One of the wallet's accounts as Phoenix's API sees it: collateral, positions
  * and resting orders. Subaccount 0 is cross margin.
@@ -203,16 +231,7 @@ export async function traderBook(
   { phoenix }: Pick<TradeContext, 'phoenix'>,
   wallet: Address,
 ) {
-  return phoenix
-    .get(`/v1/trader/state/${encodeURIComponent(wallet)}`, TraderBook)
-    .catch((error: unknown) => {
-      if (error instanceof PhoenixError && error.code === 'not_found')
-        throw new PhoenixError(
-          'not_activated',
-          'This wallet has no Phoenix account; call phoenix_activate_account first',
-        )
-      throw error
-    })
+  return phoenix.get(traderStatePath(wallet), TraderBook).catch(missingAccount)
 }
 
 /**

@@ -1,8 +1,9 @@
 import { address } from '@solana/kit'
 import { expect, test } from 'bun:test'
-import { TOKEN_PROGRAM } from '../checks'
+import { TOKEN_PROGRAM, TRADE_PROGRAMS } from '../checks'
 import {
   BLOCKHASH,
+  COLLATERAL_ASSETS,
   KEYS,
   PERMISSION,
   REGISTERED_TRADER_ACCOUNT_DATA,
@@ -15,18 +16,25 @@ import {
 } from '../fixtures'
 import {
   PHOENIX_PROGRAM,
+  SYSTEM_PROGRAM,
   traderAccountAddress,
   usdcAccountAddress,
 } from '../rise'
 import { runTradeTool } from '../tool'
 import { messageOf } from '../transaction'
 import { activateAccount } from './activate'
+import { cancelOrders } from './cancel'
+import { closePosition } from './close'
 import { deposit } from './deposit'
+import { limitOrder } from './limit-order'
+import { marketOrder } from './market-order'
 import { withdraw } from './withdraw'
 
 const FEES = { computeUnitMargin: 0.2, microLamportsPerComputeUnit: 0n }
 const TRADER = await traderAccountAddress(WALLET)
 const USDC = await usdcAccountAddress(WALLET)
+/** The rent floor `chain` reports; `accountInfo`'s default lamports. */
+const RENT = 1_000_000n
 
 const NONCE = {
   nonce_id: 'nonce-1',
@@ -38,6 +46,7 @@ const NONCE = {
 function chain(accounts: Record<string, ReturnType<typeof accountInfo>>) {
   return fakeRpc({
     getAccountInfo: (account) => accounts[String(account)] ?? { value: null },
+    getMinimumBalanceForRentExemption: () => RENT,
     getLatestBlockhash: () => ({
       value: { blockhash: BLOCKHASH, lastValidBlockHeight: 500n },
     }),
@@ -281,4 +290,342 @@ test('a registered account only needs onboarding, and pays no new rent', async (
     ],
   })
   expect(messageOf(outcome.result.transaction).instructions).toHaveLength(1)
+})
+
+const system = (lamports: bigint) =>
+  accountInfo(SYSTEM_PROGRAM, new Uint8Array(), lamports)
+const solAccounts = {
+  ...activated,
+  [WALLET]: system(1_000_000_000n),
+}
+/** Trader state whose SOL row holds `balance` lamports under `maxBalance`. */
+const solState = (balance = '0', maxBalance = '1000000000000') => ({
+  snapshot: {
+    subaccounts: [
+      {
+        subaccountIndex: 0,
+        collateral: '0',
+        spotCollaterals: [{ symbol: 'SOL', balance, maxBalance }],
+      },
+    ],
+  },
+})
+/** The SOL asset of `/v1/collateral/assets`, with `spot` terms changed. */
+const solAsset = (spot: Record<string, unknown>) => ({
+  assets: COLLATERAL_ASSETS.assets.map((asset) =>
+    asset.spot ? { ...asset, spot: { ...asset.spot, ...spot } } : asset,
+  ),
+})
+const STATE_PATH = `/v1/trader/state/${WALLET}`
+
+const programsOf = (transaction: string) =>
+  [...messageOf(transaction).instructions].map(
+    (instruction) => instruction.programAddress,
+  )
+
+function solDeposit(
+  amount: string,
+  {
+    accounts = solAccounts,
+    assets = COLLATERAL_ASSETS,
+    state = solState(),
+  }: {
+    accounts?: Parameters<typeof chain>[0]
+    assets?: unknown
+    state?: unknown
+  } = {},
+) {
+  return runTradeTool(
+    deposit,
+    { wallet: WALLET, amount, asset: 'SOL' },
+    {
+      rpc: chain(accounts).rpc,
+      fees: FEES,
+      fetch: fakePhoenix({
+        '/v1/view/exchange/keys': KEYS,
+        '/v1/collateral/assets': assets,
+        [STATE_PATH]: state,
+      }).fetch,
+    },
+  )
+}
+
+test("a SOL deposit moves SOL into the wallet's trader account, with the warnings", async () => {
+  const outcome = await solDeposit('0.01')
+  if (!outcome.ok || outcome.result.status !== 'ready')
+    throw new Error(`unexpected ${JSON.stringify(outcome)}`)
+  expect(outcome.result).toMatchObject({
+    summary: 'Deposit 0.01 SOL into the Phoenix cross-margin account',
+    details: {
+      amountSol: '0.01',
+      walletSol: '1',
+      collateralSol: '0',
+      headroomSol: '1000',
+    },
+    trade: { kind: 'perp', action: 'deposit', asset: 'SOL', amountSol: '0.01' },
+    submit: { via: 'rpc' },
+  })
+  expect(outcome.result.warnings).toEqual([
+    "SOL's value moves with its price, so your margin can change on its own.",
+    'Only part of it counts toward margin: Phoenix currently discounts SOL by 20%.',
+    'Phoenix may convert some of it to USDC if your USDC balance goes negative.',
+    'It does not raise your USDC withdrawal limit.',
+  ])
+  expect(programsOf(outcome.result.transaction)).toContain(SYSTEM_PROGRAM)
+})
+
+test('the SOL deposit warning states the discount Phoenix sends', async () => {
+  const outcome = await solDeposit('0.01', {
+    assets: solAsset({ minMarginDiscountBps: 500, maxMarginDiscountBps: 2550 }),
+  })
+  if (!outcome.ok || outcome.result.status !== 'ready')
+    throw new Error(`unexpected ${JSON.stringify(outcome)}`)
+  expect(outcome.result.warnings).toContain(
+    'Only part of it counts toward margin: Phoenix currently discounts SOL by 5% to 25.5%.',
+  )
+})
+
+test('a SOL deposit over the headroom is refused, stating the headroom', async () => {
+  // The trader's own cap, less what it already holds.
+  expect(
+    await solDeposit('0.6', {
+      state: solState('500000000', '1000000000'),
+      accounts: {
+        ...solAccounts,
+        [TRADER]: accountInfo(
+          PHOENIX_PROGRAM,
+          TRADER_ACCOUNT_DATA,
+          RENT + 500_000_000n,
+        ),
+      },
+    }),
+  ).toMatchObject({
+    ok: false,
+    error: {
+      code: 'invalid_input',
+      message:
+        'Phoenix can count at most 0.5 more SOL as collateral here, less than 0.6; anything above that would land uncounted',
+    },
+  })
+  // The exchange-wide cap.
+  expect(
+    await solDeposit('0.3', {
+      assets: solAsset({
+        maxGlobalBalance: '1000000000',
+        currGlobalBalance: '750000000',
+      }),
+    }),
+  ).toMatchObject({
+    ok: false,
+    error: {
+      code: 'invalid_input',
+      message: expect.stringContaining('at most 0.25 more SOL'),
+    },
+  })
+  // Uncounted lamports already in the account use up the headroom.
+  expect(
+    await solDeposit('0.9', {
+      state: solState('0', '1000000000'),
+      accounts: {
+        ...solAccounts,
+        [TRADER]: accountInfo(
+          PHOENIX_PROGRAM,
+          TRADER_ACCOUNT_DATA,
+          RENT + 200_000_000n,
+        ),
+      },
+    }),
+  ).toMatchObject({
+    ok: false,
+    error: {
+      code: 'invalid_input',
+      message: expect.stringContaining('at most 0.8 more SOL'),
+    },
+  })
+  // Exactly the headroom is fine: nothing lands uncounted.
+  expect(
+    await solDeposit('0.5', { state: solState('0', '500000000') }),
+  ).toMatchObject({ ok: true, result: { status: 'ready' } })
+})
+
+test('a SOL deposit says when Phoenix will not count all of it', async () => {
+  const outcome = await solDeposit('0.0005', {
+    accounts: {
+      ...solAccounts,
+      [TRADER]: accountInfo(
+        PHOENIX_PROGRAM,
+        TRADER_ACCOUNT_DATA,
+        RENT - 100_000n,
+      ),
+    },
+  })
+  if (!outcome.ok || outcome.result.status !== 'ready')
+    throw new Error(`unexpected ${JSON.stringify(outcome)}`)
+  expect(outcome.result.warnings).toContain(
+    'Phoenix will count 0.0004 SOL of this deposit; the rest refills the rent the trader account is short of.',
+  )
+})
+
+test('a SOL deposit is refused when Phoenix does not take SOL', async () => {
+  expect(
+    await solDeposit('0.01', { assets: solAsset({ isActive: false }) }),
+  ).toMatchObject({
+    ok: false,
+    error: {
+      code: 'market_unavailable',
+      message: 'Phoenix is not accepting SOL as collateral right now',
+    },
+  })
+  expect(
+    await solDeposit('0.01', {
+      assets: { assets: [{ symbol: 'USDC', decimals: 6 }] },
+    }),
+  ).toMatchObject({ ok: false, error: { code: 'market_unavailable' } })
+})
+
+test('a SOL deposit needs an activated account, its cap and SOL for fees', async () => {
+  expect(await solDeposit('0.01', { accounts: {} })).toMatchObject({
+    ok: false,
+    error: { code: 'not_activated' },
+  })
+  expect(
+    await solDeposit('0.01', {
+      state: {
+        snapshot: {
+          subaccounts: [{ subaccountIndex: 0, collateral: '0' }],
+        },
+      },
+    }),
+  ).toMatchObject({ ok: false, error: { code: 'upstream_error' } })
+  for (const [amount, held] of [
+    ['2', 1_000_000_000n],
+    // All of it: nothing would be left for the fee.
+    ['1', 1_000_000_000n],
+  ] as const)
+    expect(
+      await solDeposit(amount, {
+        accounts: { ...activated, [WALLET]: system(held) },
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: 'insufficient_funds',
+        message: `The wallet holds 1 SOL, not enough for ${amount} plus network fees`,
+      },
+    })
+  expect(await solDeposit('0.0000000001')).toMatchObject({
+    ok: false,
+    error: {
+      code: 'invalid_input',
+      message: 'amount must have at most 9 decimals',
+    },
+  })
+})
+
+test('a SOL withdrawal is checked against SOL collateral and is never queued', async () => {
+  const { rpc } = chain({})
+  const run = (amount: string, state: unknown, status: unknown = open) =>
+    runTradeTool(
+      withdraw,
+      { wallet: WALLET, amount, asset: 'SOL' },
+      {
+        rpc,
+        fees: FEES,
+        fetch: fakePhoenix({
+          '/v1/view/exchange/keys': KEYS,
+          '/v1/view/exchange/status': status,
+          [STATE_PATH]: state,
+        }).fetch,
+      },
+    )
+
+  expect(await run('0.01', 404)).toMatchObject({
+    ok: false,
+    error: { code: 'not_activated' },
+  })
+  expect(
+    await run('0.01', solState('10000000'), {
+      ...open,
+      withdrawalsAvailable: false,
+    }),
+  ).toMatchObject({ ok: false, error: { code: 'market_unavailable' } })
+  expect(await run('0.02', solState('10000000'))).toMatchObject({
+    ok: false,
+    error: {
+      code: 'insufficient_funds',
+      message:
+        'The cross-margin account holds 0.01 SOL of collateral, less than 0.02',
+    },
+  })
+  // USDC collateral does not pay for a SOL withdrawal.
+  expect(await run('1', traderState('5000000'))).toMatchObject({
+    ok: false,
+    error: { code: 'insufficient_funds' },
+  })
+  expect(await run('0.0000000001', solState('10000000'))).toMatchObject({
+    ok: false,
+    error: { code: 'invalid_input' },
+  })
+
+  const outcome = await run('0.01', solState('10000000'))
+  expect(outcome).toMatchObject({
+    ok: true,
+    result: {
+      status: 'ready',
+      summary:
+        'Withdraw 0.01 SOL from the Phoenix cross-margin account to the wallet',
+      details: { amountSol: '0.01', collateralSol: '0.01' },
+      trade: {
+        kind: 'perp',
+        action: 'withdraw',
+        asset: 'SOL',
+        amountSol: '0.01',
+      },
+      warnings: [
+        'SOL withdrawals clear immediately or fail; they are never queued.',
+        'Open positions keep their margin; Phoenix rejects a withdrawal that would leave too little.',
+      ],
+    },
+  })
+})
+
+test('naming USDC is the same as naming no asset', async () => {
+  const run = (asset: Record<string, string>) =>
+    runTradeTool(
+      deposit,
+      { wallet: WALLET, amount: '2.5', ...asset },
+      {
+        rpc: chain({
+          ...activated,
+          [USDC]: accountInfo(TOKEN_PROGRAM, tokenAccountData(5_000_000n)),
+        }).rpc,
+        fees: FEES,
+        fetch: fakePhoenix({ '/v1/view/exchange/keys': KEYS }).fetch,
+      },
+    )
+  const [unnamed, named] = await Promise.all([run({}), run({ asset: 'USDC' })])
+  expect(unnamed).toEqual(named)
+  expect(unnamed).toMatchObject({
+    ok: true,
+    result: {
+      trade: { asset: 'USDC', amountUsdc: '2.5' },
+      warnings: [],
+    },
+  })
+  if (!unnamed.ok || unnamed.result.status !== 'ready')
+    throw new Error(`unexpected ${JSON.stringify(unnamed)}`)
+  expect(programsOf(unnamed.result.transaction)).not.toContain(SYSTEM_PROGRAM)
+})
+
+test('only the deposit tool may call the System program', () => {
+  expect(deposit.programs).toEqual([...TRADE_PROGRAMS, SYSTEM_PROGRAM])
+  for (const tool of [
+    activateAccount,
+    withdraw,
+    marketOrder,
+    limitOrder,
+    cancelOrders,
+    closePosition,
+  ])
+    expect(tool.programs ?? TRADE_PROGRAMS).not.toContain(SYSTEM_PROGRAM)
 })

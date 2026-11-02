@@ -1,7 +1,7 @@
 import { address } from '@solana/kit'
 import { expect, test } from 'bun:test'
 import { SelfTradeBehavior } from '@ellipsis-labs/rise'
-import type { Instruction } from '@solana/kit'
+import type { Address, Instruction } from '@solana/kit'
 import {
   ASSOCIATED_TOKEN_PROGRAM,
   TOKEN_PROGRAM,
@@ -10,6 +10,8 @@ import {
   checkCollateral,
   checkInstructions,
   checkOrder,
+  checkSolDeposit,
+  checkSolWithdraw,
 } from './checks'
 import {
   KEYS,
@@ -21,7 +23,17 @@ import {
   postOnlyData,
   registerTraderData,
 } from './fixtures'
-import { cancelData, depositInstructions, withdrawInstructions } from './rise'
+import {
+  EMBER_PROGRAM,
+  ACCOUNT_AT,
+  cancelData,
+  depositInstructions,
+  solData,
+  solDepositInstructions,
+  solWithdrawInstruction,
+  traderAccountAddress,
+  withdrawInstructions,
+} from './rise'
 import type { OrderSpec } from './rise'
 
 const depositInstructionsFixture = await depositInstructions(
@@ -333,4 +345,131 @@ test('a cancel must be exactly the instruction for the orders asked for', () => 
       null,
     ),
   ).toThrow('the cancel is not a Phoenix instruction')
+})
+
+const TRADER = await traderAccountAddress(WALLET)
+const LAMPORTS = 10_000_000n
+const SOL_TERMS = { wallet: WALLET, traderAccount: TRADER, lamports: LAMPORTS }
+
+/** A copy of `instruction` with the account at `index` replaced. */
+function withAccount(
+  instruction: Instruction,
+  index: number,
+  account: Address,
+) {
+  return {
+    ...instruction,
+    accounts: (instruction.accounts ?? []).map((entry, at) =>
+      at === index ? { ...entry, address: account } : entry,
+    ),
+  }
+}
+
+test('a SOL deposit passes only as the exact three steps', async () => {
+  const good = await solDepositInstructions(WALLET, KEYS, LAMPORTS)
+  const [realloc, transfer, sync] = good
+  if (!realloc || !transfer || !sync) throw new Error('three steps')
+  expect(() => checkSolDeposit(good, SOL_TERMS)).not.toThrow()
+
+  const { payer, trader, traderAccount } = ACCOUNT_AT.realloc
+  const { source, destination } = ACCOUNT_AT.transfer
+  for (const [instructions, reason] of [
+    [[realloc, transfer], 'the SOL deposit has unexpected steps'],
+    [[...good, transfer], 'the SOL deposit has unexpected steps'],
+    [
+      [transfer, realloc, sync],
+      'the ReallocTrader step calls the wrong program',
+    ],
+    [
+      [realloc, sync, transfer],
+      'the SOL transfer step calls the wrong program',
+    ],
+    [
+      [{ ...realloc, data: solData.sync() }, transfer, sync],
+      'the ReallocTrader step does not match the request',
+    ],
+    [
+      [withAccount(realloc, payer, OTHER), transfer, sync],
+      "the rent payer is not the wallet's own",
+    ],
+    [
+      [withAccount(realloc, trader, OTHER), transfer, sync],
+      "the trader authority is not the wallet's own",
+    ],
+    [
+      [withAccount(realloc, traderAccount, OTHER), transfer, sync],
+      "the reallocated trader account is not the wallet's own",
+    ],
+    [
+      [realloc, withAccount(transfer, destination, OTHER), sync],
+      "the SOL destination is not the wallet's own",
+    ],
+    [
+      [realloc, withAccount(transfer, source, OTHER), sync],
+      "the SOL source is not the wallet's own",
+    ],
+    [
+      [realloc, { ...transfer, data: solData.transfer(LAMPORTS + 1n) }, sync],
+      'the SOL transfer step does not match the request',
+    ],
+    [
+      [realloc, { ...transfer, programAddress: TOKEN_PROGRAM }, sync],
+      'the SOL transfer step calls the wrong program',
+    ],
+    [
+      [realloc, transfer, { ...sync, data: solData.realloc() }],
+      'the SyncNative step does not match the request',
+    ],
+    [
+      [
+        realloc,
+        transfer,
+        withAccount(sync, ACCOUNT_AT.sync.traderAccount, OTHER),
+      ],
+      "the synced trader account is not the wallet's own",
+    ],
+  ] as const)
+    expect(() => checkSolDeposit(instructions, SOL_TERMS)).toThrow(reason)
+})
+
+test('a SOL withdrawal passes only as one exact WithdrawNativeSol', async () => {
+  const good = await solWithdrawInstruction(WALLET, KEYS, LAMPORTS)
+  expect(() => checkSolWithdraw([good], SOL_TERMS)).not.toThrow()
+
+  const { trader, traderAccount, destination } = ACCOUNT_AT.withdraw
+  const withData = (data: Uint8Array) => [{ ...good, data }]
+  const excess = Uint8Array.from(solData.withdraw(LAMPORTS))
+  excess[8] = 1 // `withExcess`: would also take uncounted lamports.
+  const allExcess = solData.withdraw(LAMPORTS).slice(0, 9)
+  allExcess[8] = 0
+  for (const [instructions, reason] of [
+    [[good, good], 'the SOL withdrawal has unexpected steps'],
+    [[], 'the SOL withdrawal has unexpected steps'],
+    [
+      [{ ...good, programAddress: EMBER_PROGRAM }],
+      'the WithdrawNativeSol step calls the wrong program',
+    ],
+    [
+      withData(solData.withdraw(LAMPORTS - 1n)),
+      'the WithdrawNativeSol step does not match the request',
+    ],
+    [withData(excess), 'the WithdrawNativeSol step does not match the request'],
+    [
+      withData(allExcess),
+      'the WithdrawNativeSol step does not match the request',
+    ],
+    [
+      [withAccount(good, destination, OTHER)],
+      "the withdrawal destination is not the wallet's own",
+    ],
+    [
+      [withAccount(good, traderAccount, OTHER)],
+      "the withdrawn trader account is not the wallet's own",
+    ],
+    [
+      [withAccount(good, trader, OTHER)],
+      "the withdrawing authority is not the wallet's own",
+    ],
+  ] as const)
+    expect(() => checkSolWithdraw(instructions, SOL_TERMS)).toThrow(reason)
 })

@@ -7,7 +7,7 @@ import { toUSDCUnits } from '../price'
 import { addMarginInstructions } from '../rise'
 import { ExchangeKeys } from '../schemas'
 import { ISOLATED_RISK, defineTradeTool } from '../tool'
-import { USDCAmount } from './deposit'
+import { CollateralAmount } from './deposit'
 import {
   MarketSymbol,
   Subaccount,
@@ -32,7 +32,7 @@ export const addIsolatedMargin = defineTradeTool({
       subaccount: Subaccount.optional().describe(
         'Subaccount holding the isolated position, from phoenix_get_account. Needed only when the market is open in more than one',
       ),
-      amount: USDCAmount,
+      amount: CollateralAmount.describe('USDC to add, as a decimal string'),
     })
     .strict(),
   async prepare(context, input) {

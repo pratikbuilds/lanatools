@@ -18,8 +18,8 @@ export const USAGE = `Usage: bun packages/phoenix/scripts/trade.ts <command> [ar
 Commands:
   activate [--code CODE]
   state
-  deposit <usdc>
-  withdraw <usdc>
+  deposit <amount> [--asset SOL]
+  withdraw <amount> [--asset SOL]
   market <symbol> <buy|sell> <size> (--slippage-bps N | --limit-price P) [--reduce-only]
   limit <symbol> <buy|sell> <size> <price> [--post-only] [--reduce-only]
     Either order in isolated margin: --isolated [--collateral-usdc N] [--collateral-sol N]
@@ -31,7 +31,8 @@ Options:
   --rpc URL        Solana mainnet RPC (required)
   --keypair PATH   Signing keypair (default ~/.config/solana/id.json)
   --dry-run        Prepare and simulate only; never sign or send
-  --as ADDRESS     With --dry-run: simulate as another wallet`
+  --as ADDRESS     With --dry-run: simulate as another wallet
+  --asset ASSET    With deposit or withdraw: USDC (default) or SOL`
 
 export type Command =
   | { command: 'state' }
@@ -72,6 +73,13 @@ function decimalText(value: string, what: string) {
 
 function decimal(value: string, what: string) {
   return Number(decimalText(value, what))
+}
+
+function asset(value: string | undefined) {
+  if (value === undefined) return {}
+  if (value !== 'USDC' && value !== 'SOL')
+    throw new UsageError(`--asset must be USDC or SOL, not ${value}`)
+  return { asset: value }
 }
 
 /** The worst price of a market or close order: exactly one, no default (D1). */
@@ -127,6 +135,7 @@ export function parseCli(argv: readonly string[]): CliArgs {
         'collateral-usdc': { type: 'string' },
         'collateral-sol': { type: 'string' },
         subaccount: { type: 'string' },
+        asset: { type: 'string' },
       },
     })
   } catch (error) {
@@ -164,7 +173,7 @@ export function parseCli(argv: readonly string[]): CliArgs {
       command = {
         command: 'tool',
         tool: `phoenix_${name}`,
-        input: { amount: arg(0, 'USDC amount') },
+        input: { amount: arg(0, 'amount'), ...asset(values.asset) },
       }
       break
     case 'market':

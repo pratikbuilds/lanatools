@@ -1,5 +1,10 @@
 import { expect, test } from 'bun:test'
-import { fetchAccount, positionSize, tokenBalance } from './chain'
+import {
+  fetchAccount,
+  positionSize,
+  rentExemptMinimum,
+  tokenBalance,
+} from './chain'
 import { TOKEN_PROGRAM } from './checks'
 import { WALLET, accountInfo, fakeRpc, tokenAccountData } from './fixtures'
 import { PHOENIX_PROGRAM, traderAccountAddress } from './rise'
@@ -39,6 +44,14 @@ test('a position is read from the account that holds it', async () => {
   expect(await accounts({ ...market, subaccount: 4 })).toEqual([
     await traderAccountAddress(WALLET, 4),
   ])
+})
+
+test("the rent floor is read for the account's own size", async () => {
+  const { rpc, calls } = fakeRpc({
+    getMinimumBalanceForRentExemption: () => 2_039_280n,
+  })
+  expect<bigint>(await rentExemptMinimum(rpc, 165)).toBe(2_039_280n)
+  expect(calls).toEqual([['getMinimumBalanceForRentExemption', [165n]]])
 })
 
 test('a token balance is read only from a token account', () => {

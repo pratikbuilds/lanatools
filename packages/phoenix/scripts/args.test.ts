@@ -15,6 +15,18 @@ test('each command maps to its trade tool and input', () => {
     [['deposit', '25'], { tool: 'phoenix_deposit', input: { amount: '25' } }],
     [['withdraw', '5'], { tool: 'phoenix_withdraw', input: { amount: '5' } }],
     [
+      ['deposit', '0.01', '--asset', 'SOL'],
+      { tool: 'phoenix_deposit', input: { amount: '0.01', asset: 'SOL' } },
+    ],
+    [
+      ['withdraw', '0.01', '--asset', 'SOL'],
+      { tool: 'phoenix_withdraw', input: { amount: '0.01', asset: 'SOL' } },
+    ],
+    [
+      ['deposit', '5', '--asset', 'USDC'],
+      { tool: 'phoenix_deposit', input: { amount: '5', asset: 'USDC' } },
+    ],
+    [
       ['market', 'SOL', 'buy', '0.1', '--slippage-bps', '50'],
       {
         tool: 'phoenix_market_order',
@@ -228,7 +240,8 @@ test('missing or malformed arguments are usage errors', () => {
   for (const [argv, message] of [
     [[], 'Missing command'],
     [['buy'], 'Unknown command buy'],
-    [['deposit'], 'Missing USDC amount'],
+    [['deposit'], 'Missing amount'],
+    [['deposit', '1', '--asset', 'BTC'], '--asset must be USDC or SOL'],
     [['add-margin', 'GOLD'], 'Missing USDC amount'],
     [
       ['add-margin', 'GOLD', '1', '--subaccount', 'two'],

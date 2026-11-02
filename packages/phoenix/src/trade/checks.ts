@@ -8,6 +8,8 @@ import {
   MAX_SUBACCOUNTS,
   MIN_FILL_LOTS,
   PHOENIX_PROGRAM,
+  ACCOUNT_AT,
+  SYSTEM_PROGRAM,
   cancelData,
   collateralAmounts,
   conditionalOrdersAddress,
@@ -17,8 +19,8 @@ import {
   expectedPacket,
   isOnboardTraderDelegated,
   orderData,
+  solData,
   traderAccountAddress,
-  transferSolData,
 } from './rise'
 import type {
   CancelTarget,
@@ -50,6 +52,15 @@ export const TRADE_PROGRAMS: readonly Address[] = [
   EMBER_PROGRAM,
   TOKEN_PROGRAM,
   ASSOCIATED_TOKEN_PROGRAM,
+]
+
+/**
+ * `phoenix_deposit` alone may call the System program, to move a SOL deposit
+ * into the wallet's own trader account (see `checkSolDeposit`).
+ */
+export const DEPOSIT_PROGRAMS: readonly Address[] = [
+  ...TRADE_PROGRAMS,
+  SYSTEM_PROGRAM,
 ]
 
 export type CheckRules = {
@@ -227,6 +238,111 @@ export function checkCollateral(
   )
 }
 
+/** One step of a SOL collateral instruction: its program and exact data. */
+function checkSolStep(
+  instruction: Instruction | undefined,
+  program: Address,
+  data: Uint8Array,
+  step: string,
+) {
+  if (instruction?.programAddress !== program)
+    fail(`the ${step} step calls the wrong program`)
+  if (!sameBytes(bytesOf(instruction), data))
+    fail(`the ${step} step does not match the request`)
+}
+
+function checkAccount(
+  instruction: Instruction | undefined,
+  index: number,
+  expected: Address,
+  what: string,
+) {
+  if (instruction?.accounts?.[index]?.address !== expected)
+    fail(`the ${what} is not the wallet's own`)
+}
+
+type SolTerms = { wallet: Address; traderAccount: Address; lamports: bigint }
+
+/**
+ * A SOL deposit is exactly `ReallocTrader`, a System transfer, `SyncNative`,
+ * all on the wallet's own trader account. The transfer's amount and
+ * destination are the money: lamports sent anywhere else are gone, and a sync
+ * of another account would leave them uncounted.
+ */
+export function checkSolDeposit(
+  instructions: readonly Instruction[],
+  { wallet, traderAccount, lamports }: SolTerms,
+) {
+  if (instructions.length !== 3) fail('the SOL deposit has unexpected steps')
+  const [realloc, transfer, sync] = instructions
+  checkSolStep(realloc, PHOENIX_PROGRAM, solData.realloc(), 'ReallocTrader')
+  checkAccount(realloc, ACCOUNT_AT.realloc.payer, wallet, 'rent payer')
+  checkAccount(realloc, ACCOUNT_AT.realloc.trader, wallet, 'trader authority')
+  checkAccount(
+    realloc,
+    ACCOUNT_AT.realloc.traderAccount,
+    traderAccount,
+    'reallocated trader account',
+  )
+  checkSolStep(
+    transfer,
+    SYSTEM_PROGRAM,
+    solData.transfer(lamports),
+    'SOL transfer',
+  )
+  checkAccount(transfer, ACCOUNT_AT.transfer.source, wallet, 'SOL source')
+  checkAccount(
+    transfer,
+    ACCOUNT_AT.transfer.destination,
+    traderAccount,
+    'SOL destination',
+  )
+  checkSolStep(sync, PHOENIX_PROGRAM, solData.sync(), 'SyncNative')
+  checkAccount(
+    sync,
+    ACCOUNT_AT.sync.traderAccount,
+    traderAccount,
+    'synced trader account',
+  )
+}
+
+/**
+ * A SOL withdrawal is exactly one Phoenix `WithdrawNativeSol` of counted
+ * lamports (`withoutExcess`), from the wallet's own trader account to the
+ * wallet.
+ */
+export function checkSolWithdraw(
+  instructions: readonly Instruction[],
+  { wallet, traderAccount, lamports }: SolTerms,
+) {
+  if (instructions.length !== 1) fail('the SOL withdrawal has unexpected steps')
+  const [withdraw] = instructions
+  checkSolStep(
+    withdraw,
+    PHOENIX_PROGRAM,
+    solData.withdraw(lamports),
+    'WithdrawNativeSol',
+  )
+  checkAccount(
+    withdraw,
+    ACCOUNT_AT.withdraw.trader,
+    wallet,
+    'withdrawing authority',
+  )
+  checkAccount(
+    withdraw,
+    ACCOUNT_AT.withdraw.traderAccount,
+    traderAccount,
+    'withdrawn trader account',
+  )
+  checkAccount(
+    withdraw,
+    ACCOUNT_AT.withdraw.destination,
+    wallet,
+    'withdrawal destination',
+  )
+}
+
 /**
  * Checks Rise's referral activation against what Phoenix's onboarding
  * expects: `RegisterTrader` for the default cross-margin account when it is
@@ -353,9 +469,9 @@ export async function checkPhoenixBundle(
     if (account !== conditionals)
       fail(`the bundle writes to an unexpected account ${account}`)
   // Every bundle writes cross too, so where the order and TP/SL land must be
-  // pinned: each names its trader account at 4, a TP/SL its account at 11.
-  const inSubaccount = (instruction: Instruction) =>
-    instruction.accounts?.[4]?.address === child
+  // pinned to the subaccount.
+  const at = (instruction: Instruction, index: number) =>
+    instruction.accounts?.[index]?.address
 
   let orders = 0
   let usdc = 0n
@@ -377,24 +493,28 @@ export async function checkPhoenixBundle(
           fail('the bundle registers the wrong subaccount')
         break
       case 'transfer_usdc':
-        // TransferCollateral names its source and destination at 4 and 5.
         if (
-          instruction.accounts?.[4]?.address !== cross ||
-          instruction.accounts[5]?.address !== child
+          at(instruction, ACCOUNT_AT.transferCollateral.source) !== cross ||
+          at(instruction, ACCOUNT_AT.transferCollateral.destination) !== child
         )
           fail('the collateral does not move from cross to the subaccount')
         usdc += step.amount
         break
       case 'transfer_sol':
         sol += 1
-        if (!sameBytes(data, transferSolData(intent.collateralLamports ?? 0n)))
+        if (
+          !sameBytes(
+            data,
+            solData.toSubaccount(intent.collateralLamports ?? 0n),
+          )
+        )
           fail('the SOL collateral does not match the request')
         break
       case 'order': {
         orders += 1
         const { order } = intent
         if (!order) fail('the bundle places an order nobody asked for')
-        if (!inSubaccount(instruction))
+        if (at(instruction, ACCOUNT_AT.order.traderAccount) !== child)
           fail('the order is not placed in the subaccount')
         const { packet } = step
         if (packet.priceInTicks === null) fail('the order has no price limit')
@@ -421,8 +541,10 @@ export async function checkPhoenixBundle(
         const wanted = intent.conditional
         if (!wanted) fail('the bundle sets a TP/SL nobody asked for')
         if (
-          !inSubaccount(instruction) ||
-          instruction.accounts?.[11]?.address !== conditionals
+          at(instruction, ACCOUNT_AT.placeConditional.traderAccount) !==
+            child ||
+          at(instruction, ACCOUNT_AT.placeConditional.conditionalOrders) !==
+            conditionals
         )
           fail('the TP/SL is not set in the subaccount')
         const { packet } = step

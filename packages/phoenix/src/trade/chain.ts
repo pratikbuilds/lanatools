@@ -33,6 +33,13 @@ export async function fetchAccount(
   }
 }
 
+/** The rent floor for an account of `dataLength` bytes. */
+export function rentExemptMinimum(rpc: TradeRpc, dataLength: number) {
+  return rpc
+    .getMinimumBalanceForRentExemption(BigInt(dataLength))
+    .send(rpcTimeout())
+}
+
 // SPL token account layout: mint (32), owner (32), amount (u64 LE) at 64.
 const AMOUNT_OFFSET = 64
 
