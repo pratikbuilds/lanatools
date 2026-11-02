@@ -12,6 +12,7 @@ import {
   SYSTEM_PROGRAM_ADDRESS,
   SelfTradeBehavior,
   Side,
+  StopLossOrderKind,
   USDC_MINT_ADDRESS,
   attributedNativeSolDepositLamports,
   baseLots,
@@ -456,7 +457,9 @@ export const solUncounted = (room: SolDepositRoom) =>
 export const ACCOUNT_AT = {
   order: { traderAccount: 4 },
   placeConditional: { traderAccount: 4, conditionalOrders: 11 },
-  transferCollateral: { source: 4, destination: 5 },
+  cancelConditional: { traderAccount: 3, market: 5, conditionalOrders: 6 },
+  /** USDC and SOL transfers and sweeps between cross and a subaccount. */
+  collateralMove: { source: 4, destination: 5 },
   realloc: { payer: 3, trader: 4, traderAccount: 5 },
   transfer: { source: 0, destination: 1 },
   sync: { traderAccount: 3 },
@@ -1042,7 +1045,7 @@ export type BundleStep =
     }
   | { kind: 'realloc' | 'sync' | 'sweep_usdc' | 'sweep_sol' }
   | { kind: 'transfer_usdc'; amount: bigint }
-  | { kind: 'transfer_sol'; data: Uint8Array }
+  | { kind: 'transfer_sol' }
   | { kind: 'order'; packet: OrderPacket }
   | { kind: 'create_conditional'; capacity: number }
   | { kind: 'place_conditional'; packet: ConditionalPacket }
@@ -1069,6 +1072,15 @@ const startsWith = (data: Uint8Array, prefix: Uint8Array | undefined) =>
   data.length >= prefix.length &&
   prefix.every((byte, index) => data[index] === byte)
 
+const DIRECTIONS: Partial<Record<number, TriggerPacket['triggerDirection']>> = {
+  [Direction.GreaterThan]: 'greater',
+  [Direction.LessThan]: 'less',
+}
+const TRIGGER_KINDS: Partial<Record<number, TriggerPacket['orderKind']>> = {
+  [StopLossOrderKind.IOC]: 'ioc',
+  [StopLossOrderKind.Limit]: 'limit',
+}
+
 function triggerPacket(
   trigger: {
     triggerDirection: number
@@ -1079,10 +1091,17 @@ function triggerPacket(
   } | null,
 ): TriggerPacket | null {
   if (!trigger) return null
+  const triggerDirection = DIRECTIONS[trigger.triggerDirection]
+  const orderKind = TRIGGER_KINDS[trigger.orderKind]
+  if (!triggerDirection || !orderKind)
+    throw new PhoenixError(
+      'check_failed',
+      'A TP/SL leg has a direction or order kind the pinned Rise SDK does not know; nothing was signed',
+    )
   return {
-    triggerDirection: trigger.triggerDirection === 0 ? 'greater' : 'less',
+    triggerDirection,
     side: sideOf(trigger.tradeSide),
-    orderKind: trigger.orderKind === 0 ? 'ioc' : 'limit',
+    orderKind,
     triggerPriceInTicks: trigger.triggerPrice,
     executionPriceInTicks: trigger.executionPrice,
   }
@@ -1174,7 +1193,7 @@ export function decodeBundleStep(data: Uint8Array): BundleStep | null {
       (amount) => ({ kind: 'transfer_usdc', amount }),
     )
   if (startsWith(data, DISCRIMINANTS.TRANSFER_NATIVE_SOL))
-    return { kind: 'transfer_sol', data }
+    return { kind: 'transfer_sol' }
   if (startsWith(data, DISCRIMINANTS.CREATE_CONDITIONAL_ORDERS_ACCOUNT))
     return decode(
       () => getCreateConditionalOrdersAccountDecoder().decode(data),

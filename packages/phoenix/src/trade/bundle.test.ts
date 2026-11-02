@@ -37,6 +37,7 @@ const openIntent: BundleIntent = {
     priceInTicks: 39280n,
     numBaseLots: 10n,
     reduceOnly: false,
+    lastValidSlot: null,
   },
   collateralUsdc: 2_000_000n,
   conditional: {
@@ -96,6 +97,7 @@ describe('checkPhoenixBundle accepts what Phoenix really builds', () => {
         priceInTicks: 38502n,
         numBaseLots: 10n,
         reduceOnly: false,
+        lastValidSlot: null,
       },
     })
     await checkPhoenixBundle(instructions(bundles.openSol), {
@@ -106,6 +108,7 @@ describe('checkPhoenixBundle accepts what Phoenix really builds', () => {
         priceInTicks: 39280n,
         numBaseLots: 1n,
         reduceOnly: false,
+        lastValidSlot: null,
       },
       collateralUsdc: 0n,
       collateralLamports: 50_000_000n,
@@ -118,6 +121,7 @@ describe('checkPhoenixBundle accepts what Phoenix really builds', () => {
       priceInTicks: 31113n,
       numBaseLots: 10n,
       reduceOnly: false,
+      lastValidSlot: null,
     }
     await checkPhoenixBundle(instructions(bundles.limit), {
       ...noTpsl,
@@ -143,6 +147,7 @@ describe('checkPhoenixBundle accepts what Phoenix really builds', () => {
           priceInTicks: 12972n,
           numBaseLots: 7n,
           reduceOnly: true,
+          lastValidSlot: null,
         },
       }),
     ).toEqual({ subaccount: bundles.closeMeta.subaccount })
@@ -445,6 +450,7 @@ describe('checkPhoenixBundle refuses a wrong answer', () => {
           priceInTicks: 12972n,
           numBaseLots: 7n,
           reduceOnly: true,
+          lastValidSlot: null,
         },
       },
       'USDC collateral',
@@ -647,6 +653,7 @@ describe('checkPhoenixBundle keeps collateral between the wallet’s accounts', 
       priceInTicks: 39280n,
       numBaseLots: 1n,
       reduceOnly: false,
+      lastValidSlot: null,
     },
     collateralUsdc: 0n,
     collateralLamports: 50_000_000n,

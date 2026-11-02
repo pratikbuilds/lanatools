@@ -137,34 +137,54 @@ export async function simulateTransaction(
   return { ok: true, computeUnits, logs }
 }
 
+/** Our compute budget instructions, then `instructions`, compiled. */
+function compileWithBudget(
+  feePayer: Address,
+  lifetime: Parameters<typeof setTransactionMessageLifetimeUsingBlockhash>[0],
+  units: number,
+  microLamports: bigint,
+  instructions: readonly Instruction[],
+) {
+  return compileTransaction(
+    pipe(
+      createTransactionMessage({ version: 0 }),
+      (message) => setTransactionMessageFeePayer(feePayer, message),
+      (message) =>
+        setTransactionMessageLifetimeUsingBlockhash(lifetime, message),
+      (message) =>
+        appendTransactionMessageInstructions(
+          [
+            getSetComputeUnitLimitInstruction({ units }),
+            ...(microLamports > 0n
+              ? [getSetComputeUnitPriceInstruction({ microLamports })]
+              : []),
+            ...instructions,
+          ],
+          message,
+        ),
+    ),
+  )
+}
+
 /** Whether `instructions` fit one transaction beside our compute budget. */
 export function fitsOneTransaction(
   feePayer: Address,
   instructions: readonly Instruction[],
 ) {
-  const message = pipe(
-    createTransactionMessage({ version: 0 }),
-    (draft) => setTransactionMessageFeePayer(feePayer, draft),
-    (draft) =>
-      setTransactionMessageLifetimeUsingBlockhash(
-        {
-          blockhash: toBlockhash('11111111111111111111111111111111'),
-          lastValidBlockHeight: 0n,
-        },
-        draft,
-      ),
-    (draft) =>
-      appendTransactionMessageInstructions(
-        [
-          getSetComputeUnitLimitInstruction({ units: MAX_COMPUTE_UNITS }),
-          getSetComputeUnitPriceInstruction({ microLamports: 1n }),
-          ...instructions,
-        ],
-        draft,
-      ),
-  )
+  const lifetime = {
+    blockhash: toBlockhash('11111111111111111111111111111111'),
+    lastValidBlockHeight: 0n,
+  }
   try {
-    return isTransactionWithinSizeLimit(compileTransaction(message))
+    return isTransactionWithinSizeLimit(
+      compileWithBudget(
+        feePayer,
+        lifetime,
+        MAX_COMPUTE_UNITS,
+        1n,
+        instructions,
+      ),
+    )
   } catch (error) {
     // Kit refuses to compile a message over its instruction limit.
     if (isSolanaError(error, SOLANA_ERROR__TRANSACTION__TOO_MANY_INSTRUCTIONS))
@@ -200,28 +220,12 @@ export async function buildTransaction(
 
   const compile = (units: number) =>
     getBase64EncodedWireTransaction(
-      compileTransaction(
-        pipe(
-          createTransactionMessage({ version: 0 }),
-          (message) => setTransactionMessageFeePayer(feePayer, message),
-          (message) =>
-            setTransactionMessageLifetimeUsingBlockhash(latest, message),
-          (message) =>
-            appendTransactionMessageInstructions(
-              [
-                getSetComputeUnitLimitInstruction({ units }),
-                ...(fees.microLamportsPerComputeUnit > 0n
-                  ? [
-                      getSetComputeUnitPriceInstruction({
-                        microLamports: fees.microLamportsPerComputeUnit,
-                      }),
-                    ]
-                  : []),
-                ...instructions,
-              ],
-              message,
-            ),
-        ),
+      compileWithBudget(
+        feePayer,
+        latest,
+        units,
+        fees.microLamportsPerComputeUnit,
+        instructions,
       ),
     )
 

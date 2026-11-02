@@ -379,6 +379,7 @@ export const marketOrder = defineTradeTool({
           priceInTicks: terms.priceInTicks,
           numBaseLots,
           reduceOnly: input.reduceOnly,
+          lastValidSlot: null,
         },
         // Phoenix reads maxPriceInTicks as the worst price on both sides.
         build: () =>
