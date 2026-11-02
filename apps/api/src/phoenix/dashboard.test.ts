@@ -142,3 +142,15 @@ test('a chart interval is one Phoenix timeframe at its longest read, in Unix sec
   expect(asked[0]?.searchParams.get('timeframe')).toBe('1h')
   expect(asked[0]?.searchParams.get('limit')).toBe('500')
 })
+
+test('without a viewer, fills name no client', async () => {
+  const { fetch } = fakeFetch({
+    [`/v1/trader/${WALLET}/trades-history`]: {
+      data: [trade(MINE, 109.6)],
+      nextCursor: null,
+      hasMore: false,
+    },
+  })
+  const page = await phoenixFills(db, null, WALLET, undefined, { fetch })
+  expect(page.fills.map((fill) => fill.placedBy)).toEqual([null])
+})
