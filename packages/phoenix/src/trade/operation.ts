@@ -16,10 +16,9 @@ import {
 import type { TransactionContext } from '@lanatools/toolkit/transactions'
 import { PerpTrade } from '@lanatools/contracts'
 import { TRADE_PROGRAMS } from './checks'
-import { runTradeTool } from './tool'
+import { ISOLATED_RISK, runTradeTool } from './tool'
 import type { TradeOpts, TradeTool } from './tool'
 import { relayReferralTransaction } from './submit'
-import { ISOLATED_RISK } from './tools/isolated'
 import { readSigned, rpcTimeout } from './transaction'
 
 export type PhoenixTransactionContext = TransactionContext & TradeOpts

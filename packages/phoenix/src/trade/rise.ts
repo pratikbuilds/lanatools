@@ -254,7 +254,7 @@ export async function conditionalOrdersAddress(traderAccount: Address) {
 }
 
 /** A wallet can hold this many isolated subaccounts. */
-export const MAX_SUBACCOUNTS = 100
+export { MAX_SUBACCOUNTS } from '@ellipsis-labs/rise'
 
 /** The wallet's USDC token account, which deposits draw from. */
 export async function usdcAccountAddress(wallet: Address) {
@@ -438,10 +438,14 @@ export const solDepositCredit = (room: SolDepositRoom, lamports: bigint) =>
   })
 
 /**
- * The accounts the SOL checks compare, by their place in Rise's builders.
- * If an upgrade moves them, the checks fail and nothing gets signed.
+ * The accounts the checks compare, by their place in Rise's builders and
+ * Phoenix's server answers. If an upgrade moves them, the checks fail and
+ * nothing gets signed.
  */
-export const SOL_ACCOUNTS = {
+export const ACCOUNT_AT = {
+  order: { traderAccount: 4 },
+  placeConditional: { traderAccount: 4, conditionalOrders: 11 },
+  transferCollateral: { source: 4, destination: 5 },
   realloc: { payer: 3, trader: 4, traderAccount: 5 },
   transfer: { source: 0, destination: 1 },
   sync: { traderAccount: 3 },
@@ -458,6 +462,9 @@ export const solData = {
     Uint8Array.from(
       encodeWithdrawNativeSol({ kind: 'withoutExcess', lamports }),
     ),
+  /** Phoenix's `TransferNativeSol`, from cross to a subaccount. */
+  toSubaccount: (lamports: bigint) =>
+    Uint8Array.from(encodeTransferNativeSol(lamports)),
 }
 
 function solContext(wallet: Address, keys: ExchangeKeys) {
@@ -608,22 +615,29 @@ export function isOnboardTraderDelegated(data: Uint8Array) {
 /** The market accounts an order names, from Phoenix's market config. */
 export type OrderMarket = { marketPubkey: string; splinePubkey: string }
 
+/** The exchange accounts every order and collateral move names. */
+function tradingAccounts(keys: ExchangeKeys) {
+  const exchange = exchangeAccounts(keys)
+  return {
+    phoenixProgramAddress: exchange.phoenixProgramAddress,
+    logAuthorityAddress: exchange.logAuthorityAddress,
+    globalConfigurationAddress: exchange.globalConfigurationAddress,
+    perpAssetMap: exchange.perpAssetMap,
+    globalTraderIndex: exchange.globalTraderIndex,
+    activeTraderBuffer: exchange.activeTraderBuffer,
+  }
+}
+
 async function orderContext(
   wallet: Address,
   keys: ExchangeKeys,
   market: OrderMarket,
   subaccount: number,
 ) {
-  const exchange = exchangeAccounts(keys)
   const marketAddress = brand<MarketAddress>(market.marketPubkey)
   const [splineCollection, traderAccount] = await Promise.all([
     getPhoenixSplineCollectionAddress(marketAddress, PHOENIX_PROGRAM_ADDRESS),
-    getPhoenixTraderSubaccountAddress({
-      authority: brand<Authority>(wallet),
-      traderPdaIndex: 0,
-      subaccountIndex: subaccount,
-      phoenixProgramAddress: PHOENIX_PROGRAM_ADDRESS,
-    }),
+    traderAccountAddress(wallet, subaccount),
   ])
   // The spline account derives from the market; Phoenix's API must agree.
   if (splineCollection !== market.splinePubkey)
@@ -632,16 +646,12 @@ async function orderContext(
       "Phoenix's market accounts do not match the pinned Rise SDK; nothing was built",
     )
   return {
-    exchange: {
-      phoenixProgramAddress: exchange.phoenixProgramAddress,
-      logAuthorityAddress: exchange.logAuthorityAddress,
-      globalConfigurationAddress: exchange.globalConfigurationAddress,
-      perpAssetMap: exchange.perpAssetMap,
-      globalTraderIndex: exchange.globalTraderIndex,
-      activeTraderBuffer: exchange.activeTraderBuffer,
-    },
+    exchange: tradingAccounts(keys),
     market: { marketAddress, splineCollection },
-    trader: { authority: brand<Authority>(wallet), traderAccount },
+    trader: {
+      authority: brand<Authority>(wallet),
+      traderAccount: brand<TraderAddress>(traderAccount),
+    },
   }
 }
 
@@ -835,20 +845,12 @@ async function isolatedAccounts(
   keys: ExchangeKeys,
   subaccount: number,
 ) {
-  const exchange = exchangeAccounts(keys)
   const [parentTraderAccount, childTraderAccount] = await Promise.all([
     traderAccountAddress(wallet),
     traderAccountAddress(wallet, subaccount),
   ])
   return {
-    exchange: {
-      phoenixProgramAddress: exchange.phoenixProgramAddress,
-      logAuthorityAddress: exchange.logAuthorityAddress,
-      globalConfigurationAddress: exchange.globalConfigurationAddress,
-      perpAssetMap: exchange.perpAssetMap,
-      globalTraderIndex: exchange.globalTraderIndex,
-      activeTraderBuffer: exchange.activeTraderBuffer,
-    },
+    exchange: tradingAccounts(keys),
     authority: brand<Authority>(wallet),
     parentTraderAccount: brand<TraderAddress>(parentTraderAccount),
     childTraderAccount: brand<TraderAddress>(childTraderAccount),
@@ -1119,7 +1121,3 @@ export function decodeBundleStep(data: Uint8Array): BundleStep | null {
   const packet = decodeOrder(data)
   return packet ? { kind: 'order', packet } : null
 }
-
-/** A `TransferNativeSol` instruction's exact data for `lamports`. */
-export const transferSolData = (lamports: bigint) =>
-  Uint8Array.from(encodeTransferNativeSol(lamports))

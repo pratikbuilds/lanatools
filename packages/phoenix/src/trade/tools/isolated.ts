@@ -1,12 +1,13 @@
 import type { Address, Instruction } from '@solana/kit'
 import { z } from 'zod'
 import { PhoenixError } from '../../client'
-import { SOL_DECIMALS, fromLots, usdc } from '../../units'
+import { sol, usdc } from '../../units'
 import { checkPhoenixBundle } from '../checks'
 import type { BundleIntent } from '../checks'
 import { exactNumber, toLamports, toUSDCUnits } from '../price'
 import { decodeBundleStep } from '../rise'
 import type { OrderMarket } from '../schemas'
+import { ISOLATED_RISK } from '../tool'
 import type { TradeContext } from '../tool'
 import { traderBook } from './shared'
 
@@ -15,10 +16,6 @@ import { traderBook } from './shared'
  * transaction through `context.orders`; this file decides what to ask for and
  * holds the answer to it.
  */
-
-/** Always shown in an isolated order's review. */
-export const ISOLATED_RISK =
-  "Losses are limited to this position's collateral, and it can be liquidated while your cross account still holds funds."
 
 /** Seen in the live run: fees are USDC, so a SOL-only subaccount sells SOL. */
 const SOL_PAYS_FEES =
@@ -139,7 +136,7 @@ export async function isolatedFunding(
   if (collateralLamports > crossLamports)
     throw new PhoenixError(
       'insufficient_funds',
-      `The cross account holds ${fromLots(crossLamports.toString(), SOL_DECIMALS)} SOL, less than the ${fromLots(collateralLamports.toString(), SOL_DECIMALS)} SOL of collateral; add funds with phoenix_deposit`,
+      `The cross account holds ${sol(crossLamports.toString())} SOL, less than the ${sol(collateralLamports.toString())} SOL of collateral; add funds with phoenix_deposit`,
     )
 
   const amounts = {
@@ -148,7 +145,7 @@ export async function isolatedFunding(
       : {}),
     ...(collateralLamports > 0n
       ? {
-          collateralSol: fromLots(collateralLamports.toString(), SOL_DECIMALS),
+          collateralSol: sol(collateralLamports.toString()),
         }
       : {}),
   }
