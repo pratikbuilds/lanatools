@@ -6,10 +6,9 @@ import { checkPhoenixBundle } from '../checks'
 import { toUSDCUnits } from '../price'
 import { addMarginInstructions } from '../rise'
 import { ExchangeKeys } from '../schemas'
-import { defineTradeTool } from '../tool'
+import { ISOLATED_RISK, defineTradeTool } from '../tool'
 import { USDCAmount } from './deposit'
 import {
-  ISOLATED_WARNING,
   MarketSymbol,
   Subaccount,
   marketConfig,
@@ -97,7 +96,7 @@ export const addIsolatedMargin = defineTradeTool({
         collateralUsdc: added,
       }),
       warnings: [
-        ISOLATED_WARNING,
+        ISOLATED_RISK,
         'This margin cannot be taken back out while the position is open.',
       ],
     }
