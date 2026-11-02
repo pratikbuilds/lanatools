@@ -105,8 +105,11 @@ export function messageOf(transaction: string) {
 }
 
 /**
- * Simulates an unsigned transaction exactly as built: no signature checks,
- * its own blockhash.
+ * Simulates an unsigned transaction's instructions: no signature checks, and
+ * the RPC's own recent blockhash. An RPC pool can answer from a node a slot
+ * behind the one that gave out the transaction's blockhash, which would
+ * fail the simulation with BlockhashNotFound; the transaction to sign keeps
+ * its own blockhash and expiry.
  */
 export async function simulateTransaction(
   rpc: TradeRpc,
@@ -117,7 +120,7 @@ export async function simulateTransaction(
       encoding: 'base64',
       commitment: 'confirmed',
       sigVerify: false,
-      replaceRecentBlockhash: false,
+      replaceRecentBlockhash: true,
     })
     .send(rpcTimeout())
   const logs = [...(value.logs ?? [])]
