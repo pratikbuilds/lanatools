@@ -104,6 +104,12 @@ export function tradeTitle(trade: SwapTrade | PerpTrade) {
       return 'Withdraw from Phoenix'
     case 'activate':
       return 'Activate Phoenix account'
+    case 'set_tpsl':
+      return `Set ${market} TP/SL`
+    case 'cancel_tpsl':
+      return `Cancel ${market} TP/SL`
+    case 'add_margin':
+      return `Add margin to ${market}`
   }
 }
 
@@ -144,16 +150,18 @@ export function tradeDetail(
     const rate = swapRate(trade, facts)
     return rate ? `Jupiter · ${rate}` : 'Jupiter'
   }
+  const venue =
+    trade.marginMode === 'isolated' ? 'Phoenix · Isolated' : 'Phoenix'
   const fill = facts?.fill
   if (fill && (trade.action === 'order' || trade.action === 'close')) {
     const realized = Number(fill.realizedPnlUsdc)
-    return `Phoenix · Filled at ${formatPrice(fill.price)}${realized ? `, realized ${formatUSD(realized, { signed: true })}` : ''}`
+    return `${venue} · Filled at ${formatPrice(fill.price)}${realized ? `, realized ${formatUSD(realized, { signed: true })}` : ''}`
   }
   switch (trade.action) {
     case 'order':
       if (trade.orderType === 'limit' && trade.limitPrice)
-        return `Phoenix · Limit at ${formatPrice(trade.limitPrice)}${trade.postOnly ? ', post only' : ''}`
-      return ['Phoenix · Market', worstPriceText(trade)]
+        return `${venue} · Limit at ${formatPrice(trade.limitPrice)}${trade.postOnly ? ', post only' : ''}`
+      return [`${venue} · Market`, worstPriceText(trade)]
         .filter(Boolean)
         .join(', ')
     case 'close':
@@ -168,6 +176,12 @@ export function tradeDetail(
       return confirmed ? 'Phoenix · Resting orders removed' : 'Phoenix'
     case 'activate':
       return 'Phoenix · Trader account'
+    case 'set_tpsl':
+      return 'Phoenix · Triggers on mark price'
+    case 'cancel_tpsl':
+      return 'Phoenix · Trigger removed'
+    case 'add_margin':
+      return 'Phoenix · From your cross account'
   }
 }
 

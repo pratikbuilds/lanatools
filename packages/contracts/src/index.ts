@@ -315,6 +315,9 @@ export const PERP_ACTIONS = [
   'withdraw',
   'cancel',
   'activate',
+  'set_tpsl',
+  'cancel_tpsl',
+  'add_margin',
 ] as const
 
 /**
@@ -348,6 +351,16 @@ export const PerpTrade = type({
   'closing?': "'long' | 'short'",
   /** How many resting orders a cancel removes, when known. */
   'cancelled?': 'number',
+  /** Cross margin unless stated. */
+  'marginMode?': "'cross' | 'isolated'",
+  /** The Phoenix subaccount, when known; 0 is cross margin. */
+  'subaccount?': 'number',
+  /** Collateral moved into an isolated position. */
+  'collateralUsdc?': 'string',
+  'collateralSol?': 'string',
+  /** TP/SL trigger prices. */
+  'takeProfitPrice?': 'string',
+  'stopLossPrice?': 'string',
 })
 export type PerpTrade = typeof PerpTrade.infer
 

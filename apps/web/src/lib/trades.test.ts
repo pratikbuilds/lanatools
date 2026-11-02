@@ -63,6 +63,38 @@ test('a swap reads as what went in and what came back', () => {
   expect(tradeAmounts(unquoted)).toEqual({ out: '1 USDC', in: null })
 })
 
+test('an isolated order says so in its subtitle', () => {
+  const isolated = { ...buy, marginMode: 'isolated' as const }
+  expect(tradeDetail(isolated, true)).toBe(
+    'Phoenix · Isolated · Market, at most $110.15',
+  )
+  expect(
+    tradeDetail(
+      perp({
+        action: 'order',
+        orderType: 'limit',
+        limitPrice: '2590',
+        postOnly: true,
+        marginMode: 'isolated',
+      }),
+      true,
+    ),
+  ).toBe('Phoenix · Isolated · Limit at $2,590.00, post only')
+  expect(
+    tradeDetail(isolated, true, {
+      fill: {
+        size: '0.1',
+        price: '109.64',
+        feeUsdc: '0.0038',
+        realizedPnlUsdc: '0',
+      },
+    }),
+  ).toBe('Phoenix · Isolated · Filled at $109.64')
+  expect(tradeDetail({ ...buy, marginMode: 'cross' }, true)).toBe(
+    'Phoenix · Market, at most $110.15',
+  )
+})
+
 test('a perp order reads as the trade, with its notional and no wallet money', () => {
   expect(tradeTitle(buy)).toBe('Buy 0.1 SOL-PERP')
   expect(tradeDetail(buy, true)).toBe('Phoenix · Market, at most $110.15')

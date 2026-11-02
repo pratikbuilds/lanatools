@@ -67,14 +67,19 @@ export type OrderMarket = z.infer<typeof OrderMarket>
 const Integer = z.union([z.string().regex(/^-?\d+$/), z.number().int()])
 
 /**
- * GET /v1/trader/state/{wallet}: positions and resting orders, per
- * subaccount. Order rows marked `change: "closed"` have left the book.
+ * GET /v1/trader/state/{wallet}: collateral, positions and resting orders,
+ * per subaccount. `collateral` is in USDC base units, a spot balance in its
+ * own token's. Order rows marked `change: "closed"` have left the book.
  */
 export const TraderBook = z.object({
   snapshot: z.object({
     subaccounts: z.array(
       z.object({
         subaccountIndex: z.number().int(),
+        collateral: Integer,
+        spotCollaterals: z
+          .array(z.object({ symbol: z.string(), balance: Integer }))
+          .default([]),
         positions: z
           .array(z.object({ symbol: z.string(), basePositionLots: Integer }))
           .default([]),

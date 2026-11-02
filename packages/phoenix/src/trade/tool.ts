@@ -9,6 +9,8 @@ import { Wallet } from '../tool'
 import { PhoenixError, createPhoenixClient } from '../client'
 import type { PhoenixClient, PhoenixErrorCode, PhoenixOpts } from '../client'
 import { checkInstructions } from './checks'
+import { createPhoenixOrders } from './rise'
+import type { PhoenixOrders } from './rise'
 import { buildTransaction, messageOf, simulateTransaction } from './transaction'
 import type {
   BuiltTransaction,
@@ -25,6 +27,8 @@ import type {
 
 export type TradeContext = {
   phoenix: PhoenixClient
+  /** Phoenix's server-built routes; their answers are checked, never trusted. */
+  orders: PhoenixOrders
   rpc: TradeRpc
 }
 
@@ -43,6 +47,10 @@ export type Submit =
       login: { message: string; nonceId: string }
     }
 
+/** Shown wherever an isolated position is opened, funded or reviewed. */
+export const ISOLATED_RISK =
+  "Losses are limited to this position's collateral, and it can be liquidated while your cross account still holds funds."
+
 /** The market whose position an order changes, to report what filled. */
 export type PositionRef = {
   symbol: string
@@ -60,11 +68,11 @@ type Described = {
   trade: PerpTrade
   warnings: string[]
   /**
-   * Market and close orders: Phoenix ignores the order after this slot (and
-   * still reports success), so it is never sent later.
+   * Cross market and close orders: Phoenix ignores the order after this slot
+   * (and still reports success), so it is never sent later.
    */
   expiresAfterSlot?: string
-  /** Market and close orders: the position the order changes. */
+  /** Cross market and close orders: the position the order changes. */
   position?: PositionRef
 }
 
@@ -135,7 +143,11 @@ export type SimulationFailed = Described & {
   simulation: Simulation
 }
 
-export type TradeOpts = PhoenixOpts & { rpc: TradeRpc; fees: FeeSettings }
+export type TradeOpts = PhoenixOpts & {
+  rpc: TradeRpc
+  fees: FeeSettings
+  orders?: PhoenixOrders
+}
 
 export type TradeOutcome =
   | { ok: true; result: PreparedTransaction | SimulationFailed | NothingToDo }
@@ -214,7 +226,11 @@ export async function runTradeTool<TSchema extends z.ZodObject>(
         parsed.error.issues.map((issue) => issue.message).join('; '),
       )
     const prepared = await tool.prepare(
-      { phoenix: createPhoenixClient(opts), rpc: opts.rpc },
+      {
+        phoenix: createPhoenixClient(opts),
+        orders: opts.orders ?? createPhoenixOrders(opts),
+        rpc: opts.rpc,
+      },
       parsed.data,
     )
     if (prepared.kind === 'nothing_to_do')

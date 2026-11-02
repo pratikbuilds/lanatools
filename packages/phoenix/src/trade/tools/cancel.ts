@@ -8,7 +8,7 @@ import { ExchangeKeys } from '../schemas'
 import { defineTradeTool } from '../tool'
 import {
   MarketSymbol,
-  crossAccount,
+  traderAccount,
   marketConfig,
   perpTrade,
   requireActivated,
@@ -39,7 +39,7 @@ export const cancelOrders = defineTradeTool({
     const wallet = address(input.wallet)
     const [market, account, keys] = await Promise.all([
       marketConfig(context, input.symbol),
-      crossAccount(context, wallet),
+      traderAccount(context, wallet),
       context.phoenix.get('/v1/view/exchange/keys', ExchangeKeys),
       requireActivated(context, wallet),
     ])
