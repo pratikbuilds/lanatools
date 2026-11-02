@@ -53,6 +53,36 @@ test('each command maps to its trade tool and input', () => {
       },
     ],
     [
+      [
+        'market',
+        'SOL',
+        'buy',
+        '0.1',
+        '--slippage-bps',
+        '50',
+        '--tp',
+        '120',
+        '--tp-worst',
+        '119',
+        '--sl',
+        '110',
+        '--sl-worst',
+        '105',
+      ],
+      {
+        tool: 'phoenix_market_order',
+        input: {
+          symbol: 'SOL',
+          side: 'buy',
+          size: '0.1',
+          maxSlippageBps: 50,
+          reduceOnly: false,
+          takeProfit: { triggerPrice: '120', worstPrice: '119' },
+          stopLoss: { triggerPrice: '110', worstPrice: '105' },
+        },
+      },
+    ],
+    [
       ['limit', 'SOL', 'buy', '0.1', '50', '--post-only'],
       {
         tool: 'phoenix_limit_order',

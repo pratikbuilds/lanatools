@@ -21,6 +21,7 @@ Commands:
   deposit <amount> [--asset SOL]
   withdraw <amount> [--asset SOL]
   market <symbol> <buy|sell> <size> (--slippage-bps N | --limit-price P) [--reduce-only]
+    [--tp P --tp-worst P] [--sl P --sl-worst P]
   limit <symbol> <buy|sell> <size> <price> [--post-only] [--reduce-only]
     Either order in isolated margin: --isolated [--collateral-usdc N] [--collateral-sol N]
   cancel <symbol> [--id ID ...] [--subaccount N]
@@ -195,6 +196,15 @@ export function parseCli(argv: readonly string[]): CliArgs {
       values['collateral-sol'],
     )
 
+  const triggers = () => {
+    const takeProfit = trigger(values.tp, values['tp-worst'], 'tp')
+    const stopLoss = trigger(values.sl, values['sl-worst'], 'sl')
+    return {
+      ...(takeProfit ? { takeProfit } : {}),
+      ...(stopLoss ? { stopLoss } : {}),
+    }
+  }
+
   let command: Command
   switch (name) {
     case 'state':
@@ -226,6 +236,7 @@ export function parseCli(argv: readonly string[]): CliArgs {
           ...worstPrice(values['slippage-bps'], values['limit-price']),
           reduceOnly,
           ...margin(),
+          ...triggers(),
         },
       }
       break
@@ -281,17 +292,15 @@ export function parseCli(argv: readonly string[]): CliArgs {
       }
       break
     case 'set-tpsl': {
-      const takeProfit = trigger(values.tp, values['tp-worst'], 'tp')
-      const stopLoss = trigger(values.sl, values['sl-worst'], 'sl')
-      if (!takeProfit && !stopLoss)
+      const legs = triggers()
+      if (Object.keys(legs).length === 0)
         throw new UsageError('Give --tp, --sl or both')
       command = {
         command: 'tool',
         tool: 'phoenix_set_tpsl',
         input: {
           symbol: arg(0, 'market symbol'),
-          ...(takeProfit ? { takeProfit } : {}),
-          ...(stopLoss ? { stopLoss } : {}),
+          ...legs,
           ...coverage(values.percent, values.size),
           ...subaccount(values.subaccount),
         },
