@@ -53,6 +53,9 @@ If `send_transaction` returns `unknown`, it may still land: check
 `get_transaction_status` before preparing another. If that says `expired`,
 prepare it again with a new `idempotencyKey`.
 
+After a Phoenix trade confirms, give the user `accountUrl` from the result: a
+public page of their Phoenix account that needs no login.
+
 Without login you may make 30 tool calls a minute, one call per request.
 Past that, a call returns an error saying to wait or log in.
 

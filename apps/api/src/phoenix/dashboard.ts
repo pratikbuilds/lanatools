@@ -13,8 +13,8 @@ import { mcpGrant, transactionRequest } from '../db/schema'
 
 /**
  * Phoenix reads for the dashboard's account page. Phoenix's data is
- * public, so any address can be read; only `placedBy` uses the signed-in
- * user's own transactions.
+ * public, so any address can be read; only `placedBy` uses a signed-in
+ * user's own transactions, and it stays null without one.
  */
 
 /**
@@ -97,7 +97,7 @@ const tidy = (value: number) => Number(value.toPrecision(12)).toString()
 
 export async function phoenixFills(
   database: D1Database,
-  userId: string,
+  userId: string | null,
   wallet: string,
   cursor: string | undefined,
   opts: PhoenixOpts = {},
@@ -123,28 +123,29 @@ export async function phoenixFills(
   ]
   // Only the user's own requests are matched, so another user's client
   // name never shows here.
-  const placed = signatures.length
-    ? await drizzle(database)
-        .select({
-          signature: transactionRequest.signature,
-          clientName: mcpGrant.clientName,
-        })
-        .from(transactionRequest)
-        .leftJoin(
-          mcpGrant,
-          and(
-            eq(mcpGrant.privyUserId, transactionRequest.creatorUserId),
-            eq(mcpGrant.clientId, transactionRequest.creatorClientId),
-          ),
-        )
-        .where(
-          and(
-            eq(transactionRequest.creatorUserId, userId),
-            inArray(transactionRequest.signature, signatures),
-          ),
-        )
-        .all()
-    : []
+  const placed =
+    userId && signatures.length
+      ? await drizzle(database)
+          .select({
+            signature: transactionRequest.signature,
+            clientName: mcpGrant.clientName,
+          })
+          .from(transactionRequest)
+          .leftJoin(
+            mcpGrant,
+            and(
+              eq(mcpGrant.privyUserId, transactionRequest.creatorUserId),
+              eq(mcpGrant.clientId, transactionRequest.creatorClientId),
+            ),
+          )
+          .where(
+            and(
+              eq(transactionRequest.creatorUserId, userId),
+              inArray(transactionRequest.signature, signatures),
+            ),
+          )
+          .all()
+      : []
   const clientOf = new Map(
     placed.map((row) => [row.signature, row.clientName ?? 'Unknown client']),
   )
