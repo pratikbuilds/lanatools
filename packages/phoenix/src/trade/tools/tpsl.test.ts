@@ -1048,6 +1048,9 @@ describe('TP/SL on a market order', () => {
     expect(result.warnings).toContain(
       'A stop may not fill past its worst price.',
     )
+    expect(result.warnings.join(' ')).toContain(
+      'when one fires, Phoenix cancels the other',
+    )
     expect(result.expiresAfterSlot).toBeDefined()
     expect(
       messageOf(result.transaction)
@@ -1102,9 +1105,17 @@ describe('TP/SL on a market order', () => {
   })
 })
 
-test('a partial TP/SL says Phoenix only documents full closes', async () => {
+test('a partial TP/SL says it closes only its share', async () => {
   const { outcome } = await set({ takeProfit: TP, percent: 50 })
   expect(ready(outcome).warnings).toContainEqual(
-    expect.stringContaining('closing the whole position'),
+    expect.stringContaining('closes only this share'),
   )
+})
+
+test('a TP and SL set together say they are one pair, and one leg does not', async () => {
+  const pair = 'when one fires, Phoenix cancels the other'
+  const both = await set({ takeProfit: TP, stopLoss: SL, percent: 100 })
+  expect(ready(both.outcome).warnings.join(' ')).toContain(pair)
+  const one = await set({ takeProfit: TP, percent: 100 })
+  expect(ready(one.outcome).warnings.join(' ')).not.toContain(pair)
 })

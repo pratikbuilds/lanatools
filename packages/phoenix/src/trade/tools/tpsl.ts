@@ -45,6 +45,10 @@ export const TPSL_NOTICES = [
   'Phoenix cancels TP/SL if the position flips.',
 ]
 
+/** Seen in the live run: firing one leg of a pair cancels the other. */
+export const PAIRED_LEGS =
+  'The take profit and stop loss are one pair: when one fires, Phoenix cancels the other.'
+
 export const LEG_NAMES: Record<TpslLeg, string> = {
   takeProfit: 'take profit',
   stopLoss: 'stop loss',

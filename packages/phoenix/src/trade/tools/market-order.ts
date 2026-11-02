@@ -44,6 +44,7 @@ import {
   usd,
 } from './shared'
 import {
+  PAIRED_LEGS,
   TPSL_NOTICES,
   Trigger,
   checkAgainstMark,
@@ -274,6 +275,7 @@ function tpslResult(
     },
     warnings: [
       ...TPSL_NOTICES,
+      ...(takeProfit && stopLoss ? [PAIRED_LEGS] : []),
       ...(creates
         ? [
             'This is the first TP/SL on this account, so your wallet pays a small one-time rent in SOL. Treat it as spent.',

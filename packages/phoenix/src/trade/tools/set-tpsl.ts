@@ -21,6 +21,7 @@ import {
 } from './shared'
 import {
   LEG_NAMES,
+  PAIRED_LEGS,
   TPSL_NOTICES,
   Trigger,
   checkAgainstMark,
@@ -216,6 +217,7 @@ export const setTpsl = defineTradeTool({
       }),
       warnings: [
         ...TPSL_NOTICES,
+        ...(terms.takeProfit && terms.stopLoss ? [PAIRED_LEGS] : []),
         ...(active > 0
           ? [
               `This position already has ${active} active TP/SL; this one adds to them and replaces none.`,
@@ -228,7 +230,7 @@ export const setTpsl = defineTradeTool({
           : []),
         ...(lots < held
           ? [
-              "Phoenix's docs only describe a TP/SL closing the whole position, so check the position after this one fires.",
+              'When it fires it closes only this share; the rest of the position stays open without this TP/SL.',
             ]
           : []),
       ],
