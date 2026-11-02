@@ -107,19 +107,18 @@ function triggerText(
   position: PhoenixPosition,
 ) {
   const [nearest] = triggers
-  if (!nearest) return []
+  if (!nearest) return null
   const amount = triggerAmount(nearest, position)
+  // Short for a table cell: no $ and no padded cents; the title has both.
   const price = Number(nearest.triggerPrice).toLocaleString('en-US', {
     maximumFractionDigits: decimalsOf(nearest.triggerPrice),
   })
   const more = triggers.length - 1
   return [
-    [
-      `${label} ${price}`,
-      ...(amount ? [`(${amount})`] : []),
-      ...(more > 0 ? [`+${more}`] : []),
-    ].join(' '),
-  ]
+    `${label} ${price}`,
+    ...(amount ? [`(${amount})`] : []),
+    ...(more > 0 ? [`+${more}`] : []),
+  ].join(' ')
 }
 
 function triggerLine(
@@ -150,9 +149,9 @@ export function triggerSummary(position: PhoenixPosition) {
   if (takeProfit.length + stopLoss.length === 0) return null
   return {
     parts: [
-      ...triggerText('TP', takeProfit, position),
-      ...triggerText('SL', stopLoss, position),
-    ],
+      triggerText('TP', takeProfit, position),
+      triggerText('SL', stopLoss, position),
+    ].filter((part) => part !== null),
     detail: [
       ...takeProfit.map((each) => triggerLine('TP', each, position)),
       ...stopLoss.map((each) => triggerLine('SL', each, position)),
@@ -244,23 +243,23 @@ export function tradeDetail(
         .filter(Boolean)
         .join(', ')
     case 'close':
-      return ['Phoenix · Reduce only', worstPriceText(trade)]
+      return [`${venue} · Reduce only`, worstPriceText(trade)]
         .filter(Boolean)
         .join(', ')
     case 'deposit':
-      return 'Phoenix · Into your margin account'
+      return `${venue} · Into your margin account`
     case 'withdraw':
-      return 'Phoenix · To your wallet'
+      return `${venue} · To your wallet`
     case 'cancel':
-      return confirmed ? 'Phoenix · Resting orders removed' : 'Phoenix'
+      return confirmed ? `${venue} · Resting orders removed` : venue
     case 'activate':
-      return 'Phoenix · Trader account'
+      return `${venue} · Trader account`
     case 'set_tpsl':
-      return 'Phoenix · Triggers on mark price'
+      return `${venue} · Triggers on mark price`
     case 'cancel_tpsl':
-      return 'Phoenix · Trigger removed'
+      return `${venue} · Trigger removed`
     case 'add_margin':
-      return 'Phoenix · From your cross account'
+      return `${venue} · From your cross account`
   }
 }
 

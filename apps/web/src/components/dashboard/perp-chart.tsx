@@ -28,6 +28,16 @@ export type ChartLine = {
   tone: 'entry' | 'liquidation' | 'takeProfit' | 'stopLoss' | 'order'
 }
 
+/** How each level is drawn; its color follows the theme. */
+const LINE_LOOK: Record<ChartLine['tone'], { style: LineStyle; width: 1 | 2 }> =
+  {
+    entry: { style: LineStyle.Dashed, width: 1 },
+    liquidation: { style: LineStyle.Solid, width: 2 },
+    takeProfit: { style: LineStyle.LargeDashed, width: 1 },
+    stopLoss: { style: LineStyle.LargeDashed, width: 1 },
+    order: { style: LineStyle.SparseDotted, width: 1 },
+  }
+
 /** Decimals the market quotes in: the most any recent candle carries, cents at least. */
 function decimalsFor(candles: Candle[]) {
   const places = candles
@@ -266,13 +276,6 @@ export function PerpChart({
       stopLoss: colors.down,
       order: colors.muted,
     }
-    const style: Record<ChartLine['tone'], LineStyle> = {
-      entry: LineStyle.Dashed,
-      liquidation: LineStyle.Solid,
-      takeProfit: LineStyle.LargeDashed,
-      stopLoss: LineStyle.LargeDashed,
-      order: LineStyle.SparseDotted,
-    }
     for (const line of drawn.current) candlesticks.removePriceLine(line)
     const levels = latestLines.current
     drawn.current = levels.map((line) =>
@@ -281,8 +284,8 @@ export function PerpChart({
         title: line.title,
         axisLabelVisible: true,
         color: color[line.tone],
-        lineWidth: line.tone === 'liquidation' ? 2 : 1,
-        lineStyle: style[line.tone],
+        lineWidth: LINE_LOOK[line.tone].width,
+        lineStyle: LINE_LOOK[line.tone].style,
       }),
     )
     reach.current = fitLiquidation ? levels.map((line) => line.price) : []
