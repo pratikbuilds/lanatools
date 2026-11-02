@@ -254,7 +254,7 @@ export async function conditionalOrdersAddress(traderAccount: Address) {
 }
 
 /** A wallet can hold this many isolated subaccounts. */
-export const MAX_SUBACCOUNTS = 100
+export { MAX_SUBACCOUNTS } from '@ellipsis-labs/rise'
 
 /** The wallet's USDC token account, which deposits draw from. */
 export async function usdcAccountAddress(wallet: Address) {
@@ -608,22 +608,29 @@ export function isOnboardTraderDelegated(data: Uint8Array) {
 /** The market accounts an order names, from Phoenix's market config. */
 export type OrderMarket = { marketPubkey: string; splinePubkey: string }
 
+/** The exchange accounts every order and collateral move names. */
+function tradingAccounts(keys: ExchangeKeys) {
+  const exchange = exchangeAccounts(keys)
+  return {
+    phoenixProgramAddress: exchange.phoenixProgramAddress,
+    logAuthorityAddress: exchange.logAuthorityAddress,
+    globalConfigurationAddress: exchange.globalConfigurationAddress,
+    perpAssetMap: exchange.perpAssetMap,
+    globalTraderIndex: exchange.globalTraderIndex,
+    activeTraderBuffer: exchange.activeTraderBuffer,
+  }
+}
+
 async function orderContext(
   wallet: Address,
   keys: ExchangeKeys,
   market: OrderMarket,
   subaccount: number,
 ) {
-  const exchange = exchangeAccounts(keys)
   const marketAddress = brand<MarketAddress>(market.marketPubkey)
   const [splineCollection, traderAccount] = await Promise.all([
     getPhoenixSplineCollectionAddress(marketAddress, PHOENIX_PROGRAM_ADDRESS),
-    getPhoenixTraderSubaccountAddress({
-      authority: brand<Authority>(wallet),
-      traderPdaIndex: 0,
-      subaccountIndex: subaccount,
-      phoenixProgramAddress: PHOENIX_PROGRAM_ADDRESS,
-    }),
+    traderAccountAddress(wallet, subaccount),
   ])
   // The spline account derives from the market; Phoenix's API must agree.
   if (splineCollection !== market.splinePubkey)
@@ -632,16 +639,12 @@ async function orderContext(
       "Phoenix's market accounts do not match the pinned Rise SDK; nothing was built",
     )
   return {
-    exchange: {
-      phoenixProgramAddress: exchange.phoenixProgramAddress,
-      logAuthorityAddress: exchange.logAuthorityAddress,
-      globalConfigurationAddress: exchange.globalConfigurationAddress,
-      perpAssetMap: exchange.perpAssetMap,
-      globalTraderIndex: exchange.globalTraderIndex,
-      activeTraderBuffer: exchange.activeTraderBuffer,
-    },
+    exchange: tradingAccounts(keys),
     market: { marketAddress, splineCollection },
-    trader: { authority: brand<Authority>(wallet), traderAccount },
+    trader: {
+      authority: brand<Authority>(wallet),
+      traderAccount: brand<TraderAddress>(traderAccount),
+    },
   }
 }
 
@@ -835,20 +838,12 @@ async function isolatedAccounts(
   keys: ExchangeKeys,
   subaccount: number,
 ) {
-  const exchange = exchangeAccounts(keys)
   const [parentTraderAccount, childTraderAccount] = await Promise.all([
     traderAccountAddress(wallet),
     traderAccountAddress(wallet, subaccount),
   ])
   return {
-    exchange: {
-      phoenixProgramAddress: exchange.phoenixProgramAddress,
-      logAuthorityAddress: exchange.logAuthorityAddress,
-      globalConfigurationAddress: exchange.globalConfigurationAddress,
-      perpAssetMap: exchange.perpAssetMap,
-      globalTraderIndex: exchange.globalTraderIndex,
-      activeTraderBuffer: exchange.activeTraderBuffer,
-    },
+    exchange: tradingAccounts(keys),
     authority: brand<Authority>(wallet),
     parentTraderAccount: brand<TraderAddress>(parentTraderAccount),
     childTraderAccount: brand<TraderAddress>(childTraderAccount),

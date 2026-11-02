@@ -52,10 +52,6 @@ export const Subaccount = z
     'Subaccount from phoenix_get_account: 0 is cross margin, the others isolated',
   )
 
-/** Shown when a tool changes an isolated position's margin. */
-export const ISOLATED_WARNING =
-  "Losses are limited to this position's collateral, and it can be liquidated while your cross account still holds funds."
-
 /** The wallet's trader account; throws `not_activated` unless it can trade. */
 export async function requireActivated(
   { rpc }: Pick<TradeContext, 'rpc'>,

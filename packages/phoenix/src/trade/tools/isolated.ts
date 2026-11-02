@@ -7,6 +7,7 @@ import type { BundleIntent } from '../checks'
 import { exactNumber, toLamports, toUSDCUnits } from '../price'
 import { decodeBundleStep } from '../rise'
 import type { OrderMarket } from '../schemas'
+import { ISOLATED_RISK } from '../tool'
 import type { TradeContext } from '../tool'
 import { traderBook } from './shared'
 
@@ -15,10 +16,6 @@ import { traderBook } from './shared'
  * transaction through `context.orders`; this file decides what to ask for and
  * holds the answer to it.
  */
-
-/** Always shown in an isolated order's review. */
-export const ISOLATED_RISK =
-  "Losses are limited to this position's collateral, and it can be liquidated while your cross account still holds funds."
 
 /** Seen in the live run: fees are USDC, so a SOL-only subaccount sells SOL. */
 const SOL_PAYS_FEES =
