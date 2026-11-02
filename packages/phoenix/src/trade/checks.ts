@@ -348,10 +348,14 @@ export async function checkPhoenixBundle(
     fail('the bundle trades in the wrong subaccount')
   const cross = await traderAccountAddress(wallet)
   const child = await traderAccountAddress(wallet, subaccount)
-  const conditionals = new Set<string>([await conditionalOrdersAddress(child)])
+  const conditionals = await conditionalOrdersAddress(child)
   for (const account of unknown)
-    if (!conditionals.has(account))
+    if (account !== conditionals)
       fail(`the bundle writes to an unexpected account ${account}`)
+  // Every bundle writes cross too, so where the order and TP/SL land must be
+  // pinned: each names its trader account at 4, a TP/SL its account at 11.
+  const inSubaccount = (instruction: Instruction) =>
+    instruction.accounts?.[4]?.address === child
 
   let orders = 0
   let usdc = 0n
@@ -390,6 +394,8 @@ export async function checkPhoenixBundle(
         orders += 1
         const { order } = intent
         if (!order) fail('the bundle places an order nobody asked for')
+        if (!inSubaccount(instruction))
+          fail('the order is not placed in the subaccount')
         const { packet } = step
         if (packet.priceInTicks === null) fail('the order has no price limit')
         for (const field of [
@@ -414,6 +420,11 @@ export async function checkPhoenixBundle(
         conditional += 1
         const wanted = intent.conditional
         if (!wanted) fail('the bundle sets a TP/SL nobody asked for')
+        if (
+          !inSubaccount(instruction) ||
+          instruction.accounts?.[11]?.address !== conditionals
+        )
+          fail('the TP/SL is not set in the subaccount')
         const { packet } = step
         if (
           packet.assetId !== wanted.assetId ||

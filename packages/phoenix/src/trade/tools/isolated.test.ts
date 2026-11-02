@@ -20,9 +20,8 @@ import {
   traderAccountAddress,
 } from '../rise'
 import type { PhoenixOrders, RiseInstruction } from '../rise'
-import { runTradeTool } from '../tool'
+import { ISOLATED_RISK, runTradeTool } from '../tool'
 import type { TradeOutcome } from '../tool'
-import { ISOLATED_RISK } from './isolated'
 import { limitOrder } from './limit-order'
 import { marketOrder } from './market-order'
 
