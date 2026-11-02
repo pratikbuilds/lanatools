@@ -222,7 +222,6 @@ describe('closing an isolated position', () => {
         worstPrice: '0.12972',
         reduceOnly: true,
         marginMode: 'isolated',
-        subaccount: CHILD_INDEX,
       },
     })
     expect(result.expiresAfterSlot).toBeDefined()
@@ -437,7 +436,7 @@ describe('cancelling isolated orders', () => {
     expect(ready(outcome)).toMatchObject({
       summary: 'Cancel all 1 resting STONK order in isolated subaccount 2',
       details: { subaccount: '2', 'order 7': 'bid 10 at $0.12' },
-      trade: { cancelled: 1, marginMode: 'isolated', subaccount: 2 },
+      trade: { cancelled: 1, marginMode: 'isolated' },
       warnings: [
         'This cancels every resting order the account has in this market when it lands, including any placed after this was prepared.',
         'This empties the isolated subaccount, so its collateral returns to your cross-margin account in the same transaction. If the subaccount is no longer empty when this lands, the collateral stays there.',
@@ -518,7 +517,7 @@ describe('cancelling isolated orders', () => {
       expect(ready(outcome).details).toEqual({
         'order 7': 'bid 10 at $0.12',
       })
-      expect(ready(outcome).trade.subaccount).toBeUndefined()
+      expect(ready(outcome).trade.marginMode).toBeUndefined()
     }
   })
 
@@ -614,7 +613,6 @@ describe('adding margin', () => {
         action: 'add_margin',
         symbol: 'STONK',
         marginMode: 'isolated',
-        subaccount: CHILD_INDEX,
         collateralUsdc: '2.5',
       },
       warnings: [

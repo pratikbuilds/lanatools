@@ -1226,3 +1226,12 @@ export function decodeBundleStep(data: Uint8Array): BundleStep | null {
   const packet = decodeOrder(data)
   return packet ? { kind: 'order', packet } : null
 }
+
+/** Whether any of `instructions` is a Phoenix step of this kind. */
+export const hasStep = (
+  instructions: readonly Instruction[],
+  kind: BundleStep['kind'],
+) =>
+  instructions.some(
+    ({ data }) => decodeBundleStep(Uint8Array.from(data ?? []))?.kind === kind,
+  )

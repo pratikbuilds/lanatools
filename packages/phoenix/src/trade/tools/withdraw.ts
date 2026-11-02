@@ -60,7 +60,6 @@ async function withdrawUsdc(
       collateralUsdc: usdc(collateral.usdc.toString()),
     },
     trade: perpTrade('withdraw', {
-      asset: 'USDC',
       amountUsdc: usdc(amount.toString()),
     }),
     warnings: [
@@ -97,7 +96,7 @@ async function withdrawSol(
     instructions,
     summary: `Withdraw ${amount} SOL from the Phoenix cross-margin account to the wallet`,
     details: { amountSol: amount, collateralSol: sol(held.toString()) },
-    trade: perpTrade('withdraw', { asset: 'SOL', amountSol: amount }),
+    trade: perpTrade('withdraw', { amountSol: amount }),
     warnings: [
       'SOL withdrawals clear immediately or fail; they are never queued.',
       MARGIN_WARNING,

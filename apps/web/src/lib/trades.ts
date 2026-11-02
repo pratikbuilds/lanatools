@@ -254,12 +254,17 @@ export function tradeDetail(
       return confirmed ? `${venue} · Resting orders removed` : venue
     case 'activate':
       return `${venue} · Trader account`
-    case 'set_tpsl':
-      return `${venue} · Triggers on mark price`
+    case 'set_tpsl': {
+      const legs = [
+        trade.takeProfitPrice && `TP ${formatPrice(trade.takeProfitPrice)}`,
+        trade.stopLossPrice && `SL ${formatPrice(trade.stopLossPrice)}`,
+      ].filter(Boolean)
+      return `${venue} · ${legs.length > 0 ? `${legs.join(', ')} on mark price` : 'Triggers on mark price'}`
+    }
     case 'cancel_tpsl':
       return `${venue} · Trigger removed`
     case 'add_margin':
-      return `${venue} · From your cross account`
+      return `${venue} · ${trade.collateralUsdc ? `${trade.collateralUsdc} USDC from` : 'From'} your cross account`
   }
 }
 

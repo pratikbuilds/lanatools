@@ -12,11 +12,13 @@ import { defineTradeTool } from '../tool'
 import { fitsOneTransaction } from '../transaction'
 import {
   MarketSymbol,
-  Subaccount,
+  PositionSubaccount,
+  marginOf,
   marketConfig,
   openPosition,
   perpTrade,
   requireActivated,
+  subaccountRequest,
   unitsOf,
 } from './shared'
 import { LEG_NAMES, describeLeg, legDirection, positionLegs } from './tpsl'
@@ -61,7 +63,7 @@ export const cancelTpsl = defineTradeTool({
   arguments: z
     .object({
       symbol: MarketSymbol,
-      subaccount: Subaccount.optional(),
+      subaccount: PositionSubaccount,
       leg: z
         .enum(['takeProfit', 'stopLoss', 'both'])
         .describe('Which leg to cancel'),
@@ -83,14 +85,12 @@ export const cancelTpsl = defineTradeTool({
       context.phoenix.get('/v1/view/exchange/keys', ExchangeKeys),
       requireActivated(context, wallet),
     ])
-    const position = await openPosition(
+    const { subaccount, direction } = await openPosition(
       context,
       wallet,
       market.symbol,
       input.subaccount,
     )
-    const { subaccount } = position
-    const direction = position.lots > 0n ? 'long' : 'short'
     const active = positionLegs(
       (await conditionalOrders(
         context.rpc,
@@ -131,8 +131,7 @@ export const cancelTpsl = defineTradeTool({
         context.orders.cancelConditionalOrder({
           authority: wallet,
           traderPdaIndex: 0,
-          traderSubaccountIndex: subaccount,
-          isIsolated: subaccount !== 0,
+          ...subaccountRequest(subaccount),
           symbol: market.symbol,
           conditionalOrderIndex: slot,
           executionDirection: leg === 'greater' ? 'greater_than' : 'less_than',
@@ -169,8 +168,7 @@ export const cancelTpsl = defineTradeTool({
       trade: perpTrade('cancel_tpsl', {
         symbol: market.symbol,
         closing: direction,
-        marginMode: subaccount === 0 ? 'cross' : 'isolated',
-        subaccount,
+        ...marginOf(subaccount).terms,
         cancelled: chosen.length,
       }),
       warnings: [

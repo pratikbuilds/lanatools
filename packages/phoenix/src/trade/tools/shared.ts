@@ -1,7 +1,7 @@
 import type { Address } from '@solana/kit'
 import { z } from 'zod'
 import { PhoenixError } from '../../client'
-import { Orderbook } from '../../schemas'
+import { AllMarketStats, Orderbook } from '../../schemas'
 import { MarketSymbol, forMarket } from '../../tool'
 import { fetchAccount } from '../chain'
 import { bookTicks } from '../price'
@@ -52,6 +52,11 @@ export const Subaccount = z
     'Subaccount from phoenix_get_account: 0 is cross margin, the others isolated',
   )
 
+/** Which position a tool acts on, when its market is open in more than one. */
+export const PositionSubaccount = Subaccount.optional().describe(
+  'Subaccount holding the position, from phoenix_get_account: 0 is cross margin, the others isolated. Needed only when the market is open in more than one',
+)
+
 /** The wallet's trader account; throws `not_activated` unless it can trade. */
 export async function requireActivated(
   { rpc }: Pick<TradeContext, 'rpc'>,
@@ -80,7 +85,7 @@ export function marketConfig({ phoenix }: TradeContext, symbol: string) {
 }
 
 /** Refuses a market this order cannot trade. */
-export function requireTradable(
+function requireTradable(
   market: OrderMarket,
   marginMode: 'cross' | 'isolated',
 ) {
@@ -144,6 +149,42 @@ export async function bestTicks(
   )
 }
 
+/** A market's mark price, in ticks: what TP/SL triggers are checked against. */
+export async function markTicks(
+  { phoenix }: TradeContext,
+  market: OrderMarket,
+) {
+  const stats = await phoenix.get('/v1/markets/stats/latest', AllMarketStats)
+  const mark = stats.markets.find(
+    (each) => each.symbol === market.symbol,
+  )?.mark_price
+  if (mark === undefined)
+    throw new PhoenixError(
+      'market_unavailable',
+      `Phoenix sent no mark price for ${market.symbol}`,
+    )
+  return bookTicks(mark, unitsOf(market))
+}
+
+/**
+ * How a result names the subaccount it acts in: an isolated one by number,
+ * cross by nothing, so every tool reads the same in reviews and ledgers.
+ */
+export function marginOf(subaccount: number) {
+  return subaccount === 0
+    ? { details: {}, terms: {} }
+    : {
+        details: { marginMode: 'isolated', subaccount: String(subaccount) },
+        terms: { marginMode: 'isolated' as const },
+      }
+}
+
+/** How Rise's order routes name the subaccount a request acts in. */
+export const subaccountRequest = (subaccount: number) => ({
+  isIsolated: subaccount !== 0,
+  traderSubaccountIndex: subaccount,
+})
+
 /**
  * How a summary names an order on a perps market: a sell that is not
  * reduce-only opens or adds to a short, which "sell" alone does not say.
@@ -173,11 +214,22 @@ export const fineUsd = (value: number) => Number(value.toFixed(6)).toString()
 type TraderSubaccount = TraderBook['snapshot']['subaccounts'][number]
 
 /** A subaccount's resting orders, in one market or all of them. */
-const restingIn = (account: TraderSubaccount | undefined, symbol?: string) =>
+export const restingIn = (
+  account: TraderSubaccount | undefined,
+  symbol?: string,
+) =>
   (account?.orders ?? [])
     .filter((market) => symbol === undefined || market.symbol === symbol)
     .flatMap((market) => market.orders)
     .filter((order) => order.change !== 'closed')
+
+/** Whether a subaccount holds an open position, in one market or any. */
+export const holdsPosition = (account: TraderSubaccount, symbol?: string) =>
+  account.positions.some(
+    (position) =>
+      (symbol === undefined || position.symbol === symbol) &&
+      BigInt(position.basePositionLots) !== 0n,
+  )
 
 const traderStatePath = (wallet: Address) =>
   `/v1/trader/state/${encodeURIComponent(wallet)}`
@@ -195,8 +247,7 @@ function missingAccount(error: unknown): never {
  * The collateral in the wallet's cross-margin account (subaccount 0): USDC
  * in base units, and its SOL row, in lamports.
  */
-export async function crossCollateral(context: TradeContext, wallet: Address) {
-  const { snapshot } = await traderBook(context, wallet)
+export function crossCollateralIn({ snapshot }: TraderBook) {
   const cross = snapshot.subaccounts.find(
     (subaccount) => subaccount.subaccountIndex === 0,
   )
@@ -206,26 +257,8 @@ export async function crossCollateral(context: TradeContext, wallet: Address) {
   }
 }
 
-/**
- * One of the wallet's accounts as Phoenix's API sees it: collateral, positions
- * and resting orders. Subaccount 0 is cross margin.
- */
-export async function traderAccount(
-  context: TradeContext,
-  wallet: Address,
-  subaccount = 0,
-) {
-  const { snapshot } = await traderBook(context, wallet)
-  const account = snapshot.subaccounts.find(
-    (each) => each.subaccountIndex === subaccount,
-  )
-  return {
-    collateral: BigInt(account?.collateral ?? 0),
-    positions: account?.positions ?? [],
-    /** Resting orders still on the book in one market. */
-    ordersIn: (symbol: string) => restingIn(account, symbol),
-  }
-}
+export const crossCollateral = async (context: TradeContext, wallet: Address) =>
+  crossCollateralIn(await traderBook(context, wallet))
 
 export async function traderBook(
   { phoenix }: Pick<TradeContext, 'phoenix'>,
@@ -235,9 +268,10 @@ export async function traderBook(
 }
 
 /**
- * The wallet's open position in one market, and the subaccount that holds it.
- * A market can hold a cross and an isolated position at once, so without a
- * `subaccount` an ambiguous request is refused rather than guessed.
+ * The wallet's open position in one market: the subaccount that holds it,
+ * its direction and unsigned size in lots, and the trader book it was read
+ * from. A market can hold a cross and an isolated position at once, so
+ * without a `subaccount` an ambiguous request is refused rather than guessed.
  */
 export async function openPosition(
   context: TradeContext,
@@ -245,7 +279,8 @@ export async function openPosition(
   symbol: string,
   subaccount?: number,
 ) {
-  const { snapshot } = await traderBook(context, wallet)
+  const book = await traderBook(context, wallet)
+  const { snapshot } = book
   const held = snapshot.subaccounts.flatMap((account) =>
     account.positions
       .filter(
@@ -273,7 +308,14 @@ export async function openPosition(
       'invalid_input',
       `${symbol} is open in subaccounts ${matches.map((each) => each.subaccount).join(' and ')}; pass subaccount from phoenix_get_account`,
     )
-  return position
+  const long = position.lots > 0n
+  return {
+    ...position,
+    direction: long ? ('long' as const) : ('short' as const),
+    /** The position's size in lots, without its sign. */
+    held: long ? position.lots : -position.lots,
+    book,
+  }
 }
 
 /**
@@ -309,9 +351,7 @@ export async function ordersAccount(
     orders: restingIn(account, symbol),
     /** Whether the subaccount holds nothing once `cancelled` orders are gone. */
     emptiedBy: (cancelled: readonly { orderSequenceNumber: string }[]) =>
-      account.positions.every(
-        (position) => BigInt(position.basePositionLots) === 0n,
-      ) &&
+      !holdsPosition(account) &&
       restingIn(account).every((order) =>
         cancelled.some(
           (each) => each.orderSequenceNumber === order.orderSequenceNumber,

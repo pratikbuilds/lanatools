@@ -45,8 +45,11 @@ const flag = (value: unknown) =>
   typeof value === 'boolean' ? value : undefined
 const side = (value: unknown) =>
   value === 'buy' || value === 'sell' ? value : undefined
-const count = (value: unknown) =>
-  typeof value === 'number' ? value : undefined
+/** A subaccount other than cross names an isolated position. */
+const isolatedIn = (input: Arguments) =>
+  typeof input.subaccount === 'number' && input.subaccount > 0
+    ? { marginMode: 'isolated' as const }
+    : {}
 
 /** An order's isolated terms; a cross order states none. */
 const isolatedTerms = (input: Arguments) =>
@@ -58,11 +61,11 @@ const isolatedTerms = (input: Arguments) =>
       }
     : {}
 
-/** A deposit or withdrawal's asset and its amount. */
+/** A deposit or withdrawal's amount, named for its asset. */
 const collateral = (input: Arguments) =>
   input.asset === 'SOL'
-    ? { asset: 'SOL', amountSol: text(input.amount) }
-    : { asset: 'USDC', amountUsdc: text(input.amount) }
+    ? { amountSol: text(input.amount) }
+    : { amountUsdc: text(input.amount) }
 
 const triggerPrice = (value: unknown) =>
   typeof value === 'object' && value !== null && 'triggerPrice' in value
@@ -111,7 +114,7 @@ const INTENTS: Record<string, (input: Arguments) => Arguments> = {
   phoenix_cancel_orders: (input) => ({
     action: 'cancel',
     symbol: text(input.symbol),
-    subaccount: count(input.subaccount),
+    ...isolatedIn(input),
     cancelled: Array.isArray(input.orderIds)
       ? input.orderIds.length
       : undefined,
@@ -120,7 +123,7 @@ const INTENTS: Record<string, (input: Arguments) => Arguments> = {
     action: 'close',
     orderType: 'market',
     symbol: text(input.symbol),
-    subaccount: count(input.subaccount),
+    ...isolatedIn(input),
     worstPrice: text(input.limitPrice),
     reduceOnly: true,
   }),
@@ -128,13 +131,12 @@ const INTENTS: Record<string, (input: Arguments) => Arguments> = {
     action: 'add_margin',
     marginMode: 'isolated',
     symbol: text(input.symbol),
-    subaccount: count(input.subaccount),
     collateralUsdc: text(input.amount),
   }),
   phoenix_set_tpsl: (input) => ({
     action: 'set_tpsl',
     symbol: text(input.symbol),
-    subaccount: count(input.subaccount),
+    ...isolatedIn(input),
     size: text(input.size),
     takeProfitPrice: triggerPrice(input.takeProfit),
     stopLossPrice: triggerPrice(input.stopLoss),
@@ -142,7 +144,7 @@ const INTENTS: Record<string, (input: Arguments) => Arguments> = {
   phoenix_cancel_tpsl: (input) => ({
     action: 'cancel_tpsl',
     symbol: text(input.symbol),
-    subaccount: count(input.subaccount),
+    ...isolatedIn(input),
   }),
 }
 

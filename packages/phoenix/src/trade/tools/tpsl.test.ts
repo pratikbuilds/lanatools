@@ -365,8 +365,6 @@ describe('phoenix_set_tpsl', () => {
         summary: 'Set take profit and stop loss on 100% of the 0.25 SOL long',
         details: {
           position: 'long 0.25',
-          subaccount: '0',
-          marginMode: 'cross',
           takeProfit: 'trigger $120, worst $119.5',
           stopLoss: 'trigger $110, worst $105',
           size: '100% of the position, about 0.25 SOL now',
@@ -379,8 +377,6 @@ describe('phoenix_set_tpsl', () => {
           side: 'sell',
           size: '0.25',
           closing: 'long',
-          marginMode: 'cross',
-          subaccount: 0,
           takeProfitPrice: '120',
           stopLossPrice: '110',
         },
@@ -438,7 +434,7 @@ describe('phoenix_set_tpsl', () => {
       expect(outcome).toMatchObject({
         result: {
           details: { subaccount: '3', marginMode: 'isolated' },
-          trade: { marginMode: 'isolated', subaccount: 3 },
+          trade: { marginMode: 'isolated' },
         },
       })
     }
@@ -717,7 +713,6 @@ describe('phoenix_cancel_tpsl', () => {
           action: 'cancel_tpsl',
           symbol: 'SOL',
           closing: 'long',
-          subaccount: 0,
           cancelled: 1,
         },
         warnings: ['This position keeps 1 active TP/SL leg.'],

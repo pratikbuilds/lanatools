@@ -345,8 +345,6 @@ export const PerpTrade = type({
   'feeUsd?': 'string',
   'reduceOnly?': 'boolean',
   'postOnly?': 'boolean',
-  /** What a deposit or withdrawal moves; older rows without it are USDC. */
-  'asset?': "'USDC' | 'SOL'",
   /** Deposit or withdrawal amount, when the asset is USDC. */
   'amountUsdc?': 'string',
   /** Deposit or withdrawal amount, when the asset is SOL. */
@@ -357,8 +355,6 @@ export const PerpTrade = type({
   'cancelled?': 'number',
   /** Cross margin unless stated. */
   'marginMode?': "'cross' | 'isolated'",
-  /** The Phoenix subaccount, when known; 0 is cross margin. */
-  'subaccount?': 'number',
   /** Collateral moved into an isolated position. */
   'collateralUsdc?': 'string',
   'collateralSol?': 'string',

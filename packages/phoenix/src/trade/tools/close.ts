@@ -8,9 +8,10 @@ import { defineTradeTool } from '../tool'
 import { immediateOrder, worstPrice } from './market-order'
 import {
   MarketSymbol,
+  PositionSubaccount,
   Price,
   SlippageBps,
-  Subaccount,
+  marginOf,
   marketConfig,
   openPosition,
   perpTrade,
@@ -33,9 +34,7 @@ export const closePosition = defineTradeTool({
   arguments: z
     .object({
       symbol: MarketSymbol,
-      subaccount: Subaccount.optional().describe(
-        'Subaccount holding the position, from phoenix_get_account: 0 is cross margin, the others isolated. Needed only when the market is open in more than one',
-      ),
+      subaccount: PositionSubaccount,
       fraction: z
         .number()
         .gt(0)
@@ -59,42 +58,24 @@ export const closePosition = defineTradeTool({
   async prepare(context, input) {
     const wallet = address(input.wallet)
     const market = await marketConfig(context, input.symbol)
-    const [{ subaccount, lots: held }] = await Promise.all([
+    const [{ subaccount, direction, held }] = await Promise.all([
       openPosition(context, wallet, market.symbol, input.subaccount),
       requireActivated(context, wallet),
     ])
     const isolated = subaccount > 0
-
-    const long = held > 0n
-    const side = long ? 'sell' : 'buy'
-    const positionLots = long ? held : -held
-    const numBaseLots = fractionOfLots(positionLots, input.fraction)
+    const long = direction === 'long'
+    const numBaseLots = fractionOfLots(held, input.fraction)
     const decimals = market.baseLotsDecimals
     const size = fromLots(numBaseLots.toString(), decimals)
-    const limit = worstPrice(input)
-    const direction = long ? 'long' : 'short'
-    const positionSize = fromLots(positionLots.toString(), decimals)
-    const describe = (limitPrice: string) => {
-      const action = long
-        ? `market sell now, receiving at least $${limitPrice} each`
-        : `market buy now, paying at most $${limitPrice} each`
-      const kind = isolated
-        ? `isolated ${direction} (subaccount ${subaccount})`
-        : direction
-      return `Close ${size} of the ${positionSize} ${market.symbol} ${kind}: ${action}; reduce-only, so it can never open a ${long ? 'short' : 'long'}`
-    }
-    const closing = {
-      position: `${direction} ${positionSize}`,
-      closing: size,
-    }
+    const positionSize = fromLots(held.toString(), decimals)
 
     const order = await immediateOrder(context, {
       wallet,
       market,
-      side,
+      side: long ? 'sell' : 'buy',
       numBaseLots,
       size,
-      limit,
+      limit: worstPrice(input),
       reduceOnly: true,
       subaccount,
     })
@@ -110,31 +91,31 @@ export const closePosition = defineTradeTool({
         keys: order.keys,
         market,
         subaccount,
-        order: {
-          kind: 'market',
-          side,
-          priceInTicks: order.priceInTicks,
-          numBaseLots,
-          reduceOnly: true,
-          lastValidSlot: BigInt(order.expiresAfterSlot),
-        },
+        order: order.spec,
       })
+    const action = long
+      ? `market sell now, receiving at least $${order.limitPrice} each`
+      : `market buy now, paying at most $${order.limitPrice} each`
+    const kind = isolated
+      ? `isolated ${direction} (subaccount ${subaccount})`
+      : direction
     return {
       kind: 'instructions',
       wallet,
       instructions,
       expiresAfterSlot: order.expiresAfterSlot,
       position: { ...order.position, subaccount },
-      summary: describe(order.limitPrice),
+      summary: `Close ${size} of the ${positionSize} ${market.symbol} ${kind}: ${action}; reduce-only, so it can never open a ${long ? 'short' : 'long'}`,
       details: {
         ...order.details,
-        ...closing,
-        ...(isolated ? { subaccount: String(subaccount) } : {}),
+        position: `${direction} ${positionSize}`,
+        closing: size,
+        ...marginOf(subaccount).details,
       },
       trade: perpTrade('close', {
         ...order.terms,
         closing: direction,
-        ...(isolated ? { marginMode: 'isolated' as const, subaccount } : {}),
+        ...marginOf(subaccount).terms,
       }),
       warnings: [...(isolated ? [COLLATERAL_RETURNS] : []), ...order.warnings],
     }

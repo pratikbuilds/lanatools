@@ -362,7 +362,7 @@ test("a SOL deposit moves SOL into the wallet's trader account, with the warning
       collateralSol: '0',
       headroomSol: '1000',
     },
-    trade: { kind: 'perp', action: 'deposit', asset: 'SOL', amountSol: '0.01' },
+    trade: { kind: 'perp', action: 'deposit', amountSol: '0.01' },
     submit: { via: 'rpc' },
   })
   expect(outcome.result.warnings).toEqual([
@@ -596,7 +596,6 @@ test('a SOL withdrawal is checked against SOL collateral and is never queued', a
       trade: {
         kind: 'perp',
         action: 'withdraw',
-        asset: 'SOL',
         amountSol: '0.01',
       },
       warnings: [
@@ -626,7 +625,7 @@ test('naming USDC is the same as naming no asset', async () => {
   expect(unnamed).toMatchObject({
     ok: true,
     result: {
-      trade: { asset: 'USDC', amountUsdc: '2.5' },
+      trade: { amountUsdc: '2.5' },
       warnings: [],
     },
   })

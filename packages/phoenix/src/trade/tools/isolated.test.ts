@@ -211,7 +211,6 @@ describe('an isolated market order', () => {
       trade: {
         action: 'order',
         marginMode: 'isolated',
-        subaccount: 1,
         collateralUsdc: '2',
         worstPrice: '3850.2',
       },
@@ -309,7 +308,7 @@ describe('an isolated market order', () => {
     )
     expect(result.warnings).toEqual([ISOLATED_RISK])
     expect(result.summary).toEndWith('Moves no new collateral.')
-    expect(result.trade).toMatchObject({ subaccount: 1 })
+    expect(result.details).toMatchObject({ subaccount: '1' })
   })
 
   test('reduce-only keeps its flag, and moves no collateral', async () => {
@@ -367,7 +366,6 @@ describe('an isolated limit order', () => {
       trade: {
         orderType: 'limit',
         marginMode: 'isolated',
-        subaccount: 1,
         collateralUsdc: '2',
       },
       warnings: [ISOLATED_RISK, FIRST_USE],

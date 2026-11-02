@@ -72,7 +72,6 @@ async function depositUsdc(
       walletUsdc: usdc(balance.toString()),
     },
     trade: perpTrade('deposit', {
-      asset: 'USDC',
       amountUsdc: usdc(amount.toString()),
     }),
     warnings: [],
@@ -162,7 +161,7 @@ async function depositSol(
       collateralSol: sol(collateral.sol.balance.toString()),
       headroomSol: sol(headroom.toString()),
     },
-    trade: perpTrade('deposit', { asset: 'SOL', amountSol: amount }),
+    trade: perpTrade('deposit', { amountSol: amount }),
     warnings: [
       "SOL's value moves with its price, so your margin can change on its own.",
       `Only part of it counts toward margin: Phoenix currently discounts SOL by ${discountText(terms.minMarginDiscountBps, terms.maxMarginDiscountBps)}.`,

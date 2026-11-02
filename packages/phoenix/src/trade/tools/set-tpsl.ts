@@ -1,33 +1,33 @@
 import { address } from '@solana/kit'
 import { z } from 'zod'
 import { PhoenixError } from '../../client'
-import { AllMarketStats } from '../../schemas'
 import { fromLots } from '../../units'
 import { conditionalOrders } from '../chain'
 import { checkPhoenixBundle } from '../checks'
-import { bookTicks, ticksToPrice, toBaseLots } from '../price'
+import { ticksToPrice, toBaseLots } from '../price'
 import { traderAccountAddress } from '../rise'
 import { ExchangeKeys } from '../schemas'
 import { defineTradeTool } from '../tool'
 import {
   MarketSymbol,
+  PositionSubaccount,
   Size,
-  Subaccount,
+  marginOf,
+  markTicks,
+  marketConfig,
   openPosition,
   perpTrade,
   requireActivated,
-  tradableMarket,
+  subaccountRequest,
   unitsOf,
 } from './shared'
 import {
   LEG_NAMES,
-  PAIRED_LEGS,
-  TPSL_NOTICES,
   Trigger,
   checkAgainstMark,
   closingSide,
-  describeLeg,
   positionLegs,
+  tpslReview,
   tpslTerms,
 } from './tpsl'
 
@@ -74,7 +74,7 @@ export const setTpsl = defineTradeTool({
   arguments: z
     .object({
       symbol: MarketSymbol,
-      subaccount: Subaccount.optional(),
+      subaccount: PositionSubaccount,
       takeProfit: Trigger.optional(),
       stopLoss: Trigger.optional(),
       percent: z
@@ -99,32 +99,20 @@ export const setTpsl = defineTradeTool({
     ),
   async prepare(context, input) {
     const wallet = address(input.wallet)
-    // A position on an isolated-only market may hold TP/SL like any other.
-    const [market, stats, keys] = await Promise.all([
-      tradableMarket(context, input.symbol, 'isolated'),
-      context.phoenix.get('/v1/markets/stats/latest', AllMarketStats),
+    // Like phoenix_cancel_tpsl, no market status check: an open position may
+    // always change its protection, and the simulation still runs.
+    const [market, keys] = await Promise.all([
+      marketConfig(context, input.symbol),
       context.phoenix.get('/v1/view/exchange/keys', ExchangeKeys),
       requireActivated(context, wallet),
     ])
-    const position = await openPosition(
-      context,
-      wallet,
-      market.symbol,
-      input.subaccount,
-    )
-    const mark = stats.markets.find(
-      (each) => each.symbol === market.symbol,
-    )?.mark_price
-    if (mark === undefined)
-      throw new PhoenixError(
-        'market_unavailable',
-        `Phoenix sent no mark price for ${market.symbol}`,
-      )
+    const [{ subaccount, direction, held }, mark] = await Promise.all([
+      openPosition(context, wallet, market.symbol, input.subaccount),
+      markTicks(context, market),
+    ])
 
     const units = unitsOf(market)
     const decimals = market.baseLotsDecimals
-    const direction = position.lots > 0n ? 'long' : 'short'
-    const held = position.lots > 0n ? position.lots : -position.lots
     const { lots, ...size } = coverage(input, held, decimals)
     const terms = tpslTerms({
       direction,
@@ -134,10 +122,8 @@ export const setTpsl = defineTradeTool({
       stopLoss: input.stopLoss,
       size,
     })
-    const markTicks = bookTicks(mark, units)
-    checkAgainstMark(terms, markTicks, direction)
+    checkAgainstMark(terms, mark, direction)
 
-    const { subaccount } = position
     const slots = await conditionalOrders(
       context.rpc,
       await traderAccountAddress(wallet, subaccount),
@@ -151,8 +137,7 @@ export const setTpsl = defineTradeTool({
         : { sizePercent: size.sizePercent }),
       greaterTrigger: terms.greaterTrigger,
       lessTrigger: terms.lessTrigger,
-      isIsolated: subaccount !== 0,
-      traderSubaccountIndex: subaccount,
+      ...subaccountRequest(subaccount),
     })
     await checkPhoenixBundle(instructions, {
       wallet,
@@ -171,7 +156,7 @@ export const setTpsl = defineTradeTool({
     const legs = (['takeProfit', 'stopLoss'] as const).filter(
       (leg) => terms[leg] !== null,
     )
-    const marginMode = subaccount === 0 ? 'cross' : 'isolated'
+    const review = tpslReview(terms, units, slots === null)
     return {
       kind: 'instructions',
       wallet,
@@ -179,16 +164,10 @@ export const setTpsl = defineTradeTool({
       summary: `Set ${legs.map((leg) => LEG_NAMES[leg]).join(' and ')} on ${size.sizePercent === null ? tokens : `${size.sizePercent}%`} of the ${fromLots(held.toString(), decimals)} ${market.symbol} ${direction}`,
       details: {
         position: `${direction} ${fromLots(held.toString(), decimals)}`,
-        subaccount: String(subaccount),
-        marginMode,
-        ...(terms.takeProfit
-          ? { takeProfit: describeLeg(terms.takeProfit, units) }
-          : {}),
-        ...(terms.stopLoss
-          ? { stopLoss: describeLeg(terms.stopLoss, units) }
-          : {}),
+        ...marginOf(subaccount).details,
+        ...review.details,
         size: covered,
-        markPrice: ticksToPrice(markTicks, units),
+        markPrice: ticksToPrice(mark, units),
         activeTpsl: String(active),
       },
       trade: perpTrade('set_tpsl', {
@@ -196,36 +175,14 @@ export const setTpsl = defineTradeTool({
         side: closingSide(direction),
         size: tokens,
         closing: direction,
-        marginMode,
-        subaccount,
-        ...(terms.takeProfit
-          ? {
-              takeProfitPrice: ticksToPrice(
-                terms.takeProfit.triggerPriceInTicks,
-                units,
-              ),
-            }
-          : {}),
-        ...(terms.stopLoss
-          ? {
-              stopLossPrice: ticksToPrice(
-                terms.stopLoss.triggerPriceInTicks,
-                units,
-              ),
-            }
-          : {}),
+        ...marginOf(subaccount).terms,
+        ...review.terms,
       }),
       warnings: [
-        ...TPSL_NOTICES,
-        ...(terms.takeProfit && terms.stopLoss ? [PAIRED_LEGS] : []),
+        ...review.warnings,
         ...(active > 0
           ? [
               `This position already has ${active} active TP/SL; this one adds to them and replaces none.`,
-            ]
-          : []),
-        ...(slots === null
-          ? [
-              'This is the first TP/SL on this account, so your wallet pays a small one-time rent in SOL. Treat it as spent.',
             ]
           : []),
         ...(lots < held

@@ -39,14 +39,14 @@ export const legDirection = (leg: TpslLeg, direction: Direction) =>
   (leg === 'takeProfit') === (direction === 'long') ? 'greater' : 'less'
 
 /** Always shown in a review that sets TP/SL. */
-export const TPSL_NOTICES = [
+const TPSL_NOTICES = [
   'Triggers use mark price.',
   'A stop may not fill past its worst price.',
   'Phoenix cancels TP/SL if the position flips.',
 ]
 
 /** Seen in the live run: firing one leg of a pair cancels the other. */
-export const PAIRED_LEGS =
+const PAIRED_LEGS =
   'The take profit and stop loss are one pair: when one fires, Phoenix cancels the other.'
 
 export const LEG_NAMES: Record<TpslLeg, string> = {
@@ -171,6 +171,40 @@ export function checkAgainstMark(
 /** A leg as the review shows it. */
 export const describeLeg = (leg: TriggerPacket, units: MarketUnits) =>
   `trigger $${ticksToPrice(leg.triggerPriceInTicks, units)}, worst $${ticksToPrice(leg.executionPriceInTicks, units)}`
+
+const FIRST_TPSL_RENT =
+  'This is the first TP/SL on this account, so your wallet pays a small one-time rent in SOL. Treat it as spent.'
+
+/**
+ * What a TP/SL adds to any tool's review: each leg, its trigger prices for
+ * the ledger, and the notices. `firstOnAccount` adds the rent notice.
+ */
+export function tpslReview(
+  {
+    takeProfit,
+    stopLoss,
+  }: Pick<ReturnType<typeof tpslTerms>, 'takeProfit' | 'stopLoss'>,
+  units: MarketUnits,
+  firstOnAccount: boolean,
+) {
+  const price = (leg: TriggerPacket) =>
+    ticksToPrice(leg.triggerPriceInTicks, units)
+  return {
+    details: {
+      ...(takeProfit ? { takeProfit: describeLeg(takeProfit, units) } : {}),
+      ...(stopLoss ? { stopLoss: describeLeg(stopLoss, units) } : {}),
+    },
+    terms: {
+      ...(takeProfit ? { takeProfitPrice: price(takeProfit) } : {}),
+      ...(stopLoss ? { stopLossPrice: price(stopLoss) } : {}),
+    },
+    warnings: [
+      ...TPSL_NOTICES,
+      ...(takeProfit && stopLoss ? [PAIRED_LEGS] : []),
+      ...(firstOnAccount ? [FIRST_TPSL_RENT] : []),
+    ],
+  }
+}
 
 /**
  * The slots protecting one position, with each slot's legs named by what they
