@@ -438,10 +438,14 @@ export const solDepositCredit = (room: SolDepositRoom, lamports: bigint) =>
   })
 
 /**
- * The accounts the SOL checks compare, by their place in Rise's builders.
- * If an upgrade moves them, the checks fail and nothing gets signed.
+ * The accounts the checks compare, by their place in Rise's builders and
+ * Phoenix's server answers. If an upgrade moves them, the checks fail and
+ * nothing gets signed.
  */
-export const SOL_ACCOUNTS = {
+export const ACCOUNT_AT = {
+  order: { traderAccount: 4 },
+  placeConditional: { traderAccount: 4, conditionalOrders: 11 },
+  transferCollateral: { source: 4, destination: 5 },
   realloc: { payer: 3, trader: 4, traderAccount: 5 },
   transfer: { source: 0, destination: 1 },
   sync: { traderAccount: 3 },
@@ -458,6 +462,9 @@ export const solData = {
     Uint8Array.from(
       encodeWithdrawNativeSol({ kind: 'withoutExcess', lamports }),
     ),
+  /** Phoenix's `TransferNativeSol`, from cross to a subaccount. */
+  toSubaccount: (lamports: bigint) =>
+    Uint8Array.from(encodeTransferNativeSol(lamports)),
 }
 
 function solContext(wallet: Address, keys: ExchangeKeys) {
@@ -1114,7 +1121,3 @@ export function decodeBundleStep(data: Uint8Array): BundleStep | null {
   const packet = decodeOrder(data)
   return packet ? { kind: 'order', packet } : null
 }
-
-/** A `TransferNativeSol` instruction's exact data for `lamports`. */
-export const transferSolData = (lamports: bigint) =>
-  Uint8Array.from(encodeTransferNativeSol(lamports))

@@ -25,7 +25,7 @@ import {
 } from './fixtures'
 import {
   EMBER_PROGRAM,
-  SOL_ACCOUNTS,
+  ACCOUNT_AT,
   cancelData,
   depositInstructions,
   solData,
@@ -371,8 +371,8 @@ test('a SOL deposit passes only as the exact three steps', async () => {
   if (!realloc || !transfer || !sync) throw new Error('three steps')
   expect(() => checkSolDeposit(good, SOL_TERMS)).not.toThrow()
 
-  const { payer, trader, traderAccount } = SOL_ACCOUNTS.realloc
-  const { source, destination } = SOL_ACCOUNTS.transfer
+  const { payer, trader, traderAccount } = ACCOUNT_AT.realloc
+  const { source, destination } = ACCOUNT_AT.transfer
   for (const [instructions, reason] of [
     [[realloc, transfer], 'the SOL deposit has unexpected steps'],
     [[...good, transfer], 'the SOL deposit has unexpected steps'],
@@ -424,7 +424,7 @@ test('a SOL deposit passes only as the exact three steps', async () => {
       [
         realloc,
         transfer,
-        withAccount(sync, SOL_ACCOUNTS.sync.traderAccount, OTHER),
+        withAccount(sync, ACCOUNT_AT.sync.traderAccount, OTHER),
       ],
       "the synced trader account is not the wallet's own",
     ],
@@ -436,7 +436,7 @@ test('a SOL withdrawal passes only as one exact WithdrawNativeSol', async () => 
   const good = await solWithdrawInstruction(WALLET, KEYS, LAMPORTS)
   expect(() => checkSolWithdraw([good], SOL_TERMS)).not.toThrow()
 
-  const { trader, traderAccount, destination } = SOL_ACCOUNTS.withdraw
+  const { trader, traderAccount, destination } = ACCOUNT_AT.withdraw
   const withData = (data: Uint8Array) => [{ ...good, data }]
   const excess = Uint8Array.from(solData.withdraw(LAMPORTS))
   excess[8] = 1 // `withExcess`: would also take uncounted lamports.

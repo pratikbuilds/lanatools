@@ -12,7 +12,7 @@ import {
   activationOf,
   traderAccountAddress,
 } from '../rise'
-import { OrderMarket, TraderBook, TraderCollateral } from '../schemas'
+import { OrderMarket, TraderBook } from '../schemas'
 import type { PerpTrade } from '@lanatools/contracts'
 import type { TradeContext } from '../tool'
 
@@ -195,14 +195,9 @@ function missingAccount(error: unknown): never {
  * The collateral in the wallet's cross-margin account (subaccount 0): USDC
  * in base units, and its SOL row, in lamports.
  */
-export async function crossCollateral(
-  { phoenix }: TradeContext,
-  wallet: Address,
-) {
-  const state = await phoenix
-    .get(traderStatePath(wallet), TraderCollateral)
-    .catch(missingAccount)
-  const cross = state.snapshot.subaccounts.find(
+export async function crossCollateral(context: TradeContext, wallet: Address) {
+  const { snapshot } = await traderBook(context, wallet)
+  const cross = snapshot.subaccounts.find(
     (subaccount) => subaccount.subaccountIndex === 0,
   )
   return {
@@ -236,16 +231,7 @@ export async function traderBook(
   { phoenix }: Pick<TradeContext, 'phoenix'>,
   wallet: Address,
 ) {
-  return phoenix
-    .get(`/v1/trader/state/${encodeURIComponent(wallet)}`, TraderBook)
-    .catch((error: unknown) => {
-      if (error instanceof PhoenixError && error.code === 'not_found')
-        throw new PhoenixError(
-          'not_activated',
-          'This wallet has no Phoenix account; call phoenix_activate_account first',
-        )
-      throw error
-    })
+  return phoenix.get(traderStatePath(wallet), TraderBook).catch(missingAccount)
 }
 
 /**
