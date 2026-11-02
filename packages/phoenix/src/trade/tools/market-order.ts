@@ -2,7 +2,7 @@ import { address } from '@solana/kit'
 import type { Address } from '@solana/kit'
 import { z } from 'zod'
 import { PhoenixError } from '../../client'
-import { checkOrder } from '../checks'
+import { checkOrder, checkPhoenixBundle } from '../checks'
 import {
   exactNumber,
   limitRounding,
@@ -12,10 +12,10 @@ import {
   toBaseLots,
 } from '../price'
 import type { Side } from '../price'
-import { MIN_FILL_LOTS, orderInstruction } from '../rise'
+import { MIN_FILL_LOTS, hasStep, orderInstruction } from '../rise'
 import type { OrderSpec } from '../rise'
 import { ExchangeKeys } from '../schemas'
-import type { OrderMarket } from '../schemas'
+import type { OrderMarket, TraderBook } from '../schemas'
 import { defineTradeTool } from '../tool'
 import type { TradeContext } from '../tool'
 import { rpcTimeout } from '../transaction'
@@ -25,6 +25,7 @@ import {
   marginInputs,
   placeIsolated,
 } from './isolated'
+import type { MarginInput } from './isolated'
 import {
   MarketSymbol,
   OrderSide,
@@ -33,13 +34,16 @@ import {
   SlippageBps,
   bestTicks,
   fineUsd,
+  markTicks,
   orderVerb,
   perpTrade,
   requireActivated,
   tradableMarket,
+  traderBook,
   unitsOf,
   usd,
 } from './shared'
+import { Trigger, checkAgainstMark, tpslReview, tpslTerms } from './tpsl'
 
 /**
  * An immediate-or-cancel order expires this many slots after it is built
@@ -120,8 +124,13 @@ export async function immediateOrder(
   {
     wallet,
     numBaseLots,
+    subaccount = 0,
     ...order
-  }: ImmediateTerms & { wallet: Address; numBaseLots: bigint },
+  }: ImmediateTerms & {
+    wallet: Address
+    numBaseLots: bigint
+    subaccount?: number
+  },
 ) {
   const { market, side, reduceOnly } = order
   const [terms, keys, slot] = await Promise.all([
@@ -137,11 +146,19 @@ export async function immediateOrder(
     reduceOnly,
     lastValidSlot: slot + ORDER_EXPIRY_SLOTS,
   }
-  const instruction = await orderInstruction(wallet, keys, market, spec)
+  const instruction = await orderInstruction(
+    wallet,
+    keys,
+    market,
+    spec,
+    subaccount,
+  )
   checkOrder(instruction, spec)
 
   return {
     instruction,
+    spec,
+    keys,
     limitPrice: terms.limitPrice,
     expiresAfterSlot: String(spec.lastValidSlot),
     position: {
@@ -163,6 +180,48 @@ export async function immediateOrder(
   }
 }
 
+/**
+ * TP/SL set with an order. It covers the whole position: Phoenix's isolated
+ * entry route takes nothing less, and a partial TP/SL goes through
+ * phoenix_set_tpsl. Refused when the order would shrink an opposite position:
+ * Phoenix only holds a trigger against the position's own direction.
+ */
+async function entryTpsl(
+  context: TradeContext,
+  market: OrderMarket,
+  book: TraderBook,
+  input: {
+    side: Side
+    takeProfit?: Trigger | undefined
+    stopLoss?: Trigger | undefined
+  },
+) {
+  const direction = input.side === 'buy' ? 'long' : 'short'
+  const opposite = book.snapshot.subaccounts
+    .flatMap((account) => account.positions)
+    .filter((position) => position.symbol === market.symbol)
+    .some((position) =>
+      direction === 'long'
+        ? BigInt(position.basePositionLots) < 0n
+        : BigInt(position.basePositionLots) > 0n,
+    )
+  if (opposite)
+    throw new PhoenixError(
+      'invalid_input',
+      `This order reduces an open ${market.symbol} position, so it cannot set TP/SL; use phoenix_set_tpsl on the position`,
+    )
+  const terms = tpslTerms({
+    direction,
+    assetId: market.assetId,
+    units: unitsOf(market),
+    takeProfit: input.takeProfit,
+    stopLoss: input.stopLoss,
+    size: { sizeBaseLots: null, sizePercent: 100 },
+  })
+  checkAgainstMark(terms, await markTicks(context, market), direction)
+  return terms
+}
+
 /** The order's worst price, from exactly one of the two inputs (D1). */
 export function worstPrice(input: {
   maxSlippageBps?: number | undefined
@@ -176,6 +235,134 @@ export function worstPrice(input: {
     'invalid_input',
     'Give exactly one of maxSlippageBps or limitPrice',
   )
+}
+
+type TpslTerms = ReturnType<typeof tpslTerms> | null
+
+/** A cross market order: Rise's order, plus Phoenix's TP/SL in one transaction. */
+async function crossOrder(
+  context: TradeContext,
+  wallet: Address,
+  ordered: ImmediateTerms,
+  numBaseLots: bigint,
+  tpsl: TpslTerms,
+) {
+  const order = await immediateOrder(context, {
+    ...ordered,
+    wallet,
+    numBaseLots,
+  })
+  // One transaction: if the TP/SL fails, the order never lands without it.
+  const instructions = [
+    order.instruction,
+    ...(tpsl
+      ? await context.orders.placePositionConditionalOrder({
+          authority: wallet,
+          traderPdaIndex: 0,
+          symbol: ordered.market.symbol,
+          sizePercent: 100,
+          greaterTrigger: tpsl.greaterTrigger,
+          lessTrigger: tpsl.lessTrigger,
+        })
+      : []),
+  ]
+  if (tpsl)
+    await checkPhoenixBundle(instructions, {
+      wallet,
+      keys: order.keys,
+      market: ordered.market,
+      subaccount: 0,
+      conditional: tpsl.conditional,
+      order: order.spec,
+    })
+  return {
+    label: 'Market',
+    instructions,
+    limitPrice: order.limitPrice,
+    funding: null,
+    expiry: {
+      expiresAfterSlot: order.expiresAfterSlot,
+      position: order.position,
+    },
+    details: order.details,
+    terms: order.terms,
+    warnings: order.warnings,
+  }
+}
+
+/** An isolated market order, built by Phoenix's server and checked. */
+async function isolatedOrder(
+  context: TradeContext,
+  wallet: Address,
+  ordered: ImmediateTerms,
+  {
+    input,
+    book,
+    numBaseLots,
+    tpsl,
+  }: {
+    input: MarginInput & { reduceOnly: boolean }
+    book: TraderBook
+    numBaseLots: bigint
+    tpsl: TpslTerms
+  },
+) {
+  const { market } = ordered
+  const funding = isolatedFunding(market, book, input)
+  const [terms, keys] = await Promise.all([
+    immediateTerms(context, ordered),
+    context.phoenix.get('/v1/view/exchange/keys', ExchangeKeys),
+  ])
+  const placed = await placeIsolated({
+    wallet,
+    keys,
+    market,
+    funding,
+    conditional: tpsl?.conditional,
+    order: {
+      kind: 'market',
+      side: ordered.side,
+      priceInTicks: terms.priceInTicks,
+      numBaseLots,
+      reduceOnly: ordered.reduceOnly,
+      lastValidSlot: null,
+    },
+    // Phoenix reads maxPriceInTicks as the worst price on both sides.
+    build: () =>
+      context.orders.placeIsolatedMarketOrder({
+        authority: wallet,
+        symbol: market.symbol,
+        side: ordered.side,
+        numBaseLots: exactNumber(numBaseLots, 'size'),
+        maxPriceInTicks: exactNumber(terms.priceInTicks, 'price'),
+        minBaseLotsToFill: Number(MIN_FILL_LOTS),
+        ...(ordered.reduceOnly ? { isReduceOnly: true } : {}),
+        ...funding.transfer,
+        ...(tpsl
+          ? {
+              sizePercent: 100,
+              ...(tpsl.greaterTrigger
+                ? { greaterTrigger: tpsl.greaterTrigger }
+                : {}),
+              ...(tpsl.lessTrigger ? { lessTrigger: tpsl.lessTrigger } : {}),
+            }
+          : {}),
+      }),
+  })
+  return {
+    label: 'Isolated market',
+    instructions: placed.instructions,
+    limitPrice: terms.limitPrice,
+    funding: funding.sentence,
+    expiry: {},
+    details: {
+      ...terms.details,
+      reduceOnly: String(ordered.reduceOnly),
+      ...placed.details,
+    },
+    terms: { ...terms.terms, ...placed.terms },
+    warnings: [...placed.warnings, ...terms.warnings],
+  }
 }
 
 export const marketOrder = defineTradeTool({
@@ -201,6 +388,12 @@ export const marketOrder = defineTradeTool({
         .default(false)
         .describe('Only reduce an open position, never open or flip one'),
       ...marginInputs,
+      takeProfit: Trigger.optional().describe(
+        'Take profit on the whole position, set with this order',
+      ),
+      stopLoss: Trigger.optional().describe(
+        'Stop loss on the whole position, set with this order',
+      ),
     })
     .strict()
     .refine(
@@ -209,7 +402,11 @@ export const marketOrder = defineTradeTool({
         (input.limitPrice === undefined),
       'Give exactly one of maxSlippageBps or limitPrice',
     )
-    .refine(...CrossTakesNoCollateral),
+    .refine(...CrossTakesNoCollateral)
+    .refine(
+      (input) => !input.reduceOnly || (!input.takeProfit && !input.stopLoss),
+      'A reduce-only order cannot set TP/SL',
+    ),
   async prepare(context, input) {
     const wallet = address(input.wallet)
     const [market] = await Promise.all([
@@ -217,81 +414,46 @@ export const marketOrder = defineTradeTool({
       requireActivated(context, wallet),
     ])
     const numBaseLots = toBaseLots(input.size, market.baseLotsDecimals)
-    const verb = orderVerb(input.side, input.reduceOnly)
-    const bound = input.side === 'buy' ? 'paying at most' : 'receiving at least'
-    const limit = worstPrice(input)
-
-    if (input.marginMode === 'isolated') {
-      const funding = await isolatedFunding(context, wallet, market, input)
-      const [terms, keys] = await Promise.all([
-        immediateTerms(context, {
-          market,
-          side: input.side,
-          size: input.size,
-          limit,
-          reduceOnly: input.reduceOnly,
-        }),
-        context.phoenix.get('/v1/view/exchange/keys', ExchangeKeys),
-      ])
-      const placed = await placeIsolated({
-        wallet,
-        keys,
-        market,
-        funding,
-        order: {
-          kind: 'market',
-          side: input.side,
-          priceInTicks: terms.priceInTicks,
-          numBaseLots,
-          reduceOnly: input.reduceOnly,
-        },
-        // Phoenix reads maxPriceInTicks as the worst price on both sides.
-        build: () =>
-          context.orders.placeIsolatedMarketOrder({
-            authority: wallet,
-            symbol: market.symbol,
-            side: input.side,
-            numBaseLots: exactNumber(numBaseLots, 'size'),
-            maxPriceInTicks: exactNumber(terms.priceInTicks, 'price'),
-            minBaseLotsToFill: Number(MIN_FILL_LOTS),
-            ...(input.reduceOnly ? { isReduceOnly: true } : {}),
-            ...funding.transfer,
-          }),
-      })
-      return {
-        kind: 'instructions',
-        wallet,
-        instructions: placed.instructions,
-        summary: `Isolated market ${verb}: ${input.size} ${market.symbol} perp now, ${bound} $${terms.limitPrice} each; any part that cannot fill at that price is cancelled. ${funding.sentence}`,
-        details: {
-          ...terms.details,
-          reduceOnly: String(input.reduceOnly),
-          ...placed.details,
-        },
-        trade: perpTrade('order', { ...terms.terms, ...placed.terms }),
-        warnings: [...placed.warnings, ...terms.warnings],
-      }
-    }
-
-    const order = await immediateOrder(context, {
-      wallet,
+    const isolated = input.marginMode === 'isolated'
+    const wantsTpsl = Boolean(input.takeProfit || input.stopLoss)
+    const book =
+      isolated || wantsTpsl ? await traderBook(context, wallet) : null
+    const tpsl =
+      book && wantsTpsl ? await entryTpsl(context, market, book, input) : null
+    const ordered = {
       market,
       side: input.side,
-      numBaseLots,
       size: input.size,
-      limit,
+      limit: worstPrice(input),
       reduceOnly: input.reduceOnly,
-    })
+    }
+
+    const built =
+      book && isolated
+        ? await isolatedOrder(context, wallet, ordered, {
+            input,
+            book,
+            numBaseLots,
+            tpsl,
+          })
+        : await crossOrder(context, wallet, ordered, numBaseLots, tpsl)
+    const review =
+      tpsl &&
+      tpslReview(
+        tpsl,
+        unitsOf(market),
+        hasStep(built.instructions, 'create_conditional'),
+      )
+    const bound = input.side === 'buy' ? 'paying at most' : 'receiving at least'
     return {
       kind: 'instructions',
       wallet,
-      instructions: [order.instruction],
-      expiresAfterSlot: order.expiresAfterSlot,
-      position: order.position,
-      summary: `Market ${verb}: ${input.size} ${market.symbol} perp now, ${bound} $${order.limitPrice} each; any part that cannot fill at that price is cancelled`,
-      details: order.details,
-      trade: perpTrade('order', order.terms),
-      warnings: order.warnings,
+      instructions: built.instructions,
+      ...built.expiry,
+      summary: `${built.label} ${orderVerb(input.side, input.reduceOnly)}: ${input.size} ${market.symbol} perp now, ${bound} $${built.limitPrice} each; any part that cannot fill at that price is cancelled${built.funding ? `. ${built.funding}` : ''}`,
+      details: { ...built.details, ...review?.details },
+      trade: perpTrade('order', { ...built.terms, ...review?.terms }),
+      warnings: [...built.warnings, ...(review?.warnings ?? [])],
     }
   },
 })

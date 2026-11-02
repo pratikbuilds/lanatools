@@ -45,8 +45,11 @@ const flag = (value: unknown) =>
   typeof value === 'boolean' ? value : undefined
 const side = (value: unknown) =>
   value === 'buy' || value === 'sell' ? value : undefined
-const count = (value: unknown) =>
-  typeof value === 'number' ? value : undefined
+/** A subaccount other than cross names an isolated position. */
+const isolatedIn = (input: Arguments) =>
+  typeof input.subaccount === 'number' && input.subaccount > 0
+    ? { marginMode: 'isolated' as const }
+    : {}
 
 /** An order's isolated terms; a cross order states none. */
 const isolatedTerms = (input: Arguments) =>
@@ -58,11 +61,26 @@ const isolatedTerms = (input: Arguments) =>
       }
     : {}
 
-/** A deposit or withdrawal's asset and its amount. */
+/** A deposit or withdrawal's amount, named for its asset. */
 const collateral = (input: Arguments) =>
   input.asset === 'SOL'
-    ? { asset: 'SOL', amountSol: text(input.amount) }
-    : { asset: 'USDC', amountUsdc: text(input.amount) }
+    ? { amountSol: text(input.amount) }
+    : { amountUsdc: text(input.amount) }
+
+const triggerPrice = (value: unknown) =>
+  typeof value === 'object' && value !== null && 'triggerPrice' in value
+    ? text(value.triggerPrice)
+    : undefined
+
+/** An input as one line of the review: objects such as a trigger, spelled out. */
+function fieldValue(value: unknown) {
+  if (Array.isArray(value)) return value.join(', ')
+  if (typeof value === 'object' && value !== null)
+    return Object.entries(value)
+      .map(([key, item]) => `${key} ${String(item)}`)
+      .join(', ')
+  return String(value)
+}
 
 /**
  * What each tool asks for, as trade data, before Phoenix's book is read. The
@@ -96,7 +114,7 @@ const INTENTS: Record<string, (input: Arguments) => Arguments> = {
   phoenix_cancel_orders: (input) => ({
     action: 'cancel',
     symbol: text(input.symbol),
-    subaccount: count(input.subaccount),
+    ...isolatedIn(input),
     cancelled: Array.isArray(input.orderIds)
       ? input.orderIds.length
       : undefined,
@@ -105,7 +123,7 @@ const INTENTS: Record<string, (input: Arguments) => Arguments> = {
     action: 'close',
     orderType: 'market',
     symbol: text(input.symbol),
-    subaccount: count(input.subaccount),
+    ...isolatedIn(input),
     worstPrice: text(input.limitPrice),
     reduceOnly: true,
   }),
@@ -113,8 +131,20 @@ const INTENTS: Record<string, (input: Arguments) => Arguments> = {
     action: 'add_margin',
     marginMode: 'isolated',
     symbol: text(input.symbol),
-    subaccount: count(input.subaccount),
     collateralUsdc: text(input.amount),
+  }),
+  phoenix_set_tpsl: (input) => ({
+    action: 'set_tpsl',
+    symbol: text(input.symbol),
+    ...isolatedIn(input),
+    size: text(input.size),
+    takeProfitPrice: triggerPrice(input.takeProfit),
+    stopLossPrice: triggerPrice(input.stopLoss),
+  }),
+  phoenix_cancel_tpsl: (input) => ({
+    action: 'cancel_tpsl',
+    symbol: text(input.symbol),
+    ...isolatedIn(input),
   }),
 }
 
@@ -157,16 +187,13 @@ export function phoenixTransactionTool<TSchema extends z.ZodObject>(
           title: tool.title,
           description: activation
             ? 'Activate your Phoenix account. Your wallet pays rent and fees in SOL and signs a Phoenix login message. Phoenix co-signs and submits.'
-            : input.marginMode === 'isolated'
-              ? `Trade an isolated Phoenix position, funded from your cross-margin account. ${ISOLATED_RISK} Exact terms are checked and simulated when prepared. Network fees are paid in SOL.`
+            : input.marginMode === 'isolated' || Number(input.subaccount) > 0
+              ? `Use an isolated Phoenix position. ${ISOLATED_RISK} Exact terms are checked and simulated when prepared. Network fees are paid in SOL.`
               : 'Use your Phoenix cross-margin account. Exact terms are checked and simulated when prepared. Network fees are paid in SOL.',
           actionLabel: tool.title,
           fields: Object.entries(input)
             .filter(([, value]) => value !== undefined)
-            .map(([label, value]) => ({
-              label,
-              value: Array.isArray(value) ? value.join(', ') : String(value),
-            })),
+            .map(([label, value]) => ({ label, value: fieldValue(value) })),
           ...(trade ? { trade } : {}),
         }
       },

@@ -9,6 +9,7 @@ import { toLamports, toUSDCUnits } from '../price'
 import {
   depositInstructions,
   solDepositCredit,
+  solUncounted,
   solDepositHeadroom,
   solDepositInstructions,
   traderAccountAddress,
@@ -71,7 +72,6 @@ async function depositUsdc(
       walletUsdc: usdc(balance.toString()),
     },
     trade: perpTrade('deposit', {
-      asset: 'USDC',
       amountUsdc: usdc(amount.toString()),
     }),
     warnings: [],
@@ -147,6 +147,8 @@ async function depositSol(
   const instructions = await solDepositInstructions(wallet, keys, lamports)
   checkSolDeposit(instructions, { wallet, traderAccount, lamports })
   const credit = solDepositCredit(room, lamports)
+  // SyncNative counts whatever sits in the account, not only this deposit.
+  const uncounted = solUncounted(room)
   const amount = sol(lamports.toString())
   return {
     kind: 'instructions',
@@ -159,7 +161,7 @@ async function depositSol(
       collateralSol: sol(collateral.sol.balance.toString()),
       headroomSol: sol(headroom.toString()),
     },
-    trade: perpTrade('deposit', { asset: 'SOL', amountSol: amount }),
+    trade: perpTrade('deposit', { amountSol: amount }),
     warnings: [
       "SOL's value moves with its price, so your margin can change on its own.",
       `Only part of it counts toward margin: Phoenix currently discounts SOL by ${discountText(terms.minMarginDiscountBps, terms.maxMarginDiscountBps)}.`,
@@ -168,6 +170,11 @@ async function depositSol(
       ...(credit < lamports
         ? [
             `Phoenix will count ${sol(credit.toString())} SOL of this deposit; the rest refills the rent the trader account is short of.`,
+          ]
+        : []),
+      ...(uncounted > 0n
+        ? [
+            `Phoenix will also count ${sol(uncounted.toString())} SOL already sitting in the trader account, so your collateral may rise by more than this deposit.`,
           ]
         : []),
     ],

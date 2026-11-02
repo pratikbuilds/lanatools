@@ -1,5 +1,4 @@
 import { address } from '@solana/kit'
-import type { Address } from '@solana/kit'
 import { z } from 'zod'
 import { checkOrder } from '../checks'
 import {
@@ -12,7 +11,6 @@ import {
 import { orderInstruction } from '../rise'
 import type { OrderSpec } from '../rise'
 import { ExchangeKeys } from '../schemas'
-import type { OrderMarket } from '../schemas'
 import { defineTradeTool } from '../tool'
 import {
   CrossTakesNoCollateral,
@@ -30,25 +28,10 @@ import {
   perpTrade,
   requireActivated,
   tradableMarket,
+  traderBook,
   unitsOf,
   usd,
 } from './shared'
-
-async function crossLimit(
-  wallet: Address,
-  keys: ExchangeKeys,
-  market: OrderMarket,
-  spec: OrderSpec,
-) {
-  const instruction = await orderInstruction(wallet, keys, market, spec)
-  checkOrder(instruction, spec)
-  return {
-    instructions: [instruction],
-    details: {},
-    terms: {},
-    warnings: [],
-  }
-}
 
 export const limitOrder = defineTradeTool({
   name: 'phoenix_limit_order',
@@ -97,7 +80,7 @@ export const limitOrder = defineTradeTool({
     }
     const funding =
       input.marginMode === 'isolated'
-        ? await isolatedFunding(context, wallet, market, input)
+        ? isolatedFunding(market, await traderBook(context, wallet), input)
         : null
     const [keys, opposite] = await Promise.all([
       context.phoenix.get('/v1/view/exchange/keys', ExchangeKeys),
@@ -122,7 +105,13 @@ export const limitOrder = defineTradeTool({
               ...funding.transfer,
             }),
         })
-      : await crossLimit(wallet, keys, market, spec)
+      : null
+    let instructions = placed?.instructions
+    if (!instructions) {
+      const instruction = await orderInstruction(wallet, keys, market, spec)
+      checkOrder(instruction, spec)
+      instructions = [instruction]
+    }
 
     const price = ticksToPrice(spec.priceInTicks, units)
     const oppositePrice =
@@ -138,7 +127,7 @@ export const limitOrder = defineTradeTool({
     return {
       kind: 'instructions',
       wallet,
-      instructions: placed.instructions,
+      instructions,
       summary: funding
         ? `Isolated ${input.postOnly ? 'post-only limit' : 'limit'} ${order}. ${funding.sentence}`
         : `${input.postOnly ? 'Post-only limit' : 'Limit'} ${order}`,
@@ -150,7 +139,7 @@ export const limitOrder = defineTradeTool({
         [input.side === 'buy' ? 'bestAsk' : 'bestBid']: oppositePrice,
         postOnly: String(input.postOnly),
         reduceOnly: String(input.reduceOnly),
-        ...placed.details,
+        ...placed?.details,
       },
       trade: perpTrade('order', {
         symbol: market.symbol,
@@ -162,10 +151,10 @@ export const limitOrder = defineTradeTool({
         notionalUsd: usd(Number(input.size) * Number(price)),
         postOnly: input.postOnly,
         reduceOnly: input.reduceOnly,
-        ...placed.terms,
+        ...placed?.terms,
       }),
       warnings: [
-        ...placed.warnings,
+        ...(placed?.warnings ?? []),
         ...(crosses
           ? [
               input.postOnly

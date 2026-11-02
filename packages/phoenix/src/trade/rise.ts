@@ -1,5 +1,6 @@
 import {
   DISCRIMINANTS,
+  Direction,
   EMBER_PROGRAM_ADDRESS,
   EMBER_STATE_ADDRESS,
   OrderFlags,
@@ -11,6 +12,7 @@ import {
   SYSTEM_PROGRAM_ADDRESS,
   SelfTradeBehavior,
   Side,
+  StopLossOrderKind,
   USDC_MINT_ADDRESS,
   attributedNativeSolDepositLamports,
   baseLots,
@@ -30,6 +32,7 @@ import {
   buildTransferSolIx,
   buildWithdrawIxsResolved,
   buildWithdrawNativeSolIx,
+  decodeConditionalOrderCollection,
   decodeTrader,
   encodeTransferNativeSol,
   encodeSyncNative,
@@ -60,6 +63,7 @@ import {
   getWithdrawFundsDecoder,
   hasReferralActivationCapabilities,
   nativeSolCollateralHeadroomLamports,
+  nativeSolUnaccountedLamports,
   nativeSolSyncDeltaLamports,
   quoteLots,
   ticks,
@@ -437,6 +441,14 @@ export const solDepositCredit = (room: SolDepositRoom, lamports: bigint) =>
     depositLamports: lamports,
   })
 
+/** SOL in the trader account that Phoenix has not counted yet. */
+export const solUncounted = (room: SolDepositRoom) =>
+  nativeSolUnaccountedLamports({
+    accountBalanceLamports: room.accountLamports,
+    accountedLamports: room.accountedLamports,
+    rentExemptMinimumLamports: room.rentExemptLamports,
+  })
+
 /**
  * The accounts the checks compare, by their place in Rise's builders and
  * Phoenix's server answers. If an upgrade moves them, the checks fail and
@@ -445,7 +457,9 @@ export const solDepositCredit = (room: SolDepositRoom, lamports: bigint) =>
 export const ACCOUNT_AT = {
   order: { traderAccount: 4 },
   placeConditional: { traderAccount: 4, conditionalOrders: 11 },
-  transferCollateral: { source: 4, destination: 5 },
+  cancelConditional: { traderAccount: 3, market: 5, conditionalOrders: 6 },
+  /** USDC and SOL transfers and sweeps between cross and a subaccount. */
+  collateralMove: { source: 4, destination: 5 },
   realloc: { payer: 3, trader: 4, traderAccount: 5 },
   transfer: { source: 0, destination: 1 },
   sync: { traderAccount: 3 },
@@ -1022,10 +1036,16 @@ export type ConditionalPacket = {
 
 /** One instruction of a server-built Phoenix transaction, decoded. */
 export type BundleStep =
-  | { kind: 'register'; subaccount: number; traderPdaIndex: number }
+  | {
+      kind: 'register'
+      subaccount: number
+      traderPdaIndex: number
+      maxPositions: bigint
+      traderPreferenceBits: number
+    }
   | { kind: 'realloc' | 'sync' | 'sweep_usdc' | 'sweep_sol' }
   | { kind: 'transfer_usdc'; amount: bigint }
-  | { kind: 'transfer_sol'; data: Uint8Array }
+  | { kind: 'transfer_sol' }
   | { kind: 'order'; packet: OrderPacket }
   | { kind: 'create_conditional'; capacity: number }
   | { kind: 'place_conditional'; packet: ConditionalPacket }
@@ -1036,10 +1056,30 @@ export type BundleStep =
       disableSecond: boolean
     }
 
+/** A slot of a trader account's TP/SL account, with its live legs only. */
+export type ConditionalSlot = ConditionalPacket & {
+  /** The index a cancel names: 1 to 191, as Phoenix reserves slot 0. */
+  slot: number
+}
+
+/** A Rise request's trigger: `greaterTrigger` or `lessTrigger`. */
+export type TriggerRequest = NonNullable<
+  PlacePositionConditionalOrderRequest['greaterTrigger']
+>
+
 const startsWith = (data: Uint8Array, prefix: Uint8Array | undefined) =>
   prefix !== undefined &&
   data.length >= prefix.length &&
   prefix.every((byte, index) => data[index] === byte)
+
+const DIRECTIONS: Partial<Record<number, TriggerPacket['triggerDirection']>> = {
+  [Direction.GreaterThan]: 'greater',
+  [Direction.LessThan]: 'less',
+}
+const TRIGGER_KINDS: Partial<Record<number, TriggerPacket['orderKind']>> = {
+  [StopLossOrderKind.IOC]: 'ioc',
+  [StopLossOrderKind.Limit]: 'limit',
+}
 
 function triggerPacket(
   trigger: {
@@ -1051,13 +1091,76 @@ function triggerPacket(
   } | null,
 ): TriggerPacket | null {
   if (!trigger) return null
+  const triggerDirection = DIRECTIONS[trigger.triggerDirection]
+  const orderKind = TRIGGER_KINDS[trigger.orderKind]
+  if (!triggerDirection || !orderKind)
+    throw new PhoenixError(
+      'check_failed',
+      'A TP/SL leg has a direction or order kind the pinned Rise SDK does not know; nothing was signed',
+    )
   return {
-    triggerDirection: trigger.triggerDirection === 0 ? 'greater' : 'less',
+    triggerDirection,
     side: sideOf(trigger.tradeSide),
-    orderKind: trigger.orderKind === 0 ? 'ioc' : 'limit',
+    orderKind,
     triggerPriceInTicks: trigger.triggerPrice,
     executionPriceInTicks: trigger.executionPrice,
   }
+}
+
+type CollectionOrder = ReturnType<
+  typeof decodeConditionalOrderCollection
+>['orders'][number]
+
+function liveLeg(
+  leg: CollectionOrder['greaterTriggerOrder'],
+  direction: Direction,
+): TriggerPacket | null {
+  if (!leg.isActive) return null
+  if (leg.executionDirection !== direction)
+    throw new PhoenixError(
+      'check_failed',
+      'A TP/SL leg in the account fires the wrong way for its place; nothing was built',
+    )
+  return triggerPacket({
+    ...leg,
+    triggerDirection: leg.executionDirection,
+  })
+}
+
+/**
+ * The live slots of a TP/SL account, read from its on-chain data. One slot
+ * holds a greater and a less leg that share one size. A cancelled slot stays
+ * in the account inactive, so only active legs come back.
+ */
+export function conditionalSlots(
+  data: Uint8Array,
+  traderAccount: Address,
+): ConditionalSlot[] {
+  const collection = tryDecode(() => decodeConditionalOrderCollection(data))
+  if (!collection)
+    throw new PhoenixError(
+      'upstream_error',
+      'Could not read the Phoenix TP/SL account',
+    )
+  if (collection.header.traderKey !== traderAccount)
+    throw new PhoenixError(
+      'check_failed',
+      'The Phoenix TP/SL account belongs to another trader; nothing was built',
+    )
+  return collection.activeOrderIndices.flatMap((slot) => {
+    const order = collection.orders[slot]
+    if (!order) return []
+    return [
+      {
+        slot,
+        assetId: order.assetId,
+        greater: liveLeg(order.greaterTriggerOrder, Direction.GreaterThan),
+        less: liveLeg(order.lessTriggerOrder, Direction.LessThan),
+        sizeBaseLots: order.usePercent ? null : order.maxSize,
+        sizePercent: order.usePercent ? order.percent : null,
+      },
+    ]
+  })
 }
 
 /** Reads one Phoenix instruction, or returns null when it is no known step. */
@@ -1073,6 +1176,8 @@ export function decodeBundleStep(data: Uint8Array): BundleStep | null {
         kind: 'register',
         subaccount: params.subaccountIndex,
         traderPdaIndex: params.traderPdaIndex,
+        maxPositions: params.maxPositions,
+        traderPreferenceBits: params.traderPreferenceBits ?? 0,
       }),
     )
   if (startsWith(data, DISCRIMINANTS.REALLOC_TRADER)) return { kind: 'realloc' }
@@ -1088,7 +1193,7 @@ export function decodeBundleStep(data: Uint8Array): BundleStep | null {
       (amount) => ({ kind: 'transfer_usdc', amount }),
     )
   if (startsWith(data, DISCRIMINANTS.TRANSFER_NATIVE_SOL))
-    return { kind: 'transfer_sol', data }
+    return { kind: 'transfer_sol' }
   if (startsWith(data, DISCRIMINANTS.CREATE_CONDITIONAL_ORDERS_ACCOUNT))
     return decode(
       () => getCreateConditionalOrdersAccountDecoder().decode(data),
@@ -1121,3 +1226,12 @@ export function decodeBundleStep(data: Uint8Array): BundleStep | null {
   const packet = decodeOrder(data)
   return packet ? { kind: 'order', packet } : null
 }
+
+/** Whether any of `instructions` is a Phoenix step of this kind. */
+export const hasStep = (
+  instructions: readonly Instruction[],
+  kind: BundleStep['kind'],
+) =>
+  instructions.some(
+    ({ data }) => decodeBundleStep(Uint8Array.from(data ?? []))?.kind === kind,
+  )

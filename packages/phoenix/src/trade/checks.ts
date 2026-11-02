@@ -6,7 +6,6 @@ import {
   EMBER_STATE,
   MAX_POSITIONS,
   MAX_SUBACCOUNTS,
-  MIN_FILL_LOTS,
   PHOENIX_PROGRAM,
   ACCOUNT_AT,
   SYSTEM_PROGRAM,
@@ -22,12 +21,7 @@ import {
   solData,
   traderAccountAddress,
 } from './rise'
-import type {
-  CancelTarget,
-  ConditionalPacket,
-  OrderPacket,
-  OrderSpec,
-} from './rise'
+import type { CancelTarget, ConditionalPacket, OrderSpec } from './rise'
 import type { ExchangeKeys } from './schemas'
 
 /**
@@ -379,24 +373,33 @@ export function checkActivation(
     fail('activation does not onboard the trader')
 }
 
+/** One leg of one TP/SL slot to cancel. */
+export type ConditionalCancel = { slot: number; leg: 'greater' | 'less' }
+
+const cancelKey = ({ slot, leg }: ConditionalCancel) => `${slot}:${leg}`
+
+/** The TP/SL account Phoenix's server creates; its size sets the rent. */
+const CONDITIONAL_CAPACITY = 8
+
 /** What a tool asked Phoenix's server for; `checkPhoenixBundle` holds it to it. */
 export type BundleIntent = {
   wallet: Address
   keys: ExchangeKeys
   market: { marketPubkey: string; splinePubkey: string; assetId: number }
   /** The order, or nothing when this bundle must place none. */
-  order?: Pick<
-    OrderPacket,
-    'kind' | 'side' | 'priceInTicks' | 'numBaseLots' | 'reduceOnly'
-  >
+  order?: OrderSpec
   /** USDC base units moved from cross into the subaccount; default none. */
   collateralUsdc?: bigint
   /** Lamports moved from cross into the subaccount; default none. */
   collateralLamports?: bigint
   /** The position TP/SL this bundle must set, or nothing when none. */
   conditional?: ConditionalPacket
+  /** The TP/SL legs this bundle must cancel, or nothing when none. */
+  cancels?: readonly ConditionalCancel[]
   /** The subaccount, when the tool knows it. New positions leave it out. */
   subaccount?: number
+  /** Subaccounts a new isolated position must not land in. */
+  occupied?: readonly number[]
 }
 
 const sameTrigger = (
@@ -410,34 +413,27 @@ const sameTrigger = (
     left?.triggerPriceInTicks === right?.triggerPriceInTicks &&
     left?.executionPriceInTicks === right?.executionPriceInTicks)
 
+/** The wallet's trader accounts, by subaccount: 0 is cross. */
+const traderAccountsOf = (wallet: Address) =>
+  Promise.all(
+    Array.from({ length: MAX_SUBACCOUNTS + 1 }, (_, index) =>
+      traderAccountAddress(wallet, index),
+    ),
+  )
+
 /**
- * Every account Phoenix's bundle may write to: the wallet's own trader
- * accounts, one market, and the exchange's shared accounts. Money can only
+ * Finds the one subaccount a bundle trades in, from the accounts it writes.
+ * A bundle may write only the wallet's own trader accounts, its TP/SL
+ * account, one market and the exchange's shared accounts. Money can only
  * move through a writable account, so this is what keeps a wrong server
  * answer away from another trader's account.
  */
-async function subaccountsOf(wallet: Address) {
-  const indexes = Array.from({ length: MAX_SUBACCOUNTS + 1 }, (_, i) => i)
-  const addresses = await Promise.all(
-    indexes.map((index) => traderAccountAddress(wallet, index)),
-  )
-  return new Map(addresses.map((account, index) => [account, index]))
-}
-
-/**
- * Holds a server-built Phoenix transaction to what the tool asked for, step
- * by step. Phoenix's server leaves steps out depending on the account, so
- * order and count are not fixed; what each step does is. Returns the
- * subaccount the bundle trades in. A wallet's cross account is subaccount 0.
- */
-export async function checkPhoenixBundle(
+async function bundleScope(
   instructions: readonly Instruction[],
-  intent: BundleIntent,
+  { wallet, keys, market, ...intent }: BundleIntent,
 ) {
-  const { wallet, keys, market } = intent
-  checkInstructions(instructions, { wallet, programs: [PHOENIX_PROGRAM] })
-
-  const traders = await subaccountsOf(wallet)
+  const accounts = await traderAccountsOf(wallet)
+  const traders = new Map(accounts.map((account, index) => [account, index]))
   const shared = new Set<string>([
     wallet,
     keys.globalConfig,
@@ -462,21 +458,48 @@ export async function checkPhoenixBundle(
   const subaccount = children[0] ?? 0
   if (intent.subaccount !== undefined && intent.subaccount !== subaccount)
     fail('the bundle trades in the wrong subaccount')
-  const cross = await traderAccountAddress(wallet)
-  const child = await traderAccountAddress(wallet, subaccount)
+  if (intent.occupied?.includes(subaccount))
+    fail('the bundle opens the position in a subaccount already in use')
+  const cross = accounts[0]
+  const child = accounts[subaccount]
+  if (!cross || !child) fail('the bundle trades in an unknown subaccount')
   const conditionals = await conditionalOrdersAddress(child)
   for (const account of unknown)
     if (account !== conditionals)
       fail(`the bundle writes to an unexpected account ${account}`)
-  // Every bundle writes cross too, so where the order and TP/SL land must be
-  // pinned to the subaccount.
-  const at = (instruction: Instruction, index: number) =>
-    instruction.accounts?.[index]?.address
+  return { subaccount, cross, child, conditionals }
+}
+
+const at = (instruction: Instruction, index: number) =>
+  instruction.accounts?.[index]?.address
+
+/**
+ * Holds a server-built Phoenix transaction to what the tool asked for, step
+ * by step. Phoenix's server leaves steps out depending on the account, so
+ * order and count are not fixed; what each step does is. Returns the
+ * subaccount the bundle trades in. A wallet's cross account is subaccount 0.
+ */
+export async function checkPhoenixBundle(
+  instructions: readonly Instruction[],
+  intent: BundleIntent,
+) {
+  const { wallet, market } = intent
+  checkInstructions(instructions, { wallet, programs: [PHOENIX_PROGRAM] })
+  const { subaccount, cross, child, conditionals } = await bundleScope(
+    instructions,
+    intent,
+  )
+  // Every bundle writes cross too, so where each step acts is pinned here.
+  const moves = (instruction: Instruction, from: Address, to: Address) =>
+    subaccount !== 0 &&
+    at(instruction, ACCOUNT_AT.collateralMove.source) === from &&
+    at(instruction, ACCOUNT_AT.collateralMove.destination) === to
 
   let orders = 0
   let usdc = 0n
   let sol = 0
   let conditional = 0
+  const cancels = new Set((intent.cancels ?? []).map(cancelKey))
   for (const instruction of instructions) {
     const data = bytesOf(instruction)
     const step = decodeBundleStep(data)
@@ -484,23 +507,31 @@ export async function checkPhoenixBundle(
     switch (step.kind) {
       case 'realloc':
       case 'sync':
+        break
       case 'sweep_usdc':
       case 'sweep_sol':
+        if (!moves(instruction, child, cross))
+          fail('a sweep does not move from the subaccount to cross')
+        break
       case 'create_conditional':
+        if (step.capacity !== CONDITIONAL_CAPACITY)
+          fail('the TP/SL account is not the expected size')
         break
       case 'register':
         if (step.traderPdaIndex !== 0 || step.subaccount !== subaccount)
           fail('the bundle registers the wrong subaccount')
+        // An isolated account holds one position, with Phoenix's defaults.
+        if (step.maxPositions !== 1n || step.traderPreferenceBits !== 0)
+          fail('the bundle registers a subaccount with other settings')
         break
       case 'transfer_usdc':
-        if (
-          at(instruction, ACCOUNT_AT.transferCollateral.source) !== cross ||
-          at(instruction, ACCOUNT_AT.transferCollateral.destination) !== child
-        )
+        if (!moves(instruction, cross, child))
           fail('the collateral does not move from cross to the subaccount')
         usdc += step.amount
         break
       case 'transfer_sol':
+        if (!moves(instruction, cross, child))
+          fail('the collateral does not move from cross to the subaccount')
         sol += 1
         if (
           !sameBytes(
@@ -516,24 +547,7 @@ export async function checkPhoenixBundle(
         if (!order) fail('the bundle places an order nobody asked for')
         if (at(instruction, ACCOUNT_AT.order.traderAccount) !== child)
           fail('the order is not placed in the subaccount')
-        const { packet } = step
-        if (packet.priceInTicks === null) fail('the order has no price limit')
-        for (const field of [
-          'kind',
-          'side',
-          'priceInTicks',
-          'numBaseLots',
-          'reduceOnly',
-        ] as const)
-          if (packet[field] !== order[field])
-            fail(`the order's ${field} does not match the request`)
-        if (
-          packet.kind === 'market' &&
-          packet.minBaseLotsToFill !== MIN_FILL_LOTS
-        )
-          fail("the order's minimum fill does not match the request")
-        if (packet.cancelExisting || packet.slide)
-          fail('the order cancels or moves orders nobody asked to')
+        checkOrder(instruction, order)
         break
       }
       case 'place_conditional': {
@@ -559,8 +573,26 @@ export async function checkPhoenixBundle(
           fail('the TP/SL does not match the request')
         break
       }
-      case 'cancel_conditional':
-        fail('the bundle cancels a TP/SL nobody asked to')
+      case 'cancel_conditional': {
+        // disableFirst is the greater leg, disableSecond the less. Rise does
+        // not say so; a mainnet simulation showed it, from Phoenix's route
+        // and from the accounts after each flag.
+        if (step.disableFirst === step.disableSecond)
+          fail('the TP/SL cancel does not name one leg')
+        const leg = step.disableFirst ? 'greater' : 'less'
+        if (!cancels.delete(cancelKey({ slot: step.index, leg })))
+          fail('the bundle cancels a TP/SL nobody asked to')
+        const { traderAccount, conditionalOrders } =
+          ACCOUNT_AT.cancelConditional
+        if (
+          at(instruction, traderAccount) !== child ||
+          at(instruction, ACCOUNT_AT.cancelConditional.market) !==
+            market.marketPubkey ||
+          at(instruction, conditionalOrders) !== conditionals
+        )
+          fail('the TP/SL cancel is for another account or market')
+        break
+      }
     }
   }
   if (orders !== (intent.order ? 1 : 0)) fail('the order is missing')
@@ -569,5 +601,6 @@ export async function checkPhoenixBundle(
   if (sol !== ((intent.collateralLamports ?? 0n) > 0n ? 1 : 0))
     fail('the SOL collateral does not match the request')
   if (conditional !== (intent.conditional ? 1 : 0)) fail('the TP/SL is missing')
+  if (cancels.size > 0) fail('the TP/SL cancel is missing')
   return { subaccount }
 }

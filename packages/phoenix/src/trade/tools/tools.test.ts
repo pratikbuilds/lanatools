@@ -4,6 +4,7 @@ import { TOKEN_PROGRAM, TRADE_PROGRAMS } from '../checks'
 import {
   BLOCKHASH,
   COLLATERAL_ASSETS,
+  FEES,
   KEYS,
   PERMISSION,
   REGISTERED_TRADER_ACCOUNT_DATA,
@@ -30,7 +31,6 @@ import { limitOrder } from './limit-order'
 import { marketOrder } from './market-order'
 import { withdraw } from './withdraw'
 
-const FEES = { computeUnitMargin: 0.2, microLamportsPerComputeUnit: 0n }
 const TRADER = await traderAccountAddress(WALLET)
 const USDC = await usdcAccountAddress(WALLET)
 /** The rent floor `chain` reports; `accountInfo`'s default lamports. */
@@ -362,7 +362,7 @@ test("a SOL deposit moves SOL into the wallet's trader account, with the warning
       collateralSol: '0',
       headroomSol: '1000',
     },
-    trade: { kind: 'perp', action: 'deposit', asset: 'SOL', amountSol: '0.01' },
+    trade: { kind: 'perp', action: 'deposit', amountSol: '0.01' },
     submit: { via: 'rpc' },
   })
   expect(outcome.result.warnings).toEqual([
@@ -463,6 +463,24 @@ test('a SOL deposit says when Phoenix will not count all of it', async () => {
     throw new Error(`unexpected ${JSON.stringify(outcome)}`)
   expect(outcome.result.warnings).toContain(
     'Phoenix will count 0.0004 SOL of this deposit; the rest refills the rent the trader account is short of.',
+  )
+})
+
+test('a SOL deposit says when Phoenix will also count SOL already there', async () => {
+  const outcome = await solDeposit('0.01', {
+    accounts: {
+      ...solAccounts,
+      [TRADER]: accountInfo(
+        PHOENIX_PROGRAM,
+        TRADER_ACCOUNT_DATA,
+        RENT + 6_000_000n,
+      ),
+    },
+  })
+  if (!outcome.ok || outcome.result.status !== 'ready')
+    throw new Error(`unexpected ${JSON.stringify(outcome)}`)
+  expect(outcome.result.warnings).toContain(
+    'Phoenix will also count 0.006 SOL already sitting in the trader account, so your collateral may rise by more than this deposit.',
   )
 })
 
@@ -578,7 +596,6 @@ test('a SOL withdrawal is checked against SOL collateral and is never queued', a
       trade: {
         kind: 'perp',
         action: 'withdraw',
-        asset: 'SOL',
         amountSol: '0.01',
       },
       warnings: [
@@ -608,7 +625,7 @@ test('naming USDC is the same as naming no asset', async () => {
   expect(unnamed).toMatchObject({
     ok: true,
     result: {
-      trade: { asset: 'USDC', amountUsdc: '2.5' },
+      trade: { amountUsdc: '2.5' },
       warnings: [],
     },
   })

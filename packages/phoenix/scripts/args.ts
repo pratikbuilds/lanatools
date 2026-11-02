@@ -21,11 +21,14 @@ Commands:
   deposit <amount> [--asset SOL]
   withdraw <amount> [--asset SOL]
   market <symbol> <buy|sell> <size> (--slippage-bps N | --limit-price P) [--reduce-only]
+    [--tp P --tp-worst P] [--sl P --sl-worst P]
   limit <symbol> <buy|sell> <size> <price> [--post-only] [--reduce-only]
     Either order in isolated margin: --isolated [--collateral-usdc N] [--collateral-sol N]
   cancel <symbol> [--id ID ...] [--subaccount N]
   close <symbol> [--fraction F] (--slippage-bps N | --limit-price P) [--subaccount N]
   add-margin <symbol> <usdc> [--subaccount N]
+  set-tpsl <symbol> [--tp P --tp-worst P] [--sl P --sl-worst P] (--percent N | --size S) [--subaccount N]
+  cancel-tpsl <symbol> <takeProfit|stopLoss|both> [--slot N] [--subaccount N]
 
 Options:
   --rpc URL        Solana mainnet RPC (required)
@@ -64,22 +67,34 @@ function integer(value: string, what: string) {
   return Number(value)
 }
 
-/** A decimal argument as typed: amounts stay exact strings. */
-function decimalText(value: string, what: string) {
+function decimal(value: string, what: string) {
   if (!/^\d+(\.\d+)?$/.test(value))
     throw new UsageError(`${what} must be a number such as 0.5`)
-  return value
+  return Number(value)
 }
 
-function decimal(value: string, what: string) {
-  return Number(decimalText(value, what))
-}
+/**
+ * An optional flag as a tool input, parsed when given. The tools' own
+ * schemas check what it means, so their messages reach the terminal.
+ */
+const optional = <T>(
+  key: string,
+  value: string | undefined,
+  parse: (value: string) => T,
+) => (value === undefined ? {} : { [key]: parse(value) })
+const text = (value: string) => value
 
-function asset(value: string | undefined) {
-  if (value === undefined) return {}
-  if (value !== 'USDC' && value !== 'SOL')
-    throw new UsageError(`--asset must be USDC or SOL, not ${value}`)
-  return { asset: value }
+/** A TP or SL: a trigger and its worst price come together (D5). */
+function trigger(
+  price: string | undefined,
+  worst: string | undefined,
+  flag: string,
+) {
+  if ((price === undefined) !== (worst === undefined))
+    throw new UsageError(`Give both --${flag} and --${flag}-worst`)
+  return price === undefined
+    ? undefined
+    : { triggerPrice: price, worstPrice: worst }
 }
 
 /** The worst price of a market or close order: exactly one, no default (D1). */
@@ -89,28 +104,6 @@ function worstPrice(slippage: string | undefined, limit: string | undefined) {
   return slippage === undefined
     ? { limitPrice: limit }
     : { maxSlippageBps: integer(slippage, '--slippage-bps') }
-}
-
-/** An order's isolated margin flags; a cross order states none. */
-function isolatedInput(
-  isolated: boolean,
-  usdc: string | undefined,
-  sol: string | undefined,
-) {
-  if (!isolated && (usdc !== undefined || sol !== undefined))
-    throw new UsageError(
-      '--collateral-usdc and --collateral-sol need --isolated',
-    )
-  if (!isolated) return {}
-  return {
-    marginMode: 'isolated',
-    ...(usdc === undefined
-      ? {}
-      : { collateralUsdc: decimalText(usdc, '--collateral-usdc') }),
-    ...(sol === undefined
-      ? {}
-      : { collateralSol: decimalText(sol, '--collateral-sol') }),
-  }
 }
 
 export function parseCli(argv: readonly string[]): CliArgs {
@@ -136,6 +129,13 @@ export function parseCli(argv: readonly string[]): CliArgs {
         'collateral-sol': { type: 'string' },
         subaccount: { type: 'string' },
         asset: { type: 'string' },
+        tp: { type: 'string' },
+        'tp-worst': { type: 'string' },
+        sl: { type: 'string' },
+        'sl-worst': { type: 'string' },
+        percent: { type: 'string' },
+        size: { type: 'string' },
+        slot: { type: 'string' },
       },
     })
   } catch (error) {
@@ -145,16 +145,23 @@ export function parseCli(argv: readonly string[]): CliArgs {
   const [name, ...rest] = positionals
   const arg = (index: number, what: string) => need(rest[index], what)
   const reduceOnly = values['reduce-only']
-  const margin = () =>
-    isolatedInput(
-      values.isolated,
-      values['collateral-usdc'],
-      values['collateral-sol'],
-    )
-  const subaccount = () =>
-    values.subaccount === undefined
-      ? {}
-      : { subaccount: integer(values.subaccount, '--subaccount') }
+  const margin = () => ({
+    ...(values.isolated ? { marginMode: 'isolated' } : {}),
+    ...optional('collateralUsdc', values['collateral-usdc'], text),
+    ...optional('collateralSol', values['collateral-sol'], text),
+  })
+  const subaccount = optional('subaccount', values.subaccount, (value) =>
+    integer(value, '--subaccount'),
+  )
+
+  const triggers = () => {
+    const takeProfit = trigger(values.tp, values['tp-worst'], 'tp')
+    const stopLoss = trigger(values.sl, values['sl-worst'], 'sl')
+    return {
+      ...(takeProfit ? { takeProfit } : {}),
+      ...(stopLoss ? { stopLoss } : {}),
+    }
+  }
 
   let command: Command
   switch (name) {
@@ -173,7 +180,10 @@ export function parseCli(argv: readonly string[]): CliArgs {
       command = {
         command: 'tool',
         tool: `phoenix_${name}`,
-        input: { amount: arg(0, 'amount'), ...asset(values.asset) },
+        input: {
+          amount: arg(0, 'amount'),
+          ...optional('asset', values.asset, text),
+        },
       }
       break
     case 'market':
@@ -187,6 +197,7 @@ export function parseCli(argv: readonly string[]): CliArgs {
           ...worstPrice(values['slippage-bps'], values['limit-price']),
           reduceOnly,
           ...margin(),
+          ...triggers(),
         },
       }
       break
@@ -211,7 +222,7 @@ export function parseCli(argv: readonly string[]): CliArgs {
         tool: 'phoenix_cancel_orders',
         input: {
           symbol: arg(0, 'market symbol'),
-          ...subaccount(),
+          ...subaccount,
           ...(values.id ? { orderIds: values.id } : {}),
         },
       }
@@ -222,10 +233,10 @@ export function parseCli(argv: readonly string[]): CliArgs {
         tool: 'phoenix_close_position',
         input: {
           symbol: arg(0, 'market symbol'),
-          ...subaccount(),
-          ...(values.fraction === undefined
-            ? {}
-            : { fraction: decimal(values.fraction, '--fraction') }),
+          ...subaccount,
+          ...optional('fraction', values.fraction, (value) =>
+            decimal(value, '--fraction'),
+          ),
           ...worstPrice(values['slippage-bps'], values['limit-price']),
         },
       }
@@ -237,7 +248,34 @@ export function parseCli(argv: readonly string[]): CliArgs {
         input: {
           symbol: arg(0, 'market symbol'),
           amount: arg(1, 'USDC amount'),
-          ...subaccount(),
+          ...subaccount,
+        },
+      }
+      break
+    case 'set-tpsl':
+      command = {
+        command: 'tool',
+        tool: 'phoenix_set_tpsl',
+        input: {
+          symbol: arg(0, 'market symbol'),
+          ...triggers(),
+          ...optional('percent', values.percent, (value) =>
+            integer(value, '--percent'),
+          ),
+          ...optional('size', values.size, text),
+          ...subaccount,
+        },
+      }
+      break
+    case 'cancel-tpsl':
+      command = {
+        command: 'tool',
+        tool: 'phoenix_cancel_tpsl',
+        input: {
+          symbol: arg(0, 'market symbol'),
+          leg: arg(1, 'leg (takeProfit, stopLoss or both)'),
+          ...optional('slot', values.slot, (value) => integer(value, '--slot')),
+          ...subaccount,
         },
       }
       break

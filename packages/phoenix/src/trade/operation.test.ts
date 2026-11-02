@@ -121,7 +121,7 @@ test('before preparation the review carries what the agent asked for as trade da
     action: 'close',
     orderType: 'market',
     symbol: 'GOLD',
-    subaccount: 3,
+    marginMode: 'isolated',
     worstPrice: '3900',
     reduceOnly: true,
   })
@@ -132,7 +132,7 @@ test('before preparation the review carries what the agent asked for as trade da
     venue: 'phoenix',
     action: 'cancel',
     symbol: 'GOLD',
-    subaccount: 3,
+    marginMode: 'isolated',
   })
   expect(
     describe('phoenix_add_isolated_margin', {
@@ -146,14 +146,12 @@ test('before preparation the review carries what the agent asked for as trade da
     action: 'add_margin',
     marginMode: 'isolated',
     symbol: 'GOLD',
-    subaccount: 3,
     collateralUsdc: '2.5',
   })
   expect(describe('phoenix_deposit', { amount: '25' }).trade).toEqual({
     kind: 'perp',
     venue: 'phoenix',
     action: 'deposit',
-    asset: 'USDC',
     amountUsdc: '25',
   })
   expect(
@@ -162,7 +160,6 @@ test('before preparation the review carries what the agent asked for as trade da
     kind: 'perp',
     venue: 'phoenix',
     action: 'deposit',
-    asset: 'SOL',
     amountSol: '0.5',
   })
   expect(
@@ -171,12 +168,42 @@ test('before preparation the review carries what the agent asked for as trade da
     kind: 'perp',
     venue: 'phoenix',
     action: 'withdraw',
-    asset: 'SOL',
     amountSol: '0.5',
   })
   expect(describe('phoenix_activate_account', {}).trade).toEqual({
     kind: 'perp',
     venue: 'phoenix',
     action: 'activate',
+  })
+})
+
+test('TP/SL tools carry their terms before preparation', () => {
+  const set = describe('phoenix_set_tpsl', {
+    symbol: 'SOL',
+    subaccount: 3,
+    takeProfit: { triggerPrice: '120', worstPrice: '119' },
+    stopLoss: { triggerPrice: '110', worstPrice: '105' },
+    percent: 50,
+  })
+  expect(set.trade).toEqual({
+    kind: 'perp',
+    venue: 'phoenix',
+    action: 'set_tpsl',
+    symbol: 'SOL',
+    marginMode: 'isolated',
+    takeProfitPrice: '120',
+    stopLossPrice: '110',
+  })
+  expect(set.fields).toContainEqual({
+    label: 'takeProfit',
+    value: 'triggerPrice 120, worstPrice 119',
+  })
+  expect(
+    describe('phoenix_cancel_tpsl', { symbol: 'SOL', leg: 'both' }).trade,
+  ).toEqual({
+    kind: 'perp',
+    venue: 'phoenix',
+    action: 'cancel_tpsl',
+    symbol: 'SOL',
   })
 })

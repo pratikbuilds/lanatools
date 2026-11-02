@@ -17,7 +17,9 @@ import {
   PERMISSION,
   TRADER_ACCOUNT_DATA,
   WALLET,
+  conditionalAccountData,
 } from './fixtures'
+import bundles from './fixtures/phoenix-bundles.json'
 import {
   EMBER_PROGRAM,
   PHOENIX_PROGRAM,
@@ -25,6 +27,7 @@ import {
   SYSTEM_PROGRAM,
   activationOf,
   activationTransaction,
+  conditionalSlots,
   decodeOrder,
   depositInstructions,
   positionLots,
@@ -270,4 +273,60 @@ test('a SOL withdrawal pays the wallet and leaves uncounted lamports alone', asy
   expect(data).toEqual(solData.withdraw(5_000_000n))
   expect(data[8]).toBe(2)
   expect(new DataView(data.buffer).getBigUint64(9, true)).toBe(5_000_000n)
+})
+
+test('a real TP/SL account reads as its live slots', () => {
+  const { address: _address, trader, data } = bundles.conditionalAccount
+  const bytes = Uint8Array.from(Buffer.from(data, 'base64'))
+  const slots = conditionalSlots(bytes, address(trader))
+  expect(slots.length).toBeGreaterThan(1)
+  for (const slot of slots) {
+    expect(slot.slot).toBeGreaterThan(0)
+    // One size or the other, and a slot with no live leg is not returned.
+    expect((slot.sizePercent === null) !== (slot.sizeBaseLots === null)).toBe(
+      true,
+    )
+    expect(slot.greater ?? slot.less).not.toBeNull()
+    expect(slot.greater?.triggerDirection ?? 'greater').toBe('greater')
+    expect(slot.less?.triggerDirection ?? 'less').toBe('less')
+  }
+  expect(slots.some((slot) => slot.sizeBaseLots !== null)).toBe(true)
+  expect(slots.some((slot) => slot.sizePercent !== null)).toBe(true)
+})
+
+test('a TP/SL account of another trader, or bad data, is refused', () => {
+  const { trader, data } = bundles.conditionalAccount
+  const bytes = Uint8Array.from(Buffer.from(data, 'base64'))
+  expect(() => conditionalSlots(bytes, WALLET)).toThrow(
+    'belongs to another trader',
+  )
+  expect(() => conditionalSlots(new Uint8Array(992), address(trader))).toThrow(
+    'Could not read the Phoenix TP/SL account',
+  )
+})
+
+test('the test builder writes what Rise reads', () => {
+  const slot = {
+    slot: 2,
+    assetId: 7,
+    sizePercent: 40,
+    greater: {
+      side: 'buy' as const,
+      orderKind: 'limit' as const,
+      triggerPriceInTicks: 500n,
+      executionPriceInTicks: 501n,
+    },
+  }
+  expect(
+    conditionalSlots(conditionalAccountData(WALLET, [slot]), WALLET),
+  ).toEqual([
+    {
+      slot: 2,
+      assetId: 7,
+      sizeBaseLots: null,
+      sizePercent: 40,
+      greater: { ...slot.greater, triggerDirection: 'greater' },
+      less: null,
+    },
+  ])
 })

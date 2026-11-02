@@ -1,8 +1,15 @@
 import { getBase64Encoder, getU64Decoder } from '@solana/kit'
 import type { Address } from '@solana/kit'
+import { PhoenixError } from '../client'
 import { fromLots } from '../units'
 import { TOKEN_PROGRAM } from './checks'
-import { positionLots, traderAccountAddress } from './rise'
+import {
+  PHOENIX_PROGRAM,
+  conditionalOrdersAddress,
+  conditionalSlots,
+  positionLots,
+  traderAccountAddress,
+} from './rise'
 import type { PositionRef } from './tool'
 import { rpcTimeout } from './transaction'
 import type { TradeRpc } from './transaction'
@@ -38,6 +45,25 @@ export function rentExemptMinimum(rpc: TradeRpc, dataLength: number) {
   return rpc
     .getMinimumBalanceForRentExemption(BigInt(dataLength))
     .send(rpcTimeout())
+}
+
+/**
+ * The live TP/SL of one trader account, across all its markets. Null means
+ * the account has none yet: its first TP/SL creates the account and pays rent.
+ * Each isolated subaccount has an account of its own.
+ */
+export async function conditionalOrders(rpc: TradeRpc, traderAccount: Address) {
+  const account = await fetchAccount(
+    rpc,
+    await conditionalOrdersAddress(traderAccount),
+  )
+  if (!account) return null
+  if (account.owner !== PHOENIX_PROGRAM)
+    throw new PhoenixError(
+      'upstream_error',
+      'The Phoenix TP/SL account is not owned by Phoenix',
+    )
+  return conditionalSlots(account.data, traderAccount)
 }
 
 // SPL token account layout: mint (32), owner (32), amount (u64 LE) at 64.

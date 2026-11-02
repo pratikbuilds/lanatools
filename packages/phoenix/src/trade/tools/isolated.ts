@@ -5,11 +5,11 @@ import { sol, usdc } from '../../units'
 import { checkPhoenixBundle } from '../checks'
 import type { BundleIntent } from '../checks'
 import { exactNumber, toLamports, toUSDCUnits } from '../price'
-import { decodeBundleStep } from '../rise'
-import type { OrderMarket } from '../schemas'
+import { hasStep } from '../rise'
+import type { ConditionalPacket, OrderSpec } from '../rise'
+import type { OrderMarket, TraderBook } from '../schemas'
 import { ISOLATED_RISK } from '../tool'
-import type { TradeContext } from '../tool'
-import { traderBook } from './shared'
+import { holdsPosition, marginOf, restingIn } from './shared'
 
 /**
  * What an isolated order adds to a cross one. Phoenix's server builds the
@@ -42,7 +42,7 @@ export const marginInputs = {
   ),
 }
 
-type MarginInput = {
+export type MarginInput = {
   marginMode: 'cross' | 'isolated'
   collateralUsdc?: string | undefined
   collateralSol?: string | undefined
@@ -57,14 +57,14 @@ export const CrossTakesNoCollateral = [
 ] as const
 
 /**
- * Checks an isolated order against the wallet's account and states what it
- * moves. Refuses a market with a cross position (D2), and a transfer cross
- * cannot cover. Without collateral it only adds to an existing position.
+ * Checks an isolated order against the wallet's trader book and states what
+ * it moves. Refuses a market with a cross position, which Phoenix refuses
+ * too, and a transfer cross cannot cover. Without collateral it only adds to
+ * an existing position.
  */
-export async function isolatedFunding(
-  context: TradeContext,
-  wallet: Address,
+export function isolatedFunding(
   market: OrderMarket,
+  { snapshot }: TraderBook,
   input: MarginInput & { reduceOnly: boolean },
 ) {
   const collateralUsdc =
@@ -89,13 +89,11 @@ export async function isolatedFunding(
   }
   const moves = collateralUsdc > 0n || collateralLamports > 0n
 
-  const { snapshot } = await traderBook(context, wallet)
-  const holdsMarket = (account: (typeof snapshot.subaccounts)[number]) =>
-    account.positions.some(
-      (position) =>
-        position.symbol === market.symbol &&
-        BigInt(position.basePositionLots) !== 0n,
-    )
+  type Account = (typeof snapshot.subaccounts)[number]
+  const holdsMarket = (account: Account) =>
+    holdsPosition(account, market.symbol)
+  const inUse = (account: Account) =>
+    holdsPosition(account) || restingIn(account).length > 0
   const cross = snapshot.subaccounts.find(
     (account) => account.subaccountIndex === 0,
   )
@@ -159,7 +157,16 @@ export async function isolatedFunding(
     intent: {
       collateralUsdc,
       collateralLamports,
-      ...(subaccount === undefined ? {} : { subaccount }),
+      ...(subaccount === undefined
+        ? {
+            occupied: [
+              0,
+              ...snapshot.subaccounts
+                .filter(inUse)
+                .map((account) => account.subaccountIndex),
+            ],
+          }
+        : { subaccount }),
     },
     /** One sentence for the summary. */
     sentence: moves
@@ -168,13 +175,7 @@ export async function isolatedFunding(
   }
 }
 
-export type IsolatedFunding = Awaited<ReturnType<typeof isolatedFunding>>
-
-const registers = (instructions: readonly Instruction[]) =>
-  instructions.some(
-    ({ data }) =>
-      decodeBundleStep(Uint8Array.from(data ?? []))?.kind === 'register',
-  )
+export type IsolatedFunding = ReturnType<typeof isolatedFunding>
 
 /**
  * Asks Phoenix's server for an isolated order and refuses any answer that is
@@ -186,13 +187,16 @@ export async function placeIsolated({
   market,
   order,
   funding,
+  conditional,
   build,
 }: {
   wallet: Address
   keys: BundleIntent['keys']
   market: OrderMarket
-  order: NonNullable<BundleIntent['order']>
+  order: OrderSpec
   funding: IsolatedFunding
+  /** The TP/SL this order sets, if any. */
+  conditional?: ConditionalPacket | undefined
   /** The call to `context.orders`. */
   build: () => Promise<Instruction[]>
 }) {
@@ -203,26 +207,19 @@ export async function placeIsolated({
     market,
     order,
     ...funding.intent,
+    ...(conditional ? { conditional } : {}),
   })
   return {
     instructions,
-    details: {
-      marginMode: 'isolated',
-      subaccount: String(subaccount),
-      ...funding.amounts,
-    },
-    terms: {
-      marginMode: 'isolated' as const,
-      subaccount,
-      ...funding.amounts,
-    },
+    details: { ...marginOf(subaccount).details, ...funding.amounts },
+    terms: { ...marginOf(subaccount).terms, ...funding.amounts },
     warnings: [
       ISOLATED_RISK,
       ...(funding.intent.collateralLamports > 0n &&
       funding.intent.collateralUsdc === 0n
         ? [SOL_PAYS_FEES]
         : []),
-      ...(registers(instructions) ? [FIRST_USE_RENT] : []),
+      ...(hasStep(instructions, 'register') ? [FIRST_USE_RENT] : []),
     ],
   }
 }

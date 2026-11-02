@@ -1,12 +1,14 @@
 import { describe, expect, test } from 'bun:test'
 import { AccountRole, address } from '@solana/kit'
-import type { Instruction } from '@solana/kit'
+import type { AccountMeta, Instruction } from '@solana/kit'
 import { PhoenixError } from '../client'
 import { checkPhoenixBundle } from './checks'
 import type { BundleIntent } from './checks'
+import { stepKind } from './fixtures'
 import bundles from './fixtures/phoenix-bundles.json'
 import {
   addMarginInstructions,
+  conditionalOrdersAddress,
   decodeBundleStep,
   sweepInstructions,
   toInstruction,
@@ -17,6 +19,7 @@ import { ExchangeKeys } from './schemas'
 
 // Real responses from Phoenix's build routes, 2026-11-01. Wallets are public.
 const A = address(bundles.wallets.A)
+const C = address(bundles.wallets.C)
 const D = address(bundles.wallets.D)
 const STRANGER = address('11111111111111111111111111111112')
 const keys = ExchangeKeys.parse(bundles.keys)
@@ -35,6 +38,7 @@ const openIntent: BundleIntent = {
     priceInTicks: 39280n,
     numBaseLots: 10n,
     reduceOnly: false,
+    lastValidSlot: null,
   },
   collateralUsdc: 2_000_000n,
   conditional: {
@@ -56,6 +60,15 @@ const openIntent: BundleIntent = {
     sizeBaseLots: null,
     sizePercent: 100,
   },
+}
+
+// A real wallet's live TP/SL: Phoenix's cancel route, 2026-11-01.
+const cancelIntent: BundleIntent = {
+  wallet: C,
+  keys,
+  market:
+    bundles.markets[bundles.cancelMeta.symbol as keyof typeof bundles.markets],
+  subaccount: 0,
 }
 
 const { conditional: _conditional, ...noTpsl } = openIntent
@@ -85,6 +98,7 @@ describe('checkPhoenixBundle accepts what Phoenix really builds', () => {
         priceInTicks: 38502n,
         numBaseLots: 10n,
         reduceOnly: false,
+        lastValidSlot: null,
       },
     })
     await checkPhoenixBundle(instructions(bundles.openSol), {
@@ -95,6 +109,7 @@ describe('checkPhoenixBundle accepts what Phoenix really builds', () => {
         priceInTicks: 39280n,
         numBaseLots: 1n,
         reduceOnly: false,
+        lastValidSlot: null,
       },
       collateralUsdc: 0n,
       collateralLamports: 50_000_000n,
@@ -107,6 +122,7 @@ describe('checkPhoenixBundle accepts what Phoenix really builds', () => {
       priceInTicks: 31113n,
       numBaseLots: 10n,
       reduceOnly: false,
+      lastValidSlot: null,
     }
     await checkPhoenixBundle(instructions(bundles.limit), {
       ...noTpsl,
@@ -132,6 +148,7 @@ describe('checkPhoenixBundle accepts what Phoenix really builds', () => {
           priceInTicks: 12972n,
           numBaseLots: 7n,
           reduceOnly: true,
+          lastValidSlot: null,
         },
       }),
     ).toEqual({ subaccount: bundles.closeMeta.subaccount })
@@ -189,6 +206,67 @@ describe('checkPhoenixBundle accepts what Phoenix really builds', () => {
       }),
     ).toEqual({ subaccount: 0 })
   })
+
+  test('a fixed-size TP and SL on an isolated short', async () => {
+    const meta = bundles.isolatedShortMeta
+    const market = bundles.markets[meta.symbol as keyof typeof bundles.markets]
+    expect(
+      await checkPhoenixBundle(instructions(bundles.isolatedShort), {
+        wallet: D,
+        keys,
+        market,
+        subaccount: meta.subaccount,
+        conditional: {
+          assetId: market.assetId,
+          greater: {
+            triggerDirection: 'greater',
+            side: 'buy',
+            orderKind: 'ioc',
+            triggerPriceInTicks: BigInt(meta.greaterTicks),
+            executionPriceInTicks: BigInt(meta.worstTicks),
+          },
+          less: {
+            triggerDirection: 'less',
+            side: 'buy',
+            orderKind: 'limit',
+            triggerPriceInTicks: BigInt(meta.lessTicks),
+            executionPriceInTicks: BigInt(meta.lessTicks),
+          },
+          sizeBaseLots: 1n,
+          sizePercent: null,
+        },
+      }),
+    ).toEqual({ subaccount: meta.subaccount })
+  })
+
+  test('cancelling each leg of a live TP/SL', async () => {
+    const { slot } = bundles.cancelMeta
+    expect(
+      await checkPhoenixBundle(instructions(bundles.cancelGreater), {
+        ...cancelIntent,
+        cancels: [{ slot, leg: 'greater' }],
+      }),
+    ).toEqual({ subaccount: 0 })
+    await checkPhoenixBundle(instructions(bundles.cancelLess), {
+      ...cancelIntent,
+      cancels: [{ slot, leg: 'less' }],
+    })
+  })
+
+  test('cancelling both legs in one transaction', () =>
+    checkPhoenixBundle(
+      [
+        ...instructions(bundles.cancelLess),
+        ...instructions(bundles.cancelGreater),
+      ],
+      {
+        ...cancelIntent,
+        cancels: [
+          { slot: bundles.cancelMeta.slot, leg: 'greater' },
+          { slot: bundles.cancelMeta.slot, leg: 'less' },
+        ],
+      },
+    ))
 })
 
 const replaceAccount = (from: string, to: string) =>
@@ -244,7 +322,7 @@ describe('checkPhoenixBundle refuses a wrong answer', () => {
     const cross = await traderAccountAddress(A)
     const moved = (kind: string) =>
       open.map((instruction) =>
-        decodeBundleStep(Uint8Array.from(instruction.data ?? []))?.kind === kind
+        stepKind(instruction) === kind
           ? {
               ...instruction,
               accounts: (instruction.accounts ?? []).map((account) =>
@@ -281,15 +359,10 @@ describe('checkPhoenixBundle refuses a wrong answer', () => {
   })
 
   test('a missing order or TP/SL', async () => {
-    const withoutOrder = open.filter(
-      (each) =>
-        decodeBundleStep(Uint8Array.from(each.data ?? []))?.kind !== 'order',
-    )
+    const withoutOrder = open.filter((each) => stepKind(each) !== 'order')
     await refused(withoutOrder, openIntent, 'order is missing')
     const withoutTpsl = open.filter(
-      (each) =>
-        decodeBundleStep(Uint8Array.from(each.data ?? []))?.kind !==
-        'place_conditional',
+      (each) => stepKind(each) !== 'place_conditional',
     )
     await refused(withoutTpsl, openIntent, 'TP/SL is missing')
   })
@@ -373,6 +446,7 @@ describe('checkPhoenixBundle refuses a wrong answer', () => {
           priceInTicks: 12972n,
           numBaseLots: 7n,
           reduceOnly: true,
+          lastValidSlot: null,
         },
       },
       'USDC collateral',
@@ -412,4 +486,243 @@ describe('checkPhoenixBundle refuses a wrong answer', () => {
       'unexpected signer',
     )
   })
+})
+
+describe('checkPhoenixBundle holds a TP/SL cancel to the request', () => {
+  const { slot } = bundles.cancelMeta
+  const greater = instructions(bundles.cancelGreater)
+  const less = instructions(bundles.cancelLess)
+  const wantGreater = {
+    ...cancelIntent,
+    cancels: [{ slot, leg: 'greater' as const }],
+  }
+
+  test('a real cancel is one instruction of 7 accounts', () => {
+    expect(greater).toHaveLength(1)
+    expect(greater[0]?.accounts).toHaveLength(7)
+    expect(decodeBundleStep(Uint8Array.from(greater[0]?.data ?? []))).toEqual({
+      kind: 'cancel_conditional',
+      index: slot,
+      disableFirst: true,
+      disableSecond: false,
+    })
+    expect(decodeBundleStep(Uint8Array.from(less[0]?.data ?? []))).toEqual({
+      kind: 'cancel_conditional',
+      index: slot,
+      disableFirst: false,
+      disableSecond: true,
+    })
+  })
+
+  test('the other leg', () =>
+    refused(less, wantGreater, 'cancels a TP/SL nobody asked to'))
+
+  test('another slot', () =>
+    refused(
+      greater,
+      { ...cancelIntent, cancels: [{ slot: slot + 1, leg: 'greater' }] },
+      'cancels a TP/SL nobody asked to',
+    ))
+
+  test('a cancel nobody asked for', async () => {
+    await refused(greater, cancelIntent, 'cancels a TP/SL nobody asked to')
+    await refused(
+      [...greater, ...less],
+      wantGreater,
+      'cancels a TP/SL nobody asked to',
+    )
+  })
+
+  test('the same cancel twice', () =>
+    refused(
+      [...greater, ...greater],
+      wantGreater,
+      'cancels a TP/SL nobody asked to',
+    ))
+
+  test('a cancel that is missing', () =>
+    refused(
+      greater,
+      {
+        ...cancelIntent,
+        cancels: [
+          { slot, leg: 'greater' },
+          { slot, leg: 'less' },
+        ],
+      },
+      'TP/SL cancel is missing',
+    ))
+
+  test('a cancel that names no leg or both', async () => {
+    const [instruction] = greater
+    if (!instruction) throw new Error('fixture has an instruction')
+    for (const flags of [
+      [0, 0],
+      [1, 1],
+    ] as const) {
+      const data = Uint8Array.from(instruction.data ?? [])
+      data.set(flags, data.length - 2)
+      await refused(
+        [{ ...instruction, data }],
+        wantGreater,
+        'does not name one leg',
+      )
+    }
+  })
+
+  test('a cancel for another market', () =>
+    refused(
+      greater,
+      {
+        ...wantGreater,
+        market: { ...cancelIntent.market, marketPubkey: STRANGER },
+      },
+      'unexpected account',
+    ))
+
+  test("a cancel of another trader's TP/SL", async () => {
+    const [instruction] = greater
+    if (!instruction) throw new Error('fixture has an instruction')
+    const other = await conditionalOrdersAddress(await traderAccountAddress(D))
+    await refused(
+      [
+        {
+          ...instruction,
+          accounts: (instruction.accounts ?? []).map((account, position) =>
+            position === 6 ? { ...account, address: other } : account,
+          ),
+        },
+      ],
+      wantGreater,
+      'unexpected account',
+    )
+  })
+
+  test('a cancel for the wrong wallet', () =>
+    refused(greater, { ...wantGreater, wallet: D }, 'unexpected'))
+
+  test('accounts in the wrong places', async () => {
+    const [instruction] = greater
+    if (!instruction) throw new Error('fixture has an instruction')
+    const accounts = [...(instruction.accounts ?? [])]
+    const [trader, , market] = [accounts[3], accounts[4], accounts[5]]
+    if (!trader || !market) throw new Error('fixture has accounts')
+    accounts[3] = market
+    accounts[5] = trader
+    await refused(
+      [{ ...instruction, accounts }],
+      wantGreater,
+      'another account or market',
+    )
+  })
+})
+
+describe('checkPhoenixBundle keeps collateral between the wallet’s accounts', () => {
+  const swapAccounts = (
+    bundle: Instruction[],
+    kind: string,
+    change: (accounts: AccountMeta[]) => AccountMeta[],
+  ) =>
+    bundle.map((instruction) =>
+      stepKind(instruction) === kind
+        ? {
+            ...instruction,
+            accounts: change([
+              ...(instruction.accounts ?? []),
+            ] as AccountMeta[]),
+          }
+        : instruction,
+    )
+  const reversed = (accounts: AccountMeta[]) => {
+    const [from, to] = [accounts[4], accounts[5]]
+    if (!from || !to) throw new Error('fixture has both accounts')
+    accounts[4] = to
+    accounts[5] = from
+    return accounts
+  }
+  const sol = instructions(bundles.openSol)
+  const solIntent: BundleIntent = {
+    ...noTpsl,
+    order: {
+      kind: 'market',
+      side: 'buy',
+      priceInTicks: 39280n,
+      numBaseLots: 1n,
+      reduceOnly: false,
+      lastValidSlot: null,
+    },
+    collateralUsdc: 0n,
+    collateralLamports: 50_000_000n,
+  }
+
+  test('SOL collateral going the wrong way', () =>
+    refused(
+      swapAccounts(sol, 'transfer_sol', reversed),
+      solIntent,
+      'from cross to the subaccount',
+    ))
+
+  test('SOL collateral sent to a stranger, even if Phoenix lists the stranger', async () => {
+    const stranger = await traderAccountAddress(D, 1)
+    const hostile = swapAccounts(sol, 'transfer_sol', (accounts) => {
+      const to = accounts[5]
+      if (!to) throw new Error('fixture has a destination')
+      accounts[5] = { ...to, address: stranger }
+      return accounts
+    })
+    await refused(
+      hostile,
+      {
+        ...solIntent,
+        keys: {
+          ...keys,
+          globalTraderIndex: [...keys.globalTraderIndex, stranger],
+        },
+      },
+      'from cross to the subaccount',
+    )
+  })
+
+  for (const kind of ['sweep_usdc', 'sweep_sol'])
+    test(`a ${kind} going the wrong way`, () =>
+      refused(
+        swapAccounts(open, kind, reversed),
+        openIntent,
+        'from the subaccount to cross',
+      ))
+
+  test('a new isolated position in cross or a busy subaccount', async () => {
+    await refused(open, { ...openIntent, occupied: [0, 1] }, 'already in use')
+    expect(
+      await checkPhoenixBundle(open, { ...openIntent, occupied: [0, 2] }),
+    ).toEqual({ subaccount: 1 })
+  })
+
+  test('a subaccount registered with other settings', () => {
+    const data = Uint8Array.from(open[0]?.data ?? [])
+    // maxPositions follows the discriminator and two index bytes.
+    const tampered = Uint8Array.from(data)
+    tampered[data.length - 1] = 0xff
+    return refused(
+      open.map((each, index) =>
+        index === 0 ? { ...each, data: tampered } : each,
+      ),
+      openIntent,
+      'register',
+    )
+  })
+
+  test('anything extra in the order bytes', () =>
+    refused(
+      open.map((each) =>
+        stepKind(each) === 'order'
+          ? {
+              ...each,
+              data: Uint8Array.from([...(each.data ?? []), 0, 0, 0, 0]),
+            }
+          : each,
+      ),
+      openIntent,
+      'encoding differs',
+    ))
 })

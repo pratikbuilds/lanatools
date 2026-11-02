@@ -149,16 +149,13 @@ test('closes, cancels and collateral moves say what they do', () => {
   expect(tradeAmounts(deposit)).toEqual({ out: '250 USDC', in: null })
   const withdraw = perp({ action: 'withdraw', amountUsdc: '40' })
   expect(tradeAmounts(withdraw)).toEqual({ out: null, in: '40 USDC' })
-  const solDeposit = perp({
-    action: 'deposit',
-    asset: 'SOL',
-    amountSol: '0.25',
-  })
+  const solDeposit = perp({ action: 'deposit', amountSol: '0.25' })
   expect(tradeTitle(solDeposit)).toBe('Deposit to Phoenix')
   expect(tradeAmounts(solDeposit)).toEqual({ out: '0.25 SOL', in: null })
-  expect(
-    tradeAmounts(perp({ action: 'withdraw', asset: 'SOL', amountSol: '0.1' })),
-  ).toEqual({ out: null, in: '0.1 SOL' })
+  expect(tradeAmounts(perp({ action: 'withdraw', amountSol: '0.1' }))).toEqual({
+    out: null,
+    in: '0.1 SOL',
+  })
   expect(tradeTitle(perp({ action: 'activate' }))).toBe(
     'Activate Phoenix account',
   )

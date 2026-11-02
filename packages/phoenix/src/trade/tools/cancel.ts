@@ -9,6 +9,7 @@ import { defineTradeTool } from '../tool'
 import {
   MarketSymbol,
   Subaccount,
+  marginOf,
   marketConfig,
   ordersAccount,
   perpTrade,
@@ -100,7 +101,7 @@ export const cancelOrders = defineTradeTool({
         ? `Cancel ${chosen.length} resting ${market.symbol} order${chosen.length === 1 ? '' : 's'}${isolated ? ` in isolated subaccount ${subaccount}` : ''}`
         : `Cancel all ${open.length} resting ${market.symbol} order${open.length === 1 ? '' : 's'} in ${isolated ? `isolated subaccount ${subaccount}` : 'the cross-margin account'}`,
       details: {
-        ...(isolated ? { subaccount: String(subaccount) } : {}),
+        ...marginOf(subaccount).details,
         ...Object.fromEntries(
           chosen.map((order) => [
             `order ${order.orderSequenceNumber}`,
@@ -111,7 +112,7 @@ export const cancelOrders = defineTradeTool({
       trade: perpTrade('cancel', {
         symbol: market.symbol,
         cancelled: chosen.length,
-        ...(isolated ? { marginMode: 'isolated' as const, subaccount } : {}),
+        ...marginOf(subaccount).terms,
       }),
       warnings: [
         ...(wanted

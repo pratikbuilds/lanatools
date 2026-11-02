@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import {
   BLOCKHASH,
+  FEES,
   KEYS,
   SOL_BOOK,
   SOL_MARKET,
@@ -17,7 +18,6 @@ import { messageOf } from '../transaction'
 import { limitOrder } from './limit-order'
 import { marketOrder } from './market-order'
 
-const FEES = { computeUnitMargin: 0.2, microLamportsPerComputeUnit: 0n }
 const TRADER = await traderAccountAddress(WALLET)
 
 function rpcFor({ activated = true } = {}) {

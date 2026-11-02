@@ -1,6 +1,6 @@
 # Phoenix isolated margin, TP/SL and SOL collateral: tech spec
 
-Status: approved 2026-11-01. In progress.
+Status: phases 1–6 built 2026-11-01. Phase 7 live run passed on mainnet 2026-11-02 (results in Phase 7).
 Builds on: [phoenix-trade-tools.md](phoenix-trade-tools.md). Its tool contract and error codes still apply.
 
 ## 1. Goal and scope
@@ -58,10 +58,10 @@ All on 2026-11-01. Simulations were unsigned and used public wallets, as in the 
 
 **Not known yet**
 
-- **How long a trigger takes to fire** (**Q1**), and **whether a missed stop is retried** (**Q2**).
-- **One unexplained failure.** Four partial TP/SL simulations on AMZN failed with `InvalidInstructionData`. The same kinds of request passed minutes later, and that wallet's AMZN position had changed in between. Having no position gives a different error, so the cause is still open; Phase 4 must explain it.
-- Whether cross market order plus TP/SL works in one transaction. Only the isolated path is simulated. Rise's README says that path is full-position only, so partial TP/SL goes through `phoenix_set_tpsl`.
-- Isolated limit orders have not been simulated.
+- **Whether a missed stop is retried** (**Q2**). Phase 7 fired two take profits, no stop.
+- **Answered in Phase 7: trigger delay and partial triggers.** Both fired within seconds of mark crossing, and a 50% take profit closed exactly half. On order entry, TP/SL is full-position only.
+- **Explained in Phase 4: the AMZN failure.** `InvalidInstructionData` is how Phoenix reports "Conditional order must be in opposite direction of trader position". That wallet's AMZN position had flipped, so the triggers fired on the position's own side. Size, entry and distance from mark do not cause it. No position gives `InvalidAccountData`.
+- **Answered in Phase 4: a cancel's index.** It is a slot in the on-chain TP/SL account, not `conditionalStopLossId`. `disableFirst` is the greater leg and `disableSecond` the less, shown by simulating Phoenix's route on a live position.
 
 ## 3. Design
 
@@ -71,13 +71,13 @@ All on 2026-11-01. Simulations were unsigned and used public wallets, as in the 
 | --------------------------------------- | --------------------------------------------------------------------------------------- |
 | Isolated market and limit orders        | Rise `client.api.orders().placeIsolatedMarketOrder` / `placeIsolatedLimitOrder`         |
 | TP/SL on a position, and cancelling it  | Rise `placePositionConditionalOrder` / `cancelConditionalOrder`                         |
-| Close an isolated position              | Rise `placeIsolatedMarketOrder`, reduce-only                                            |
+| Close an isolated position | Rise's order builder and sweeps. Phoenix's route picks the subaccount itself, so it cannot reach a second position in one market |
 | Cancel isolated orders, add margin      | Rise's resolved builders, with its collateral sweeps                                    |
 | SOL deposit                             | Rise `buildNativeSolDepositFlow`. If its RPC client cannot use ours, the same three Rise builders in the same order |
 | SOL withdrawal                          | Rise `buildWithdrawNativeSolIx`                                                         |
 | Everything cross that works today       | Unchanged                                                                               |
 
-Phoenix's server picks the subaccount, registers it and orders the steps. We do not repeat that logic, so `allocateIsolatedSubaccount` and Rise's flows stay out of our code.
+When opening, Phoenix's server picks the subaccount, registers it and orders the steps. We do not repeat that logic, so `allocateIsolatedSubaccount` and Rise's flows stay out of our code.
 
 We use only Rise's HTTP client (`PhoenixHttpClient`), which needs no RPC or streams and uses the Worker's `fetch`. `rise.ts` wraps it, so tests fake that wrapper.
 
@@ -96,6 +96,9 @@ An embedded wallet signs without further approval, so the server's answer is tre
 - **Close means close:** a close's bundle moves no collateral out of cross.
 - **SOL deposits:** the System transfer goes to this wallet's trader account for exactly the amount.
 
+- **Collateral moves only between this wallet's accounts:** every transfer and sweep is checked by source and destination, because the writable list is built from Phoenix's own API answers. New positions may not land in cross or a subaccount already in use.
+- **Orders are byte-exact** against Rise's encoding, and a registered subaccount must have Phoenix's defaults.
+
 We do not check exact instruction order or count, because the server changes those by account state. The simulation still runs on every transaction.
 
 Tests use real responses saved from Phoenix as fixtures, plus tampered copies that must be refused.
@@ -106,7 +109,7 @@ An isolated order with TP/SL is one transaction. If any step fails, nothing happ
 
 ### 3.4 Expiry
 
-Phoenix's server sets no slot expiry on the order, so isolated orders have no `expiresAfterSlot`. The blockhash limits their life, and the required price limit still bounds the fill.
+Phoenix's server sets no slot expiry on the order, so isolated opens have no `expiresAfterSlot`. The blockhash limits their life, and the required price limit still bounds the fill.
 
 ### 3.5 Fills
 
@@ -215,12 +218,40 @@ Only when you say go, with your typed `yes` at each step. The budget is 10 USD i
 3. Add margin. Cancel the TP, then set a new one.
 4. Close, and confirm the collateral is back in cross.
 5. Isolated limit order far from mark. Cancel it, and confirm the collateral is back.
-6. Cross market order on SOL. Set a partial TP, cancel it, close.
+6. Cross market order on SOL with TP and SL. Cancel them, set a partial TP, cancel it, close.
 7. Deposit SOL. Open an isolated GOLD position with it, close, withdraw the SOL.
 8. **One real trigger.** Isolated GOLD position with a stop very close to mark. Wait for it to fire, or close by hand if it does not, and record the delay.
-9. Withdraw what is left.
+9. **One real partial trigger.** A position of a few lots with a 50% stop very close to mark, to learn whether it closes half or all of it.
+10. Withdraw what is left.
 
 - **Record:** signatures, costs and the trigger's delay go here. No screenshots.
+
+**Results, 2026-11-02.** Wallet `Du3X…V9mu`, CLI `scripts/trade.ts`, every send simulated first and approved with a typed `yes`. All 26 sent transactions confirmed. At your request, steps 7–9 used stocks and crypto instead of GOLD only.
+
+| Step | What ran | Result |
+| ---- | -------- | ------ |
+| 1 | Deposit 6 USDC | `qtHfdAyv…` |
+| 2 | Isolated 0.001 GOLD long, TP $4,100, SL $3,700, one transaction | `naJdKwtR…`, 184,189 CU. Rent for the subaccount and the TP/SL account about 0.0095 SOL |
+| 3 | Add 0.5 USDC; cancel the TP; set TP $4,150 | `2sHSwnex…`, `2fHA25sr…`, `3PgAX7SQ…`. The SL stayed; the new TP took a new slot |
+| 4 | Close GOLD | `KnDiH1GN…`. Collateral back in cross in the same transaction |
+| 5 | Isolated GOLD limit at $3,000; cancel | `4sG2ZuBU…`, `4UCsVdBi…`. Collateral back in cross |
+| 6 | Cross 0.04 SOL with TP/SL; cancel both; 50% TP; cancel it; close | `bYPa4dzm…`, `pKuYhGLG…`, `3CmDdnXe…`, `HfSL4wdH…`, `65meCyGv…`. Cross TP/SL account rent about 0.0057 SOL |
+| 7 | Deposit 0.01 SOL; isolated 0.02 NVDA funded only by SOL; close; withdraw | `ncfADC3H…`, `4KQzCyHw…`, `5VYpWBXR…`, `2kczQsLo…`. 0.00994 SOL came back: see below |
+| — | Isolated 0.002 ANTHROPIC with TP/SL, close; cross 0.01 TSLA with TP/SL, close | `2MLQ8CMm…`, `3rwo6bpu…`, `4REhqa9p…`, `ZosZyxTY…` |
+| 8 | Isolated 0.002 ETH, TP and SL 0.15% from mark | TP fired at $2,284.90 (`379kG2GG…`), the second our 15 s poll first saw mark at the trigger. Collateral returned to cross |
+| 9 | Cross 0.04 SOL, 50% TP and SL 0.15% from mark | TP fired at $94.36 (`HL1ePumC…`), same second as mark crossing. Position went 0.04 → 0.02 |
+| 10 | Close the last 0.02 SOL; withdraw 5.986433 USDC | `4rbAmaud…`, `rRPkxYgu…` |
+
+Cost of the whole run: 0.0136 USDC in trading and 0.0155 SOL (about $1.46), almost all rent.
+
+What the run taught us:
+
+- **Triggers fire within seconds**, and a fired trigger drops off the account read. Only `active` was ever seen as a status.
+- **Partial TP/SL closes only its share.**
+- **A TP and SL set together are one pair.** When the 50% TP fired, its SL was cancelled too, leaving the other half unprotected. Our notices do not say this yet.
+- **A keeper-fired isolated close sweeps collateral back to cross**, as our own close does.
+- **SOL-only isolated margin pays fees by converting SOL.** Fees are charged in USDC, so the subaccount went to −0.0015 USDC and Phoenix converted about 0.00006 SOL on the close. The withdrawal of the full 0.01 SOL was refused by our check, correctly. Isolated order notices should say this.
+- **Steps 3–5 confirmed** the cancel picks the right leg and slot, and the isolated cancel of a real resting order sweeps collateral.
 - **Exit:** the PRs for phases 2–6 merge in order, and the spec is marked built.
 - **If a step fails:** we stop, fix it in that phase's PR, and rerun that step.
 
@@ -246,20 +277,19 @@ Only when you say go, with your typed `yes` at each step. The budget is 10 USD i
 
 Researched 2026-11-01 from Phoenix's docs, its OpenAPI file, Rise and the `rise-public` repo. No source answers the parts marked unknown; the live run covers them.
 
-- **Q1. Who fires TP/SL?** A permissioned Phoenix keeper. The program has `PingConditionalOrders` and `ExecuteConditionalOrder`, whose signer needs a STOP_LOSS permission, and Rise's own tests run them as a keeper. **Unknown:** the delay after mark crosses. Phase 7 measures one.
+- **Q1. Who fires TP/SL?** A permissioned Phoenix keeper. The program has `PingConditionalOrders` and `ExecuteConditionalOrder`, whose signer needs a STOP_LOSS permission, and Rise's own tests run them as a keeper. **Measured in Phase 7:** two take profits filled in the same second our poll first saw mark at the trigger.
 - **Q2. What if a stop misses its worst price?** An IOC stop is immediate-or-cancel and all-or-none, so it cancels instead of resting; a limit-kind trigger rests. **Unknown:** whether the keeper tries again.
 - **Q3. Does rent come back?** No path found. No instruction closes a conditional orders account or a trader account, and cancelling leaves the account in place. Treat the rent as spent.
 - **Q4. Will the `/v1/ix/*` routes stay open without login?** Not stated. OpenAPI marks them Bearer, but it also marks public reads that way, and Rise treats auth as optional. If they close, we add Rise's `auth` option; every call would then need a wallet login first.
 - **Q5. How does a cancel find its trigger?** `conditionalStopLossId` is not the index. The index is a slot in the on-chain conditional orders account, 1–191, which Rise's cancel example reads with `activeOrderIndices`. One slot holds a greater and a less leg, chosen by `executionDirection`.
-- **Q6. Partial TP/SL at fire time.** **Unknown:** how a percent behaves after a position shrinks, and what caused the AMZN `InvalidInstructionData`. Docs only cover the full-position case.
+- **Q6. Partial TP/SL at fire time.** **Answered in Phase 7:** a 50% TP closed exactly half, and cancelled the SL in its slot. The AMZN `InvalidInstructionData` was the position flipping (section 2).
 
 ## 8. Risks
 
 - **We depend on Phoenix's server.** If it is down, isolated and TP/SL tools fail; nothing partial happens. Checks in 3.2 stop a wrong answer from being signed.
 - **A check can be too strict.** If Phoenix adds a new instruction, the tools refuse until we add it to the list. That is the safe way to fail.
 - **A stop is not a guarantee.** It depends on Phoenix firing it and on the book at that moment. The product must never call a position "protected" without that caveat.
-- **Partial TP/SL.** We have only seen it place, not fire. Phoenix's docs do not describe partial behaviour.
+- **Partial TP/SL.** Fired once in Phase 7 and closed only its share. Firing one leg cancels its pair, so the rest of the position is unprotected until the agent sets a new TP/SL.
 - **Stale TP/SL.** Phoenix cancels triggers when a position flips, so agents should read the account before relying on them.
 - **SOL price.** A falling SOL price lowers margin on its own, and can trigger conversion to USDC or liquidation.
 - **Rise is 0.x.** The version stays pinned. Upgrading reruns the simulations.
-- **Older wording.** The market order warning says "about a minute", but mainnet slots now run about 0.21 s, so 150 slots is closer to 30 seconds. We fix the text in Phase 2.
