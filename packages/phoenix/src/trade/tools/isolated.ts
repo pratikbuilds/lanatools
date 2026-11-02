@@ -20,6 +20,10 @@ import { traderBook } from './shared'
 export const ISOLATED_RISK =
   "Losses are limited to this position's collateral, and it can be liquidated while your cross account still holds funds."
 
+/** Seen in the live run: fees are USDC, so a SOL-only subaccount sells SOL. */
+const SOL_PAYS_FEES =
+  'Fees are charged in USDC, so with only SOL in this position Phoenix converts a little SOL to pay them; slightly less SOL comes back when it closes.'
+
 const FIRST_USE_RENT =
   'This order creates a new Phoenix subaccount, which costs a small one-time rent in SOL. Treat it as spent.'
 
@@ -217,6 +221,10 @@ export async function placeIsolated({
     },
     warnings: [
       ISOLATED_RISK,
+      ...(funding.intent.collateralLamports > 0n &&
+      funding.intent.collateralUsdc === 0n
+        ? [SOL_PAYS_FEES]
+        : []),
       ...(registers(instructions) ? [FIRST_USE_RENT] : []),
     ],
   }

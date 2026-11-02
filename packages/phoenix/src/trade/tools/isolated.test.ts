@@ -257,6 +257,7 @@ describe('an isolated market order', () => {
       collateralSol: '0.05',
     })
     expect(result.trade).not.toHaveProperty('collateralUsdc')
+    expect(result.warnings.join(' ')).toContain('converts a little SOL')
   })
 
   test('a limit out of reach still warns', async () => {
